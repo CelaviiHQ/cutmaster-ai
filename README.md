@@ -4,6 +4,10 @@ Maximum-control MCP server for DaVinci Resolve Studio.
 
 **227 tools** covering the complete Resolve Scripting API, AI-enhanced workflows, Claude Code skills, and domain-specific agents.
 
+> **Important: DaVinci Resolve Studio Required**
+>
+> This MCP server uses the DaVinci Resolve Scripting API, which is **only available in DaVinci Resolve Studio** (the paid version, $295 one-time purchase). The free edition of DaVinci Resolve does **not** support external scripting and will not work with this server. You can verify your edition by going to DaVinci Resolve > About — it must say "DaVinci Resolve **Studio**".
+
 ## Features
 
 - **203 granular tools** — full coverage of the DaVinci Resolve Scripting API (324 methods)
@@ -18,9 +22,10 @@ Maximum-control MCP server for DaVinci Resolve Studio.
 
 ## Requirements
 
-- DaVinci Resolve Studio 18.5+ (free edition has no scripting API)
-- Python 3.11+
-- GEMINI_API_KEY (optional, for AI tools)
+- **DaVinci Resolve Studio 18.5+** — the free edition does not include the scripting API and is not supported. [Purchase Studio here](https://www.blackmagicdesign.com/products/davinciresolve/studio).
+- **External scripting enabled** — in Resolve Studio, go to Preferences > System > General > set "External scripting using" to **Local**.
+- **Python 3.11+**
+- **GEMINI_API_KEY** (optional, for AI-powered tools)
 
 ## Quick Start
 
