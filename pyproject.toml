@@ -1,0 +1,81 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "celavii-resolve"
+version = "0.1.0"
+description = "Maximum-control MCP server for DaVinci Resolve Studio — ~280 tools, AI-enhanced workflows, skills, and agents."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "Celavii" },
+]
+keywords = ["mcp", "davinci-resolve", "video-editing", "automation", "ai"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Video",
+]
+
+dependencies = [
+    "fastmcp>=3.0.0",
+    "pydantic>=2.0",
+    "python-dotenv>=1.2.1",
+]
+
+[project.optional-dependencies]
+ai = [
+    "google-genai>=1.64.0",
+]
+interchange = [
+    "opentimelineio>=0.18.1",
+    "otio-fcp-adapter>=1.0.0",
+]
+all = [
+    "celavii-resolve[ai,interchange]",
+]
+dev = [
+    "ruff>=0.9.0",
+    "pytest>=8.0",
+    "pyright>=1.1",
+]
+
+[project.scripts]
+celavii-resolve = "celavii_resolve:main"
+
+[project.urls]
+Homepage = "https://github.com/celavii/celavii-resolve"
+Repository = "https://github.com/celavii/celavii-resolve"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/celavii_resolve"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = [
+    "E501",    # line too long — handled by formatter
+    "B904",    # raise from
+    "SIM105",  # contextlib.suppress — try/except/pass is clearer for Resolve API guards
+    "SIM108",  # ternary
+]
+
+[tool.ruff.lint.per-file-ignores]
+"src/celavii_resolve/__init__.py" = ["E402", "I001"]
+"src/celavii_resolve/resolve.py" = ["E402"]
+
+[tool.pyright]
+pythonVersion = "3.11"
+typeCheckingMode = "basic"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

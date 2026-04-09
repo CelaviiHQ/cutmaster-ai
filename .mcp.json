@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "celavii-resolve": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "${CLAUDE_PROJECT_ROOT}",
+        "python",
+        "-m",
+        "celavii_resolve"
+      ]
+    }
+  }
+}
