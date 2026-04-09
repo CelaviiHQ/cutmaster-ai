@@ -49,8 +49,8 @@ dev = [
 celavii-resolve = "celavii_resolve:main"
 
 [project.urls]
-Homepage = "https://github.com/celavii/celavii-resolve"
-Repository = "https://github.com/celavii/celavii-resolve"
+Homepage = "https://github.com/CelaviiHQ/celavii-davinci-resolve-mcp"
+Repository = "https://github.com/CelaviiHQ/celavii-davinci-resolve-mcp"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/celavii_resolve"]
