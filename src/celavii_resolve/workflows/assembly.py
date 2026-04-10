@@ -142,13 +142,16 @@ def celavii_assembly_from_bin(
     for i in range(1, final_a + 1):
         tl.SetTrackName("audio", i, f"A{i}")
 
-    return json.dumps({
-        "timeline": timeline_name,
-        "clips": len(clips),
-        "video_tracks": final_v,
-        "audio_tracks": final_a,
-        "tracks_added": len(tracks_added),
-    }, indent=2)
+    return json.dumps(
+        {
+            "timeline": timeline_name,
+            "clips": len(clips),
+            "video_tracks": final_v,
+            "audio_tracks": final_a,
+            "tracks_added": len(tracks_added),
+        },
+        indent=2,
+    )
 
 
 @mcp.tool

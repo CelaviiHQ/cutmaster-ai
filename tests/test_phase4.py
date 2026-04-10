@@ -23,6 +23,7 @@ EXPECTED_SKILLS = [
     "assembly",
     "review",
     "export-stills",
+    "grade-log",
 ]
 
 EXPECTED_AGENTS = [

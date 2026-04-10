@@ -63,7 +63,9 @@ def celavii_ingest_media(
         if recursive:
             files = [str(f) for f in source.rglob("*") if f.suffix.lower() in ext_filter]
         else:
-            files = [str(f) for f in source.iterdir() if f.is_file() and f.suffix.lower() in ext_filter]
+            files = [
+                str(f) for f in source.iterdir() if f.is_file() and f.suffix.lower() in ext_filter
+            ]
     else:
         return f"Error: '{source_path}' is not a file or directory."
 
@@ -158,9 +160,7 @@ def celavii_ingest_with_bins(
 
     for dirpath, _dirnames, filenames in os.walk(source):
         media_files = [
-            os.path.join(dirpath, f)
-            for f in filenames
-            if Path(f).suffix.lower() in all_exts
+            os.path.join(dirpath, f) for f in filenames if Path(f).suffix.lower() in all_exts
         ]
         if not media_files:
             continue
@@ -193,8 +193,11 @@ def celavii_ingest_with_bins(
         if items:
             total_imported += len(items)
 
-    return json.dumps({
-        "total_imported": total_imported,
-        "bins_created": len(bins_created),
-        "source": source_path,
-    }, indent=2)
+    return json.dumps(
+        {
+            "total_imported": total_imported,
+            "bins_created": len(bins_created),
+            "source": source_path,
+        },
+        indent=2,
+    )

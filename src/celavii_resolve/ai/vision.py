@@ -16,8 +16,7 @@ def _require_gemini():
     client = get_gemini_client()
     if client is None:
         raise ValueError(
-            "AI vision tools require GEMINI_API_KEY. "
-            "Set it in your environment or .env file."
+            "AI vision tools require GEMINI_API_KEY. Set it in your environment or .env file."
         )
     return client
 
@@ -175,7 +174,13 @@ def celavii_compare_frames(
 
     # Determine reference mime type
     ext = os.path.splitext(reference_path)[1].lower()
-    mime_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".tif": "image/tiff", ".tiff": "image/tiff"}
+    mime_map = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".tif": "image/tiff",
+        ".tiff": "image/tiff",
+    }
     ref_mime = mime_map.get(ext, "image/jpeg")
 
     prompt = comparison_prompt or (

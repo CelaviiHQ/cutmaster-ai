@@ -151,10 +151,12 @@ def celavii_batch_deliver(
         preset_dir = os.path.join(base_dir, preset.lower())
         os.makedirs(preset_dir, exist_ok=True)
 
-        project.SetRenderSettings({
-            "TargetDir": preset_dir,
-            "CustomName": tl.GetName(),
-        })
+        project.SetRenderSettings(
+            {
+                "TargetDir": preset_dir,
+                "CustomName": tl.GetName(),
+            }
+        )
 
         job_id = project.AddRenderJob()
         if job_id:

@@ -17,8 +17,7 @@ def _require_gemini():
     client = get_gemini_client()
     if client is None:
         raise ValueError(
-            "AI critique tools require GEMINI_API_KEY. "
-            "Set it in your environment or .env file."
+            "AI critique tools require GEMINI_API_KEY. Set it in your environment or .env file."
         )
     return client
 
@@ -75,10 +74,7 @@ def _get_timeline_structure() -> dict:
     # Markers
     try:
         markers = tl.GetMarkers() or {}
-        structure["markers"] = [
-            {"frame": frame, **_ser(info)}
-            for frame, info in markers.items()
-        ]
+        structure["markers"] = [{"frame": frame, **_ser(info)} for frame, info in markers.items()]
     except (AttributeError, TypeError):
         pass
 
@@ -104,7 +100,9 @@ def celavii_timeline_critique(
 
     structure = _get_timeline_structure()
 
-    focus_text = f"Focus specifically on: {focus}." if focus else "Provide general editorial feedback."
+    focus_text = (
+        f"Focus specifically on: {focus}." if focus else "Provide general editorial feedback."
+    )
 
     prompt = (
         "You are a professional film editor reviewing a timeline. "
@@ -129,11 +127,7 @@ def celavii_timeline_critique(
         {
             "critique": response.text,
             "timeline": structure["name"],
-            "total_clips": sum(
-                len(t["clips"])
-                for tt in structure["tracks"].values()
-                for t in tt
-            ),
+            "total_clips": sum(len(t["clips"]) for tt in structure["tracks"].values() for t in tt),
             "focus": focus or "general",
         },
         indent=2,
@@ -230,13 +224,15 @@ def celavii_visual_continuity_check() -> str:
     for i in range(len(items) - 1):
         clip_a = items[i]
         clip_b = items[i + 1]
-        cuts.append({
-            "cut_index": i,
-            "from_clip": clip_a.GetName(),
-            "from_duration": clip_a.GetDuration(),
-            "to_clip": clip_b.GetName(),
-            "to_duration": clip_b.GetDuration(),
-        })
+        cuts.append(
+            {
+                "cut_index": i,
+                "from_clip": clip_a.GetName(),
+                "from_duration": clip_a.GetDuration(),
+                "to_clip": clip_b.GetName(),
+                "to_duration": clip_b.GetDuration(),
+            }
+        )
 
     prompt = (
         "You are a script supervisor checking for continuity issues.\n\n"

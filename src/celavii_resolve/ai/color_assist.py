@@ -18,8 +18,7 @@ def _require_gemini():
     client = get_gemini_client()
     if client is None:
         raise ValueError(
-            "AI color tools require GEMINI_API_KEY. "
-            "Set it in your environment or .env file."
+            "AI color tools require GEMINI_API_KEY. Set it in your environment or .env file."
         )
     return client
 
@@ -54,6 +53,8 @@ def _parse_cdl_from_text(text: str) -> dict | None:
 def celavii_color_assist(
     intent: str = "",
     apply: bool = False,
+    node: str = "auto",
+    six_node_mode: bool = False,
     track_type: str = "video",
     track_index: int = 1,
     item_index: int = 0,
@@ -64,15 +65,28 @@ def celavii_color_assist(
     CDL (slope/offset/power/saturation) recommendations. Optionally applies
     them directly.
 
+    Works standalone OR within the 6-node log grading structure
+    (use `six_node_mode=True` after running `celavii_setup_log_grade`).
+    In 6-node mode, corrections are applied to the correct nodes:
+    white balance → WB (node 1), exposure → EXP (node 2), etc.
+
     Args:
         intent: What look are you going for? (e.g. 'warm cinematic',
-                'cool desaturated', 'match to Rec.709', 'neutral balance').
+                'cool desaturated', 'neutral balance', 'punchy contrast').
                 Leave empty for auto-correction suggestions.
         apply: If True, apply the suggested CDL values to the clip.
+        node: Which node to apply CDL to. 'auto' applies to node 1 (or the
+              node best suited in 6-node mode). Use 'wb', 'exp', 'sat', 'curves'
+              to target specific 6-node structure nodes, or an integer like '2'.
+        six_node_mode: True when working within the 6-node log grading structure
+                       (set up by celavii_setup_log_grade). AI will give advice
+                       tailored to each node's role rather than a single CDL.
         track_type: Track type for the target clip.
         track_index: 1-based track index.
         item_index: 0-based item index.
     """
+    import os
+
     client = _require_gemini()
 
     # Export frame
@@ -84,26 +98,61 @@ def celavii_color_assist(
     if not base64_data:
         return "Error: Could not encode frame for analysis."
 
-    # Build prompt
-    intent_text = f"The desired look is: {intent}" if intent else "Suggest neutral, balanced corrections."
+    # Resolve node index
+    node_map = {"wb": 1, "exp": 2, "sat": 3, "curves": 4, "cst": 5, "lut": 6}
+    if node == "auto":
+        node_index = 1
+    elif node.lower() in node_map:
+        node_index = node_map[node.lower()]
+    else:
+        try:
+            node_index = int(node)
+        except ValueError:
+            node_index = 1
 
-    prompt = (
-        "You are a professional colorist analyzing a video frame. "
-        f"{intent_text}\n\n"
-        "Analyze this frame and recommend ASC CDL corrections.\n"
-        "You MUST respond with EXACT numeric values in this format:\n\n"
-        "Slope: R G B (gain, typically 0.8-1.3)\n"
-        "Offset: R G B (lift, typically -0.1 to 0.1)\n"
-        "Power: R G B (gamma, typically 0.8-1.2)\n"
-        "Saturation: value (typically 0.8-1.3)\n\n"
-        "Then explain your reasoning in 2-3 sentences.\n"
-        "Example:\n"
-        "Slope: 1.05 1.0 0.95\n"
-        "Offset: 0.01 0.0 -0.01\n"
-        "Power: 1.0 1.0 1.02\n"
-        "Saturation: 1.1\n"
-        "Reasoning: The image has a slight blue cast..."
+    # Build prompt
+    intent_text = (
+        f"The desired look is: {intent}" if intent else "Suggest neutral, balanced corrections."
     )
+
+    if six_node_mode:
+        prompt = (
+            "You are a professional colorist working in DaVinci Resolve using a 6-node structure:\n"
+            "  Node 1 (WB) — White balance via Offset\n"
+            "  Node 2 (EXP) — Exposure via Lift/Gamma/Gain\n"
+            "  Node 3 (SAT) — Saturation\n"
+            "  Node 4 (CURVES) — S-curve contrast, Hue vs Sat/Hue\n"
+            "  Node 5 (CST) — Color Space Transform (Log → Rec.709, already applied)\n"
+            "  Node 6 (LUT) — Film look LUT at ~0.20 key output gain\n\n"
+            f"{intent_text}\n\n"
+            "Analyze this Rec.709-converted frame (after CST) and suggest corrections.\n"
+            "Remember: less is more. Subtle, tasteful adjustments only.\n\n"
+            "Provide EXACT CDL values for the primary correction node:\n"
+            "Slope: R G B\n"
+            "Offset: R G B\n"
+            "Power: R G B\n"
+            "Saturation: value\n\n"
+            "Then provide node-specific advice for WB, EXP, SAT, and CURVES nodes.\n"
+            "Mention the vectorscope and waveform readings you'd expect to see."
+        )
+    else:
+        prompt = (
+            "You are a professional colorist analyzing a video frame. "
+            f"{intent_text}\n\n"
+            "Analyze this frame and recommend ASC CDL corrections.\n"
+            "You MUST respond with EXACT numeric values in this format:\n\n"
+            "Slope: R G B (gain, typically 0.8–1.3)\n"
+            "Offset: R G B (lift, typically -0.1 to 0.1)\n"
+            "Power: R G B (gamma, typically 0.8–1.2)\n"
+            "Saturation: value (typically 0.8–1.3)\n\n"
+            "Then explain your reasoning in 2-3 sentences.\n"
+            "Example:\n"
+            "Slope: 1.05 1.0 0.95\n"
+            "Offset: 0.01 0.0 -0.01\n"
+            "Power: 1.0 1.0 1.02\n"
+            "Saturation: 1.1\n"
+            "Reasoning: The image has a slight blue cast..."
+        )
 
     response = client.models.generate_content(
         model="gemini-2.0-flash",
@@ -129,7 +178,9 @@ def celavii_color_assist(
         "analysis": analysis_text,
         "timecode": frame.get("timecode", "unknown"),
         "cdl_parsed": cdl,
+        "target_node": node_index,
         "applied": False,
+        "six_node_mode": six_node_mode,
     }
 
     # Apply if requested and CDL was parsed
@@ -140,17 +191,16 @@ def celavii_color_assist(
             items = tl.GetItemListInTrack(track_type, track_index) or []
             if item_index < len(items):
                 item = items[item_index]
-                cdl_payload = {"NodeIndex": "1", **cdl}
+                cdl_payload = {"NodeIndex": str(node_index), **cdl}
                 if item.SetCDL(cdl_payload):
                     result["applied"] = True
+                    result["applied_to_node"] = node_index
                 else:
                     result["apply_error"] = "Failed to set CDL values on the clip."
             else:
                 result["apply_error"] = f"Item index {item_index} out of range."
 
     # Clean up
-    import os
-
     path = frame.get("path")
     if path and os.path.isfile(path):
         try:

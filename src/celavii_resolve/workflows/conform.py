@@ -170,35 +170,43 @@ def celavii_verify_timeline_media() -> str:
                 try:
                     mpi = item.GetMediaPoolItem()
                     if not mpi:
-                        issues.append({
-                            "clip": item.GetName(),
-                            "track": f"{track_type} {ti}",
-                            "index": idx,
-                            "issue": "No media pool item",
-                        })
+                        issues.append(
+                            {
+                                "clip": item.GetName(),
+                                "track": f"{track_type} {ti}",
+                                "index": idx,
+                                "issue": "No media pool item",
+                            }
+                        )
                         continue
                     file_path = mpi.GetClipProperty("File Path")
                     if not file_path:
-                        issues.append({
-                            "clip": item.GetName(),
-                            "track": f"{track_type} {ti}",
-                            "index": idx,
-                            "issue": "No file path",
-                        })
+                        issues.append(
+                            {
+                                "clip": item.GetName(),
+                                "track": f"{track_type} {ti}",
+                                "index": idx,
+                                "issue": "No file path",
+                            }
+                        )
                     elif not os.path.isfile(file_path):
-                        issues.append({
+                        issues.append(
+                            {
+                                "clip": item.GetName(),
+                                "track": f"{track_type} {ti}",
+                                "index": idx,
+                                "issue": f"File missing: {file_path}",
+                            }
+                        )
+                except (AttributeError, TypeError):
+                    issues.append(
+                        {
                             "clip": item.GetName(),
                             "track": f"{track_type} {ti}",
                             "index": idx,
-                            "issue": f"File missing: {file_path}",
-                        })
-                except (AttributeError, TypeError):
-                    issues.append({
-                        "clip": item.GetName(),
-                        "track": f"{track_type} {ti}",
-                        "index": idx,
-                        "issue": "Could not verify",
-                    })
+                            "issue": "Could not verify",
+                        }
+                    )
 
     return json.dumps(
         {

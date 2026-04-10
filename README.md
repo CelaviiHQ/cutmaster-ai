@@ -2,7 +2,7 @@
 
 Maximum-control MCP server for DaVinci Resolve Studio.
 
-**227 tools** covering the complete Resolve Scripting API, AI-enhanced workflows, Claude Code skills, and domain-specific agents.
+**229 tools** covering the complete Resolve Scripting API, AI-enhanced workflows, Claude Code skills, and domain-specific agents.
 
 > **Important: DaVinci Resolve Studio Required**
 >
@@ -14,7 +14,7 @@ Maximum-control MCP server for DaVinci Resolve Studio.
 - **14 workflow tools** — compound operations for ingest, assembly, delivery, conform, and grading
 - **10 AI tools** — Gemini-powered frame analysis, OCR, color assist, editorial critique
 - **5 MCP resources** — passive context for version, project, timelines, bins, render queue
-- **8 skills** — Claude Code slash commands (`/deliver`, `/preflight`, `/color-assist`, etc.)
+- **9 skills** — Claude Code slash commands (`/deliver`, `/preflight`, `/color-assist`, `/grade-log`, etc.)
 - **7 agents** — domain-specific roles (editor, colorist, VFX, sound, conform, delivery, producer)
 - **Safety hooks** — destructive operation warnings, .env protection, auto-lint
 - **Auto-launch** — starts DaVinci Resolve automatically if not running
@@ -131,6 +131,8 @@ Run `python install.py --clients manual` to get copy-paste config for all 10 sup
 | `celavii_quick_grade` | Apply LUT + CDL + grab still |
 | `celavii_batch_apply_lut` | LUT to multiple clips |
 | `celavii_copy_grade_to_all` | Copy grade from one clip to all |
+| `celavii_setup_log_grade` | Build 6-node structure, apply CST + LUT, set key output gain |
+| `celavii_list_cst_luts` | List available camera CST LUTs and film looks |
 
 ### AI Tools (requires GEMINI_API_KEY)
 
@@ -154,6 +156,7 @@ Run `python install.py --clients manual` to get copy-paste config for all 10 sup
 | `/deliver` | Quick render with preset shorthands |
 | `/preflight` | Pre-render verification checklist |
 | `/color-assist` | AI color grading assistant |
+| `/grade-log` | 6-node Log footage grading (WB → EXP → SAT → CURVES → CST → LUT) |
 | `/conform` | Timeline conform from EDL/XML |
 | `/ingest` | Media import with organisation |
 | `/assembly` | Build rough cut from clips |
