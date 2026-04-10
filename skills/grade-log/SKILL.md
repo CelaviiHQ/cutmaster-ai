@@ -91,19 +91,45 @@ Your flat log footage will now look like standard Rec.709.
 
 ## Camera Formats
 
-| Key | Camera |
-|-----|--------|
-| `sony-slog3` | Sony FX3, FX6, FX9, A7S III, A1 (S-Log3/S-Gamut3.Cine) |
-| `arri-logc` | ARRI Alexa (LogC to Rec.709) |
-| `braw-pocket4k` | Blackmagic Pocket 4K |
-| `braw-pocket6k` | Blackmagic Pocket 6K |
-| `braw-4k` | Blackmagic 4K Film |
-| `braw-46k` | Blackmagic 4.6K Film |
-| `red-log3g10` | RED cameras (Log3G10) |
-| `dji-dlog` | DJI X7/Phantom (D-Log) |
-| `panasonic-vlog` | Panasonic GH5/S5 (V-Log) |
+The `camera` parameter is **not Sony-only** — it works with any camera that shoots log.
+Natural names and common model names all work as aliases.
 
-Aliases also work: `slog3`, `arri alexa`, `bmpcc4k`, `bmpcc6k`, `red`, `dji`, `vlog`.
+### Cameras with automatic CST (built-in Resolve LUTs applied automatically)
+
+| Key / Alias | Camera |
+|-------------|--------|
+| `slog3`, `sony fx3`, `sony a7s`, `zv-e1` | Sony FX3/FX6/FX9/A7S III/A1/ZV-E1 (S-Log3) |
+| `arri-logc`, `alexa` | ARRI Alexa (LogC) |
+| `bmpcc4k`, `pocket 4k` | Blackmagic Pocket 4K |
+| `bmpcc6k`, `pocket 6k` | Blackmagic Pocket 6K |
+| `braw-4k`, `braw-46k`, `braw-gen5` | Blackmagic 4K / 4.6K / Gen 5 |
+| `red`, `red komodo`, `red monstro` | RED cameras (Log3G10) |
+| `dji`, `dji phantom4`, `dji x7` | DJI legacy D-Log (Phantom 4, X7) |
+| `vlog`, `gh5`, `gh6`, `s5`, `lumix` | Panasonic V-Log |
+| `olympus`, `om system`, `omlog` | Olympus / OM System (OM-Log400) |
+| `samsung`, `samsung-log` | Samsung Log |
+
+### Cameras requiring manual CST (node 5 created + instructions provided)
+
+These cameras use log formats **not** in Resolve's built-in LUT library. The tool creates node 5 labeled "CST" and returns exact instructions on what to do.
+
+| Alias | Camera | What to do |
+|-------|--------|------------|
+| `osmo pocket 3`, `dji mini 4`, `mavic 3`, `air 3` | DJI D-Log M | Apply CST OFX: Input → DJI D-Gamut / D-Log M. Or download [DJI D-Log M LUT](https://www.dji.com/downloads/video/D-Log-M-LUT) |
+| `insta360`, `x4`, `x3`, `insta360 ace` | Insta360 X4/X3/Ace/GO | Download [Insta360 LUT pack](https://www.insta360.com/download), pass path via `cst_lut_path` |
+| `gopro`, `gopro hero`, `protune` | GoPro (Protune Flat) | Apply CST OFX: Input → GoPro Protune Flat |
+| `iphone`, `iphone 16 pro`, `apple log` | iPhone 15/16 Pro (ProRes Log) | Apply CST OFX: Input → Apple Log |
+
+### Custom CST LUT override
+
+If you have a manufacturer LUT (e.g. downloaded DJI D-Log M LUT), pass it directly:
+
+```
+celavii_setup_log_grade(
+  camera="osmo pocket 3",
+  cst_lut_path="/path/to/DJI_DLog_M_to_Rec709.cube"
+)
+```
 
 ## Workflow Execution
 

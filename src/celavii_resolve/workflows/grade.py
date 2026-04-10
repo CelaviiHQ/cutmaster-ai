@@ -21,6 +21,7 @@ CAMERA_CST_LUTS: dict[str, str] = {
     "sony-slog3": f"{_LUT_BASE}/Sony/SLog3SGamut3.CineToLC-709TypeA.cube",
     "sony-slog3-lc709": f"{_LUT_BASE}/Sony/SLog3SGamut3.CineToLC-709.cube",
     "sony-slog3-slog2": f"{_LUT_BASE}/Sony/SLog3SGamut3.CineToSLog2-709.cube",
+    "sony-slog3-cine709": f"{_LUT_BASE}/Sony/SLog3SGamut3.CineToCine+709.cube",
     # ARRI
     "arri-logc": f"{_LUT_BASE}/Arri/Arri Alexa LogC to Rec709.dat",
     # Blackmagic
@@ -28,33 +29,158 @@ CAMERA_CST_LUTS: dict[str, str] = {
     "braw-46k": f"{_LUT_BASE}/Blackmagic Design/Blackmagic 4.6K Film to Rec709.cube",
     "braw-pocket4k": f"{_LUT_BASE}/Blackmagic Design/Blackmagic Pocket 4K Film to Extended Video v4.cube",
     "braw-pocket6k": f"{_LUT_BASE}/Blackmagic Design/Blackmagic Pocket 6K Film to Extended Video v4.cube",
+    "braw-gen5": f"{_LUT_BASE}/Blackmagic Design/Blackmagic Gen 5 Film to Extended Video.cube",
     # RED
     "red-log3g10": f"{_LUT_BASE}/RED/RWG_Log3G10_to_REC709_BT1886_with_LOW_CONTRAST_and_R_3_Soft_size_33.cube",
-    # DJI
-    "dji-dlog": f"{_LUT_BASE}/DJI/DJI_X7_DLOG2Rec709.cube",
+    # DJI (older cameras with standard D-Log)
+    "dji-dlog-phantom4": f"{_LUT_BASE}/DJI/DJI_Phantom4_DLOG2Rec709.cube",
+    "dji-dlog-x7": f"{_LUT_BASE}/DJI/DJI_X7_DLOG2Rec709.cube",
     # Panasonic
     "panasonic-vlog": f"{_LUT_BASE}/Panasonic/V-Log to V-709.cube",
+    # Olympus
+    "olympus-omlog400": f"{_LUT_BASE}/Olympus/Olympus OM-Log400_to_BT.709_v1.0.cube",
+    # Samsung
+    "samsung-log": f"{_LUT_BASE}/Samsung/Samsung Log to Rec709.cube",
+}
+
+# Cameras that require manual CST (no built-in Resolve LUT exists for them).
+# These cameras use newer/proprietary log formats not yet in Resolve's library.
+# For these, users should apply the Color Space Transform OFX to node 5 manually,
+# or install manufacturer LUTs and pass the path via cst_lut_path.
+CAMERA_MANUAL_CST: dict[str, dict] = {
+    # DJI D-Log M — newer format used by Osmo Pocket 3, Mini 3 Pro, Mini 4 Pro,
+    # Air 3, Mavic 3, Avata 2. NOT the same as D-Log.
+    "dji-dlog-m": {
+        "cameras": ["Osmo Pocket 3", "Mini 3 Pro", "Mini 4 Pro", "Air 3", "Mavic 3", "Avata 2"],
+        "resolve_cst": {
+            "input_color_space": "DJI D-Gamut",
+            "input_gamma": "D-Log M",
+        },
+        "lut_url": "https://www.dji.com/downloads/video/D-Log-M-LUT",
+        "note": (
+            "D-Log M is supported in Resolve's Color Space Transform OFX (Resolve 18.5+). "
+            "In node 5: Effects > Color Space Transform > Input: DJI D-Gamut / D-Log M. "
+            "Or download the official DJI D-Log M LUTs and pass cst_lut_path."
+        ),
+    },
+    # Insta360 — uses a proprietary log profile. No Resolve CST OFX support.
+    "insta360": {
+        "cameras": ["X4", "X3", "X2", "Ace Pro", "Ace", "GO 3", "ONE RS"],
+        "resolve_cst": None,
+        "lut_url": "https://www.insta360.com/download/insta360-x4",
+        "note": (
+            "Insta360 Log is not in Resolve's Color Space Transform library. "
+            "Download the official Insta360 LUT pack from insta360.com, "
+            "install it to ~/Library/.../DaVinci Resolve/LUT/, "
+            "then pass the path as cst_lut_path."
+        ),
+    },
+    # GoPro — Protune is a mild log-like profile, not a true log format.
+    "gopro": {
+        "cameras": ["GoPro Hero 12/11/10/9/8 (Protune flat)"],
+        "resolve_cst": {
+            "input_color_space": "Rec.709",
+            "input_gamma": "GoPro Protune Flat",
+        },
+        "lut_url": "https://community.gopro.com/s/article/How-to-Download-GoPro-LUTs",
+        "note": (
+            "GoPro Protune Flat is supported in Resolve's CST OFX. "
+            "Alternatively download official GoPro LUTs from the GoPro Community Hub."
+        ),
+    },
+    # iPhone ProRes Log (iPhone 15 Pro, 16 Pro)
+    "iphone-log": {
+        "cameras": ["iPhone 15 Pro", "iPhone 16 Pro"],
+        "resolve_cst": {
+            "input_color_space": "Apple Log",
+            "input_gamma": "Apple Log",
+        },
+        "lut_url": "https://support.apple.com/downloads/luts",
+        "note": (
+            "Apple Log is supported in Resolve's Color Space Transform OFX (Resolve 18+). "
+            "In node 5: Effects > Color Space Transform > Input Color Space: Apple Log. "
+            "Or use Apple's official LUTs from developer.apple.com/download/all/."
+        ),
+    },
 }
 
 # Alias expansions so users can type natural names
 _CAMERA_ALIASES: dict[str, str] = {
+    # Sony
     "slog3": "sony-slog3",
     "s-log3": "sony-slog3",
     "sony fx3": "sony-slog3",
     "sony fx6": "sony-slog3",
     "sony fx9": "sony-slog3",
+    "sony fx30": "sony-slog3",
     "sony a7": "sony-slog3",
+    "sony a7s": "sony-slog3",
     "sony a1": "sony-slog3",
+    "sony zv-e1": "sony-slog3",
+    # ARRI
     "arri alexa": "arri-logc",
     "logc": "arri-logc",
     "log-c": "arri-logc",
+    "alexa": "arri-logc",
+    # Blackmagic
     "blackmagic": "braw-4k",
     "bmpcc4k": "braw-pocket4k",
     "bmpcc6k": "braw-pocket6k",
+    "pocket 4k": "braw-pocket4k",
+    "pocket 6k": "braw-pocket6k",
+    # RED
     "red": "red-log3g10",
-    "dji": "dji-dlog",
+    "red komodo": "red-log3g10",
+    "red monstro": "red-log3g10",
+    # DJI legacy D-Log
+    "dji": "dji-dlog-phantom4",
+    "dji phantom": "dji-dlog-phantom4",
+    "dji phantom4": "dji-dlog-phantom4",
+    "dji x7": "dji-dlog-x7",
+    # DJI D-Log M (manual CST)
+    "dji-dlogm": "dji-dlog-m",
+    "dlog-m": "dji-dlog-m",
+    "dlogm": "dji-dlog-m",
+    "osmo pocket 3": "dji-dlog-m",
+    "osmo pocket": "dji-dlog-m",
+    "dji mini 3": "dji-dlog-m",
+    "dji mini 4": "dji-dlog-m",
+    "dji mini3": "dji-dlog-m",
+    "dji mini4": "dji-dlog-m",
+    "dji air 3": "dji-dlog-m",
+    "dji mavic 3": "dji-dlog-m",
+    "mavic 3": "dji-dlog-m",
+    "avata 2": "dji-dlog-m",
+    # Insta360
+    "insta360 x4": "insta360",
+    "insta360 x3": "insta360",
+    "insta360 x2": "insta360",
+    "insta360 ace": "insta360",
+    "insta360 go": "insta360",
+    "x4": "insta360",
+    "x3": "insta360",
+    # GoPro
+    "gopro hero": "gopro",
+    "protune": "gopro",
+    # iPhone
+    "iphone": "iphone-log",
+    "apple log": "iphone-log",
+    "iphone 15 pro": "iphone-log",
+    "iphone 16 pro": "iphone-log",
+    # Panasonic
     "vlog": "panasonic-vlog",
     "v-log": "panasonic-vlog",
+    "lumix": "panasonic-vlog",
+    "gh5": "panasonic-vlog",
+    "gh6": "panasonic-vlog",
+    "s5": "panasonic-vlog",
+    # Olympus / OM System
+    "olympus": "olympus-omlog400",
+    "om system": "olympus-omlog400",
+    "omlog": "olympus-omlog400",
+    # Samsung
+    "samsung": "samsung-log",
+    "samsung log": "samsung-log",
 }
 
 # Film look LUTs (node 6 defaults when no custom LUT provided)
@@ -287,18 +413,41 @@ def celavii_copy_grade_to_all(
 # ---------------------------------------------------------------------------
 
 
-def _resolve_camera_format(camera: str) -> str | None:
-    """Resolve a camera name/alias to a CST LUT key."""
+def _resolve_camera_format(camera: str) -> tuple[str | None, bool]:
+    """Resolve a camera name/alias to a CST LUT key or manual-CST key.
+
+    Returns (key, is_manual) where is_manual=True means no built-in LUT
+    exists and the user must apply the Color Space Transform OFX manually.
+    """
     key = camera.lower().strip()
+
+    # Explicit skip
+    if key in ("none", "manual", "skip", ""):
+        return None, True
+
+    # Direct match in LUT library
     if key in CAMERA_CST_LUTS:
-        return key
-    if key in _CAMERA_ALIASES:
-        return _CAMERA_ALIASES[key]
-    # Partial match
+        return key, False
+
+    # Direct match in manual-CST table
+    if key in CAMERA_MANUAL_CST:
+        return key, True
+
+    # Alias lookup
+    alias_target = _CAMERA_ALIASES.get(key)
+    if alias_target:
+        if alias_target in CAMERA_MANUAL_CST:
+            return alias_target, True
+        return alias_target, False
+
+    # Partial / fuzzy match — check aliases
     for alias, target in _CAMERA_ALIASES.items():
         if alias in key or key in alias:
-            return target
-    return None
+            if target in CAMERA_MANUAL_CST:
+                return target, True
+            return target, False
+
+    return None, True  # unknown camera → treat as manual
 
 
 def _setup_6nodes_on_item(
@@ -380,6 +529,7 @@ def celavii_setup_log_grade(
     camera: str = "sony-slog3",
     look_lut: str = "decsfilm",
     lut_gain: float = 0.20,
+    cst_lut_path: str = "",
     apply_to_all: bool = False,
     track_type: str = "video",
     track_index: int = 1,
@@ -388,7 +538,11 @@ def celavii_setup_log_grade(
 ) -> str:
     """Set up the 6-node log footage grading structure on a clip or all clips.
 
-    Implements the proven 6-node workflow:
+    Works with ANY camera that shoots in a log profile — Sony, ARRI, Blackmagic,
+    RED, DJI (both D-Log and D-Log M), Panasonic, Olympus, Samsung, iPhone,
+    GoPro, Insta360, and more. Natural camera names and aliases all work.
+
+    Node structure:
       Node 1 — WB     (White Balance via Offset wheel)
       Node 2 — EXP    (Exposure via Lift/Gamma/Gain)
       Node 3 — SAT    (Saturation)
@@ -396,25 +550,38 @@ def celavii_setup_log_grade(
       Node 5 — CST    (Log → Rec.709 Color Space Transform)
       Node 6 — LUT    (Film look at reduced gain, ~0.15–0.25)
 
-    Nodes 1-4 work in the camera's Log space for maximum dynamic range.
-    The CST in node 5 converts to Rec.709. The LUT in node 6 is the
-    'icing on the cake' — subtle, tasteful, not destructive.
+    Nodes 1-4 work in Log space for maximum dynamic range. Node 5 converts to
+    Rec.709. Node 6 is the 'icing on the cake' — subtle, tasteful, not destructive.
+
+    Cameras with built-in Resolve LUTs (CST applied automatically):
+      Sony     — 'slog3', 'sony fx3', 'sony a7s', 'zv-e1', etc.
+      ARRI     — 'arri-logc', 'alexa'
+      BMD      — 'bmpcc4k', 'bmpcc6k', 'braw-4k', 'braw-46k', 'braw-gen5'
+      RED      — 'red', 'red komodo', 'red monstro'
+      DJI legacy — 'dji', 'dji phantom4', 'dji x7'
+      Panasonic — 'vlog', 'gh5', 'gh6', 's5', 'lumix'
+      Olympus  — 'olympus', 'om system', 'omlog'
+      Samsung  — 'samsung', 'samsung-log'
+
+    Cameras requiring manual CST (node 5 created, instructions provided):
+      DJI D-Log M — 'osmo pocket 3', 'dji mini 4', 'mavic 3', 'air 3', 'avata 2'
+      Insta360    — 'insta360', 'x4', 'x3', 'insta360 ace'
+      GoPro       — 'gopro', 'gopro hero', 'protune'
+      iPhone      — 'iphone', 'iphone 16 pro', 'apple log'
 
     Args:
-        camera: Camera log format. Options:
-                'sony-slog3' (FX3/FX6/FX9/A7/A1),
-                'arri-logc' (Alexa),
-                'braw-pocket4k', 'braw-pocket6k', 'braw-4k', 'braw-46k',
-                'red-log3g10', 'dji-dlog', 'panasonic-vlog'.
-                Aliases like 'slog3', 'arri alexa', 'bmpcc6k' also work.
-        look_lut: Look LUT for node 6. Use 'decsfilm' for the DECSFILM.cube LUT,
+        camera: Camera name or log format key. Natural names work (see above).
+                Use 'none' or 'manual' to skip CST entirely.
+        look_lut: Look LUT for node 6:
+                  'decsfilm' — DECSFILM.cube (your custom LUT, installed)
                   'kodak2383', 'fuji3513-d55', 'fuji3513-d60', 'fuji3513-d65'
-                  for built-in Resolve film looks, or an absolute file path.
-        lut_gain: Key Output Gain for the LUT node (0.0–1.0). Default 0.20.
-                  This makes the LUT subtle — 'icing on the cake'.
-                  Recommended range: 0.10–0.30.
-        apply_to_all: True to apply the structure to every clip on the track.
-                      False to apply only to the clip at item_index.
+                  Or an absolute .cube file path. Use 'none' to skip.
+        lut_gain: Key Output Gain for node 6 (0.0–1.0). Default 0.20.
+                  The 'secret' — keeps the LUT subtle. Range: 0.10–0.30.
+        cst_lut_path: Override — absolute path to any .cube file to use as the CST.
+                      Use this if you've downloaded the manufacturer's LUT
+                      (e.g. DJI D-Log M LUT, Insta360 LUT, GoPro LUT).
+        apply_to_all: True to apply to every clip on the track.
         track_type: Track type ('video').
         track_index: 1-based track index.
         item_index: 0-based clip index (ignored when apply_to_all=True).
@@ -427,28 +594,47 @@ def celavii_setup_log_grade(
 
     # 1. Set project color management
     if set_color_management:
-        for setting_key in ("colorScienceMode", "timelineColorSpace", "outputColorSpace"):
+        for setting_key in ("timelineColorSpace", "outputColorSpace"):
             try:
-                if setting_key == "timelineColorSpace" or setting_key == "outputColorSpace":
-                    project.SetSetting(setting_key, "Rec.709-A")
+                project.SetSetting(setting_key, "Rec.709-A")
             except (AttributeError, TypeError):
                 pass
-        warnings_global.append(
-            "Tip: Confirm Color Management is set to Rec.709-A in Project Settings > Color Management"
-        )
+        warnings_global.append("Tip: Confirm Rec.709-A in Project Settings > Color Management")
 
     # 2. Switch to Color page
     resolve.OpenPage("color")
 
-    # 3. Resolve camera format → CST LUT
-    cam_key = _resolve_camera_format(camera)
-    cst_lut_path = CAMERA_CST_LUTS.get(cam_key or "", "")
-    if not cst_lut_path or not os.path.isfile(cst_lut_path):
-        warnings_global.append(
-            f"No built-in CST LUT found for '{camera}'. "
-            f"Manually apply Color Space Transform OFX to node 5."
-        )
-        cst_lut_path = ""
+    # 3. Resolve CST LUT path
+    resolved_cst_path = ""
+    manual_cst_info = None
+
+    if cst_lut_path:
+        # Explicit override wins
+        if os.path.isfile(cst_lut_path):
+            resolved_cst_path = cst_lut_path
+        else:
+            warnings_global.append(f"cst_lut_path '{cst_lut_path}' not found — node 5 left empty.")
+    else:
+        cam_key, is_manual = _resolve_camera_format(camera)
+
+        if is_manual:
+            if cam_key and cam_key in CAMERA_MANUAL_CST:
+                manual_cst_info = CAMERA_MANUAL_CST[cam_key]
+                warnings_global.append(
+                    f"⚠ '{camera}' has no built-in Resolve CST LUT. "
+                    f"See 'manual_cst_instructions' for how to set up node 5."
+                )
+            elif cam_key not in (None, "none", "manual", "skip"):
+                warnings_global.append(
+                    f"⚠ Camera '{camera}' not recognised. Node 5 (CST) created empty. "
+                    f"Apply Color Space Transform OFX manually, or pass cst_lut_path."
+                )
+        elif cam_key:
+            lut_file = CAMERA_CST_LUTS.get(cam_key, "")
+            if os.path.isfile(lut_file):
+                resolved_cst_path = lut_file
+            else:
+                warnings_global.append(f"Expected LUT not found: {lut_file}. Node 5 left empty.")
 
     # 4. Resolve look LUT
     lut_key = look_lut.lower().strip()
@@ -458,12 +644,14 @@ def celavii_setup_log_grade(
         look_lut_path = FILM_LOOK_LUTS[lut_key]
     elif os.path.isabs(look_lut) and os.path.isfile(look_lut):
         look_lut_path = look_lut
+    elif lut_key in ("none", "skip", ""):
+        look_lut_path = ""
     else:
         look_lut_path = ""
         warnings_global.append(
-            f"Look LUT '{look_lut}' not found. Valid built-ins: "
-            f"decsfilm, {', '.join(FILM_LOOK_LUTS.keys())}. "
-            f"Or pass an absolute file path."
+            f"Look LUT '{look_lut}' not found. "
+            f"Built-ins: decsfilm, {', '.join(FILM_LOOK_LUTS.keys())}. "
+            f"Or pass an absolute .cube path."
         )
 
     # 5. Apply to clip(s)
@@ -483,69 +671,95 @@ def celavii_setup_log_grade(
         targets = [(item_index, items[item_index])]
 
     for _idx, item in targets:
-        result = _setup_6nodes_on_item(item, cst_lut_path, look_lut_path, lut_gain)
+        result = _setup_6nodes_on_item(item, resolved_cst_path, look_lut_path, lut_gain)
         results.append(result)
 
-    return json.dumps(
-        {
-            "setup": "6-Node Log Grade",
-            "camera": camera,
-            "cst_lut": os.path.basename(cst_lut_path) if cst_lut_path else "manual",
-            "look_lut": os.path.basename(look_lut_path) if look_lut_path else "manual",
-            "lut_gain": lut_gain,
-            "clips_processed": len(results),
-            "results": results,
-            "global_notes": warnings_global,
-            "next_steps": [
-                "1. WB node: Use Offset wheel to center the vectorscope blob",
-                "2. EXP node: Use Lift/Gamma/Gain wheels against the Waveform (0=black, 100=white)",
-                "3. SAT node: Bump Sat from 50 → 60–70, use Hue vs Sat for specific colors",
-                "4. CURVES node: Draw an S-curve for punch (highlights up, shadows down)",
-                "5. CST node: Verify Color Space Transform is set to your camera's log profile",
-                f"6. LUT node: Key output gain is {lut_gain:.2f} — adjust in Key tab if needed",
-            ],
-        },
-        indent=2,
-    )
+    output: dict = {
+        "setup": "6-Node Log Grade",
+        "camera": camera,
+        "cst_lut": (
+            os.path.basename(resolved_cst_path) if resolved_cst_path else "⚠ manual required"
+        ),
+        "look_lut": os.path.basename(look_lut_path) if look_lut_path else "none",
+        "lut_gain": lut_gain,
+        "clips_processed": len(results),
+        "results": results,
+        "global_notes": warnings_global,
+        "next_steps": [
+            "1. WB node: Use Offset wheel to center the vectorscope blob",
+            "2. EXP node: Use Lift/Gamma/Gain wheels with Waveform (0=black, 100=white)",
+            "3. SAT node: Bump Sat 50 → 60–70, use Hue vs Sat for individual colors",
+            "4. CURVES node: Draw an S-curve (highlights up, shadows down)",
+            "5. CST node: Verify log → Rec.709 conversion matches your camera",
+            f"6. LUT node: Key output gain = {lut_gain:.2f} — adjust in Key tab if needed",
+        ],
+    }
+
+    # Detailed instructions for cameras that need manual CST
+    if manual_cst_info:
+        cst_block: dict = {
+            "what": f"'{camera}' has no built-in Resolve LUT — apply CST manually to node 5.",
+            "cameras_this_applies_to": manual_cst_info.get("cameras", []),
+            "note": manual_cst_info.get("note", ""),
+            "lut_download": manual_cst_info.get("lut_url", ""),
+        }
+        if manual_cst_info.get("resolve_cst"):
+            cst_block["resolve_cst_settings"] = {
+                "how": "Effects panel → search 'Color Space Transform' → drag onto node 5",
+                **manual_cst_info["resolve_cst"],
+            }
+        output["manual_cst_instructions"] = cst_block
+
+    return json.dumps(output, indent=2)
 
 
 @mcp.tool
 @safe_resolve_call
 def celavii_list_cst_luts() -> str:
-    """List all available camera CST (Color Space Transform) LUTs and film looks.
+    """List all supported cameras and CST LUTs for the 6-node log grading workflow.
 
-    Shows which built-in Resolve LUTs are available for log-to-Rec.709
-    conversion by camera format, plus the DECSFILM custom LUT.
+    Shows:
+    - Cameras with automatic built-in Resolve LUTs (CST applied automatically)
+    - Cameras that need manual CST OFX setup, with exact settings and LUT download links
+    - Available film look LUTs for node 6
+    - Your custom DECSFILM LUT
+    - All camera name aliases
     """
-    available = {}
+    # Built-in LUT cameras
+    builtin = {}
     for key, path in CAMERA_CST_LUTS.items():
-        available[key] = {
-            "path": path,
-            "exists": os.path.isfile(path),
+        builtin[key] = {"path": path, "exists": os.path.isfile(path), "mode": "automatic"}
+
+    # Manual CST cameras
+    manual = {}
+    for key, info in CAMERA_MANUAL_CST.items():
+        manual[key] = {
+            "cameras": info.get("cameras", []),
+            "mode": "manual — apply Color Space Transform OFX to node 5",
+            "resolve_cst_settings": info.get("resolve_cst"),
+            "lut_download": info.get("lut_url", ""),
+            "note": info.get("note", ""),
         }
 
+    # Film looks
     film_looks = {}
     for key, path in FILM_LOOK_LUTS.items():
-        film_looks[key] = {
-            "path": path,
-            "exists": os.path.isfile(path),
-        }
+        film_looks[key] = {"path": path, "exists": os.path.isfile(path)}
 
-    custom = {
-        "decsfilm": {
-            "path": DECSFILM_LUT,
-            "exists": os.path.isfile(DECSFILM_LUT),
-        }
-    }
-
-    aliases = list(_CAMERA_ALIASES.keys())
+    # Custom LUTs
+    custom = {"decsfilm": {"path": DECSFILM_LUT, "exists": os.path.isfile(DECSFILM_LUT)}}
 
     return json.dumps(
         {
-            "cst_luts": available,
-            "film_looks": film_looks,
+            "automatic_cst_cameras": builtin,
+            "manual_cst_cameras": manual,
+            "film_look_luts": film_looks,
             "custom_luts": custom,
-            "camera_aliases": aliases,
+            "camera_aliases": sorted(_CAMERA_ALIASES.keys()),
+            "tip": (
+                "Pass cst_lut_path to celavii_setup_log_grade to use any .cube file "
+                "as the CST for cameras not listed here."
+            ),
         },
         indent=2,
     )
