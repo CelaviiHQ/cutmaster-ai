@@ -2,7 +2,7 @@
 
 Maximum-control MCP server for DaVinci Resolve Studio.
 
-**229 tools** covering the complete Resolve Scripting API, AI-enhanced workflows, Claude Code skills, and domain-specific agents.
+**233 tools** covering the complete Resolve Scripting API, AI-enhanced workflows, Claude Code skills, and domain-specific agents.
 
 > **Important: DaVinci Resolve Studio Required**
 >
@@ -133,6 +133,10 @@ Run `python install.py --clients manual` to get copy-paste config for all 10 sup
 | `celavii_copy_grade_to_all` | Copy grade from one clip to all |
 | `celavii_setup_log_grade` | Build 6-node structure, apply CST + LUT, set key output gain |
 | `celavii_list_cst_luts` | List available camera CST LUTs and film looks |
+| `celavii_lut_library_status` | Show installed vs available LUTs for all cameras |
+| `celavii_install_lut_file` | Install a downloaded .cube/.zip LUT into the library |
+| `celavii_get_lut_install_guide` | Step-by-step guide for a specific camera's LUT |
+| `celavii_scan_lut_folder` | Scan all Resolve LUT folders, show what's installed |
 
 ### AI Tools (requires GEMINI_API_KEY)
 

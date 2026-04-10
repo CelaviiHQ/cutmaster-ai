@@ -36,4 +36,5 @@ from .workflows import grade  # noqa: F401, E402
 from .ai import vision  # noqa: F401, E402
 from .ai import color_assist  # noqa: F401, E402
 from .ai import timeline_critique  # noqa: F401, E402
+from . import lut_registry  # noqa: F401, E402
 from . import resources  # noqa: F401, E402

@@ -8,6 +8,7 @@ import os
 
 from ..config import mcp
 from ..errors import safe_resolve_call
+from ..lut_registry import get_cst_lut_for_camera
 from ..resolve import _boilerplate
 
 # ---------------------------------------------------------------------------
@@ -618,17 +619,30 @@ def celavii_setup_log_grade(
         cam_key, is_manual = _resolve_camera_format(camera)
 
         if is_manual:
-            if cam_key and cam_key in CAMERA_MANUAL_CST:
+            # Check Celavii LUT library first — user may have installed the LUT
+            library_lut = get_cst_lut_for_camera(camera)
+            if library_lut:
+                resolved_cst_path = library_lut
+                warnings_global.append(
+                    f"Using installed LUT from Celavii library: {os.path.basename(library_lut)}"
+                )
+            elif cam_key and cam_key in CAMERA_MANUAL_CST:
                 manual_cst_info = CAMERA_MANUAL_CST[cam_key]
                 warnings_global.append(
                     f"⚠ '{camera}' has no built-in Resolve CST LUT. "
-                    f"See 'manual_cst_instructions' for how to set up node 5."
+                    f"Install one with celavii_install_lut_file() or see "
+                    f"'manual_cst_instructions' for how to set up node 5."
                 )
             elif cam_key not in (None, "none", "manual", "skip"):
-                warnings_global.append(
-                    f"⚠ Camera '{camera}' not recognised. Node 5 (CST) created empty. "
-                    f"Apply Color Space Transform OFX manually, or pass cst_lut_path."
-                )
+                # Unknown camera — also check LUT library as last resort
+                library_lut = get_cst_lut_for_camera(camera)
+                if library_lut:
+                    resolved_cst_path = library_lut
+                else:
+                    warnings_global.append(
+                        f"⚠ Camera '{camera}' not recognised. Node 5 (CST) created empty. "
+                        f"Apply Color Space Transform OFX manually, or pass cst_lut_path."
+                    )
         elif cam_key:
             lut_file = CAMERA_CST_LUTS.get(cam_key, "")
             if os.path.isfile(lut_file):
