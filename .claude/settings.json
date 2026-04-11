@@ -1,0 +1,44 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_TOOL_INPUT\" | grep -qE '\\.env\"|\\.env$'; then echo 'BLOCKED: Do not edit .env files — they contain API keys' >&2; exit 1; fi"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__celavii-resolve__celavii_delete_project|mcp__celavii-resolve__celavii_delete_timelines|mcp__celavii-resolve__celavii_delete_clips|mcp__celavii-resolve__celavii_delete_bins|mcp__celavii-resolve__celavii_delete_stills|mcp__celavii-resolve__celavii_delete_render_job|mcp__celavii-resolve__celavii_delete_all_render_jobs|mcp__celavii-resolve__celavii_delete_project_folder|mcp__celavii-resolve__celavii_delete_color_group|mcp__celavii-resolve__celavii_delete_fusion_comp|mcp__celavii-resolve__celavii_fusion_delete_tool|mcp__celavii-resolve__celavii_delete_track|mcp__celavii-resolve__celavii_delete_version",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'WARNING: This is a destructive operation that cannot be undone in DaVinci Resolve. Confirm with the user before proceeding.' >&2"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__celavii-resolve__celavii_execute_python|mcp__celavii-resolve__celavii_execute_lua",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'CAUTION: Executing arbitrary code in DaVinci Resolve. Review the code carefully before proceeding.' >&2"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "FILE=$(echo \"$CLAUDE_TOOL_INPUT\" | grep -oE '\"file_path\":\\s*\"[^\"]+\\.py\"' | head -1 | sed 's/.*\"\\([^\"]*\\.py\\)\"/\\1/'); if [ -n \"$FILE\" ] && command -v ruff >/dev/null 2>&1; then ruff format --quiet \"$FILE\" 2>/dev/null; ruff check --fix --quiet \"$FILE\" 2>&1 | tail -5; fi"
+          }
+        ]
+      }
+    ]
+  }
+}
