@@ -108,6 +108,17 @@ bash scripts/setup.sh --launchagent
 
 This installs a LaunchAgent at `~/Library/LaunchAgents/com.celavii.resolve-mcp.plist`. See [Setup Guide](docs/SETUP.md#5-auto-start-with-launchagent-macos).
 
+### Claude Code Plugin
+
+Build and install as a Claude Code plugin:
+
+```bash
+bash build-plugin.sh
+claude plugin install ./celavii-resolve-plugin-v0.1.0.zip
+```
+
+Skills become available as `/celavii-resolve:deliver`, `/celavii-resolve:grade-log`, etc. See [Setup Guide](docs/SETUP.md#5-claude-code-plugin).
+
 ### Creating a Distributable Package
 
 Share with team members:
@@ -249,12 +260,15 @@ celavii-davinci-resolve-mcp/
 │   ├── workflows/         # 5 modules, 19 workflow tools
 │   ├── ai/                # 3 modules, 10 AI tools
 │   └── utils/             # Platform, media, path helpers
+├── .claude-plugin/
+│   └── plugin.json        # Claude Code plugin manifest
 ├── skills/                # 9 Claude Code skills
 ├── agents/                # 7 domain agents
 ├── hooks/                 # Safety hooks
 ├── scripts/
 │   ├── setup.sh           # One-command setup (macOS/Linux)
 │   └── package.sh         # Create distributable zip
+├── build-plugin.sh        # Build Claude Code plugin ZIP
 ├── launchd/
 │   └── com.celavii.resolve-mcp.plist  # macOS auto-start
 ├── docs/

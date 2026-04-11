@@ -33,3 +33,7 @@ Thumbs.db
 # Logs
 logs/
 *.log
+
+# Plugin builds
+celavii-resolve-plugin-*.zip
+celavii-resolve-v*.zip

@@ -1,0 +1,23 @@
+{
+  "name": "celavii-resolve",
+  "version": "0.1.0",
+  "description": "Maximum-control MCP server for DaVinci Resolve Studio — 233 tools covering the complete Resolve Scripting API, AI-enhanced workflows, and domain-specific agents.",
+  "author": {
+    "name": "Celavii",
+    "email": "engineering@celavii.com",
+    "url": "https://github.com/CelaviiHQ"
+  },
+  "repository": "https://github.com/CelaviiHQ/celavii-davinci-resolve-mcp",
+  "homepage": "https://github.com/CelaviiHQ/celavii-davinci-resolve-mcp",
+  "license": "MIT",
+  "keywords": [
+    "davinci-resolve",
+    "video-editing",
+    "color-grading",
+    "mcp",
+    "automation",
+    "ai",
+    "fusion",
+    "fairlight"
+  ]
+}

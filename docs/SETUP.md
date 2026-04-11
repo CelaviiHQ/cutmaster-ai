@@ -17,10 +17,14 @@ This guide covers everything from first clone to a fully working MCP server with
    - [How Agents Work](#42-how-agents-work)
    - [How Hooks Work](#43-how-hooks-work)
    - [Installing for Global Access](#44-installing-for-global-access)
-5. [Auto-Start with LaunchAgent (macOS)](#5-auto-start-with-launchagent-macos)
-6. [Creating a Distributable Package](#6-creating-a-distributable-package)
-7. [Verification & Testing](#7-verification--testing)
-8. [Troubleshooting](#8-troubleshooting)
+5. [Claude Code Plugin](#5-claude-code-plugin)
+   - [Building the Plugin](#51-building-the-plugin)
+   - [Installing the Plugin](#52-installing-the-plugin)
+   - [Testing Locally](#53-testing-locally)
+6. [Auto-Start with LaunchAgent (macOS)](#6-auto-start-with-launchagent-macos)
+7. [Creating a Distributable Package](#7-creating-a-distributable-package)
+8. [Verification & Testing](#8-verification--testing)
+9. [Troubleshooting](#9-troubleshooting)
 
 ---
 
@@ -387,7 +391,72 @@ cp hooks/hooks.json ~/.claude/settings.json
 
 ---
 
-## 5. Auto-Start with LaunchAgent (macOS)
+## 5. Claude Code Plugin
+
+Celavii-Resolve can be packaged as a **Claude Code plugin** — a self-contained ZIP that bundles skills and MCP server config for easy distribution and installation.
+
+### 5.1 Building the Plugin
+
+```bash
+# Full plugin with MCP server + skills
+bash build-plugin.sh
+
+# Skills-only (no MCP server — useful for sharing with team)
+bash build-plugin.sh --skills-only
+
+# Specify venv path and output directory
+bash build-plugin.sh --venv /path/to/.venv --output ~/Desktop
+```
+
+This creates `celavii-resolve-plugin-v0.1.0.zip` containing:
+
+```
+celavii-resolve-plugin-v0.1.0.zip
+├── .claude-plugin/
+│   └── plugin.json        # Plugin manifest (name, version, author)
+├── .mcp.json              # MCP server config (stdio)
+└── skills/                # 9 Claude Code skills
+    ├── assembly/SKILL.md
+    ├── color-assist/SKILL.md
+    ├── conform/SKILL.md
+    ├── deliver/SKILL.md
+    ├── export-stills/SKILL.md
+    ├── grade-log/SKILL.md
+    ├── ingest/SKILL.md
+    ├── preflight/SKILL.md
+    └── review/SKILL.md
+```
+
+### 5.2 Installing the Plugin
+
+The recipient installs the plugin with a single command:
+
+```bash
+claude plugin install ./celavii-resolve-plugin-v0.1.0.zip
+```
+
+Once installed, all 9 skills become available as namespaced slash commands:
+
+```
+/celavii-resolve:deliver
+/celavii-resolve:grade-log
+/celavii-resolve:color-assist
+...
+```
+
+### 5.3 Testing Locally
+
+During development, test the plugin without building a ZIP:
+
+```bash
+claude --plugin-dir ./celavii-davinci-resolve-mcp
+```
+
+This loads the plugin directly from the project directory, using the `.claude-plugin/plugin.json` manifest and the `skills/` directory.
+
+---
+
+## 6. Auto-Start with LaunchAgent (macOS)
 
 The LaunchAgent starts the Celavii-Resolve MCP server automatically when you log in, so it's always available when DaVinci Resolve is open.
 
@@ -448,7 +517,7 @@ rm ~/Library/LaunchAgents/com.celavii.resolve-mcp.plist
 
 ---
 
-## 6. Creating a Distributable Package
+## 7. Creating a Distributable Package
 
 To share Celavii-Resolve with others (e.g. team members, clients), create a distributable archive:
 
@@ -503,7 +572,7 @@ celavii-resolve-v0.1.0.zip
 
 ---
 
-## 7. Verification & Testing
+## 8. Verification & Testing
 
 After setup, verify everything works:
 
@@ -562,7 +631,7 @@ Then type:
 
 ---
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 ### "MCP tools not showing up in Claude Desktop"
 
