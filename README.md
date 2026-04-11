@@ -17,81 +17,113 @@ Maximum-control MCP server for DaVinci Resolve Studio.
 - **9 skills** — Claude Code slash commands (`/deliver`, `/preflight`, `/color-assist`, `/grade-log`, etc.)
 - **7 agents** — domain-specific roles (editor, colorist, VFX, sound, conform, delivery, producer)
 - **Safety hooks** — destructive operation warnings, .env protection, auto-lint
+- **LUT library** — registry + installer for 9 camera brands (DJI, Insta360, GoPro, Canon, Nikon, Fujifilm, etc.)
 - **Auto-launch** — starts DaVinci Resolve automatically if not running
 - **Cross-platform** — macOS, Windows, Linux
 
-## Requirements
-
-- **DaVinci Resolve Studio 18.5+** — the free edition does not include the scripting API and is not supported. [Purchase Studio here](https://www.blackmagicdesign.com/products/davinciresolve/studio).
-- **External scripting enabled** — in Resolve Studio, go to Preferences > System > General > set "External scripting using" to **Local**.
-- **Python 3.11+**
-- **GEMINI_API_KEY** (optional, for AI-powered tools)
-
 ## Quick Start
 
-### 1. Clone and install
+### One-Command Setup (macOS)
 
 ```bash
-git clone https://github.com/celavii/celavii-resolve.git
-cd celavii-resolve
-python install.py
+git clone https://github.com/CelaviiHQ/celavii-davinci-resolve-mcp.git
+cd celavii-davinci-resolve-mcp
+bash scripts/setup.sh
 ```
 
-The installer will:
-- Find Python 3.11+ and DaVinci Resolve
-- Create a virtual environment
-- Install dependencies
-- Configure your MCP client(s)
-
-### 2. Or install manually
+This will create a venv, install all dependencies, configure Claude Desktop, and verify the Resolve connection. For the full setup including global skills, agents, hooks, and auto-start:
 
 ```bash
+bash scripts/setup.sh --all
+```
+
+### Interactive Installer
+
+```bash
+git clone https://github.com/CelaviiHQ/celavii-davinci-resolve-mcp.git
+cd celavii-davinci-resolve-mcp
+python3 install.py
+```
+
+### Manual Install
+
+```bash
+git clone https://github.com/CelaviiHQ/celavii-davinci-resolve-mcp.git
+cd celavii-davinci-resolve-mcp
 python3.11 -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -e "."
+source .venv/bin/activate
+pip install -e ".[dev]"
 ```
 
-### 3. Configure your MCP client
+## Setup & Configuration
 
-**Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+**For detailed setup instructions — Claude Desktop config, Claude Code skills/agents/hooks, LaunchAgent auto-start, and distributable packaging — see the [Complete Setup Guide](docs/SETUP.md).**
+
+### Claude Desktop
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
 ```json
 {
   "mcpServers": {
     "celavii-resolve": {
-      "command": "/path/to/.venv/bin/python3",
+      "command": "/path/to/celavii-davinci-resolve-mcp/.venv/bin/python3",
       "args": ["-m", "celavii_resolve"],
-      "cwd": "/path/to/celavii-resolve"
+      "cwd": "/path/to/celavii-davinci-resolve-mcp"
     }
   }
 }
 ```
 
-**Claude Code** (`.mcp.json` in project root — already included):
-```json
-{
-  "mcpServers": {
-    "celavii-resolve": {
-      "command": "uv",
-      "args": ["run", "--directory", "${CLAUDE_PROJECT_ROOT}", "python", "-m", "celavii_resolve"]
-    }
-  }
-}
+Or run `python3 install.py --clients claude-desktop` to configure automatically.
+
+### Claude Code
+
+The project includes a `.mcp.json` file — Claude Code auto-detects it:
+
+```bash
+cd celavii-davinci-resolve-mcp
+claude
 ```
 
-**Cursor** (`~/.cursor/mcp.json`):
-```json
-{
-  "mcpServers": {
-    "celavii-resolve": {
-      "command": "/path/to/.venv/bin/python3",
-      "args": ["-m", "celavii_resolve"],
-      "cwd": "/path/to/celavii-resolve"
-    }
-  }
-}
+For global access (use from any directory), add the MCP server to `~/.claude/settings.json`. See [Setup Guide](docs/SETUP.md#32-claude-code-cli).
+
+### Skills, Agents & Hooks Installation
+
+Skills/agents/hooks are Claude Code features. Install globally with:
+
+```bash
+bash scripts/setup.sh --global
 ```
 
-Run `python install.py --clients manual` to get copy-paste config for all 10 supported clients.
+This copies all 9 skills to `~/.claude/commands/`, merges hooks into `~/.claude/settings.json`, and configures the global MCP server. See [Setup Guide](docs/SETUP.md#4-skills-agents--hooks-claude-code).
+
+### Auto-Start (macOS LaunchAgent)
+
+Start the MCP server automatically on login:
+
+```bash
+bash scripts/setup.sh --launchagent
+```
+
+This installs a LaunchAgent at `~/Library/LaunchAgents/com.celavii.resolve-mcp.plist`. See [Setup Guide](docs/SETUP.md#5-auto-start-with-launchagent-macos).
+
+### Creating a Distributable Package
+
+Share with team members:
+
+```bash
+bash scripts/package.sh
+```
+
+Creates `celavii-resolve-v0.1.0.zip` — the recipient runs `bash scripts/setup.sh` and they're ready.
+
+## Requirements
+
+- **DaVinci Resolve Studio 18.5+** — [purchase](https://www.blackmagicdesign.com/products/davinciresolve/studio) ($295)
+- **External scripting enabled** — Preferences > System > General > External scripting: **Local**
+- **Python 3.11+**
+- **GEMINI_API_KEY** (optional, for AI-powered tools)
 
 ## Tool Categories
 
@@ -116,8 +148,8 @@ Run `python install.py --clients manual` to get copy-paste config for all 10 sup
 
 ### Workflow Tools
 
-| Workflow | Description |
-|----------|-------------|
+| Tool | Description |
+|------|-------------|
 | `celavii_ingest_media` | Scan folder, import, organise bins, set metadata |
 | `celavii_ingest_with_bins` | Mirror folder structure as media pool bins |
 | `celavii_quick_assembly` | Create timeline from clips or bin |
@@ -131,12 +163,12 @@ Run `python install.py --clients manual` to get copy-paste config for all 10 sup
 | `celavii_quick_grade` | Apply LUT + CDL + grab still |
 | `celavii_batch_apply_lut` | LUT to multiple clips |
 | `celavii_copy_grade_to_all` | Copy grade from one clip to all |
-| `celavii_setup_log_grade` | Build 6-node structure, apply CST + LUT, set key output gain |
+| `celavii_setup_log_grade` | 6-node structure: WB/EXP/SAT/CURVES/CST/LUT |
 | `celavii_list_cst_luts` | List available camera CST LUTs and film looks |
 | `celavii_lut_library_status` | Show installed vs available LUTs for all cameras |
 | `celavii_install_lut_file` | Install a downloaded .cube/.zip LUT into the library |
-| `celavii_get_lut_install_guide` | Step-by-step guide for a specific camera's LUT |
-| `celavii_scan_lut_folder` | Scan all Resolve LUT folders, show what's installed |
+| `celavii_get_lut_install_guide` | Step-by-step guide for a camera's LUT |
+| `celavii_scan_lut_folder` | Scan all Resolve LUT folders |
 
 ### AI Tools (requires GEMINI_API_KEY)
 
@@ -181,12 +213,10 @@ Run `python install.py --clients manual` to get copy-paste config for all 10 sup
 
 ## AI Setup (Optional)
 
-For AI-powered tools (color assist, OCR, frame analysis, editorial critique):
-
 ```bash
-# Copy the example and add your key
 cp .env.example .env
 # Edit .env and set GEMINI_API_KEY=your-key-here
+pip install -e ".[ai]"
 ```
 
 Get a Gemini API key at [aistudio.google.com](https://aistudio.google.com/apikey).
@@ -194,41 +224,44 @@ Get a Gemini API key at [aistudio.google.com](https://aistudio.google.com/apikey
 ## Development
 
 ```bash
-# Setup
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 
-# Run tests (no Resolve needed)
-pytest tests/ -v
-
-# Lint
-ruff check src/ --fix
-ruff format src/
-
-# Run server
-python -m celavii_resolve
+pytest tests/ -v          # Run tests (no Resolve needed)
+ruff check src/ --fix     # Lint
+ruff format src/          # Format
+python -m celavii_resolve # Run server
 ```
 
 ## Project Structure
 
 ```
-celavii-resolve/
+celavii-davinci-resolve-mcp/
 ├── src/celavii_resolve/
 │   ├── config.py          # FastMCP server, constants
 │   ├── resolve.py         # Connection management, helpers
 │   ├── errors.py          # Exception hierarchy, @safe_resolve_call
 │   ├── constants.py       # API constants (colors, modes, types)
+│   ├── lut_registry.py    # LUT library, camera registry, installer
 │   ├── resources.py       # 5 MCP resources
 │   ├── tools/             # 16 modules, 203 granular tools
-│   ├── workflows/         # 5 modules, 14 workflow tools
+│   ├── workflows/         # 5 modules, 19 workflow tools
 │   ├── ai/                # 3 modules, 10 AI tools
 │   └── utils/             # Platform, media, path helpers
-├── skills/                # 8 Claude Code skills
+├── skills/                # 9 Claude Code skills
 ├── agents/                # 7 domain agents
 ├── hooks/                 # Safety hooks
-├── tests/                 # 171 tests
-├── install.py             # Universal installer
+├── scripts/
+│   ├── setup.sh           # One-command setup (macOS/Linux)
+│   └── package.sh         # Create distributable zip
+├── launchd/
+│   └── com.celavii.resolve-mcp.plist  # macOS auto-start
+├── docs/
+│   └── SETUP.md           # Complete setup guide
+├── tests/                 # 197 tests
+├── install.py             # Universal installer (10 MCP clients)
+├── .mcp.json              # Claude Code project config
 └── pyproject.toml         # Package config
 ```
 

@@ -1,0 +1,619 @@
+# Celavii-Resolve — Complete Setup Guide
+
+This guide covers everything from first clone to a fully working MCP server with skills, agents, hooks, and auto-start.
+
+---
+
+## Table of Contents
+
+1. [Prerequisites](#1-prerequisites)
+2. [Installation](#2-installation)
+3. [MCP Server Configuration](#3-mcp-server-configuration)
+   - [Claude Desktop](#31-claude-desktop)
+   - [Claude Code (CLI)](#32-claude-code-cli)
+   - [Cursor / VS Code / Other Editors](#33-cursor--vs-code--other-editors)
+4. [Skills, Agents & Hooks (Claude Code)](#4-skills-agents--hooks-claude-code)
+   - [How Skills Work](#41-how-skills-work)
+   - [How Agents Work](#42-how-agents-work)
+   - [How Hooks Work](#43-how-hooks-work)
+   - [Installing for Global Access](#44-installing-for-global-access)
+5. [Auto-Start with LaunchAgent (macOS)](#5-auto-start-with-launchagent-macos)
+6. [Creating a Distributable Package](#6-creating-a-distributable-package)
+7. [Verification & Testing](#7-verification--testing)
+8. [Troubleshooting](#8-troubleshooting)
+
+---
+
+## 1. Prerequisites
+
+| Requirement | Details |
+|-------------|---------|
+| **DaVinci Resolve Studio** | Version 18.5+ (the **paid** version, $295). The free edition does NOT support scripting. |
+| **Python** | 3.11 or 3.12 (3.13+ has ABI issues with Resolve's fusionscript) |
+| **External Scripting** | Must be enabled: Resolve > Preferences > System > General > External scripting using: **Local** |
+| **Gemini API Key** (optional) | For AI tools only. Get one at [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+| **uv** (recommended) | Fast Python package manager. Install: `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+
+### Verify Resolve Studio
+
+Open DaVinci Resolve > **DaVinci Resolve** menu > **About DaVinci Resolve**.
+It must say **"DaVinci Resolve Studio"** (not just "DaVinci Resolve").
+
+### Enable External Scripting
+
+1. Open DaVinci Resolve Studio
+2. Go to **DaVinci Resolve** > **Preferences** > **System** > **General**
+3. Set **"External scripting using"** to **Local**
+4. Click **Save** and restart Resolve
+
+---
+
+## 2. Installation
+
+### Quick Install (recommended)
+
+```bash
+# Clone the repo
+git clone https://github.com/CelaviiHQ/celavii-davinci-resolve-mcp.git
+cd celavii-davinci-resolve-mcp
+
+# Run the universal installer (interactive)
+python3 install.py
+
+# Or non-interactive for specific clients
+python3 install.py --clients claude-desktop
+python3 install.py --clients claude-desktop,claude-code,cursor
+python3 install.py --clients all
+```
+
+### One-Command Setup (macOS)
+
+```bash
+git clone https://github.com/CelaviiHQ/celavii-davinci-resolve-mcp.git
+cd celavii-davinci-resolve-mcp
+bash scripts/setup.sh
+```
+
+This single script will:
+- Create a Python virtual environment
+- Install all dependencies
+- Configure Claude Desktop
+- Install skills/agents/hooks for Claude Code
+- Set up the LaunchAgent for auto-start
+- Verify the Resolve connection
+
+### Manual Install
+
+```bash
+git clone https://github.com/CelaviiHQ/celavii-davinci-resolve-mcp.git
+cd celavii-davinci-resolve-mcp
+
+# Create venv and install
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+
+# Optional: install AI dependencies
+pip install -e ".[ai]"
+
+# Set up your Gemini API key (optional, for AI tools only)
+cp .env.example .env
+# Edit .env and add your GEMINI_API_KEY
+```
+
+---
+
+## 3. MCP Server Configuration
+
+The MCP server is what connects Celavii-Resolve's 233 tools to your AI client. Each client has its own configuration file.
+
+### 3.1 Claude Desktop
+
+Claude Desktop reads its MCP server config from a JSON file. This gives you all 233 tools directly in Claude Desktop conversations.
+
+**Config file location:**
+
+| OS | Path |
+|----|------|
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+| Linux | `~/.config/Claude/claude_desktop_config.json` |
+
+**Option A — Automatic (via installer):**
+
+```bash
+python3 install.py --clients claude-desktop
+```
+
+**Option B — Manual configuration:**
+
+Open the config file (create it if it doesn't exist) and add:
+
+```json
+{
+  "mcpServers": {
+    "celavii-resolve": {
+      "command": "/path/to/celavii-davinci-resolve-mcp/.venv/bin/python3",
+      "args": ["-m", "celavii_resolve"],
+      "cwd": "/path/to/celavii-davinci-resolve-mcp"
+    }
+  }
+}
+```
+
+Replace `/path/to/celavii-davinci-resolve-mcp` with the actual path where you cloned the repo.
+
+**Option C — Using uv (no venv needed):**
+
+```json
+{
+  "mcpServers": {
+    "celavii-resolve": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory", "/path/to/celavii-davinci-resolve-mcp",
+        "python", "-m", "celavii_resolve"
+      ]
+    }
+  }
+}
+```
+
+**After configuring:**
+
+1. Restart Claude Desktop completely (Cmd+Q on macOS, not just close the window)
+2. Open a new conversation
+3. You should see the MCP tools icon in the input bar
+4. Test with: *"Use celavii_get_version to check the Resolve connection"*
+
+### 3.2 Claude Code (CLI)
+
+Claude Code uses a project-level `.mcp.json` file. This is **already included** in the repository.
+
+```bash
+# Navigate to the project directory
+cd celavii-davinci-resolve-mcp
+
+# The .mcp.json is already configured — just start Claude Code
+claude
+```
+
+The included `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "celavii-resolve": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory", "${CLAUDE_PROJECT_ROOT}",
+        "python", "-m", "celavii_resolve"
+      ]
+    }
+  }
+}
+```
+
+**For global access** (use Celavii-Resolve from any directory):
+
+Add to `~/.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "celavii-resolve": {
+      "command": "/path/to/celavii-davinci-resolve-mcp/.venv/bin/python3",
+      "args": ["-m", "celavii_resolve"],
+      "cwd": "/path/to/celavii-davinci-resolve-mcp"
+    }
+  }
+}
+```
+
+### 3.3 Cursor / VS Code / Other Editors
+
+**Cursor** (`~/.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "celavii-resolve": {
+      "command": "/path/to/celavii-davinci-resolve-mcp/.venv/bin/python3",
+      "args": ["-m", "celavii_resolve"],
+      "cwd": "/path/to/celavii-davinci-resolve-mcp"
+    }
+  }
+}
+```
+
+**VS Code Copilot** (`.vscode/mcp.json` in the project, or workspace settings):
+
+```json
+{
+  "servers": {
+    "celavii-resolve": {
+      "command": "/path/to/celavii-davinci-resolve-mcp/.venv/bin/python3",
+      "args": ["-m", "celavii_resolve"],
+      "cwd": "/path/to/celavii-davinci-resolve-mcp"
+    }
+  }
+}
+```
+
+**Windsurf** (`~/.codeium/windsurf/mcp_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "celavii-resolve": {
+      "command": "/path/to/celavii-davinci-resolve-mcp/.venv/bin/python3",
+      "args": ["-m", "celavii_resolve"],
+      "cwd": "/path/to/celavii-davinci-resolve-mcp"
+    }
+  }
+}
+```
+
+**Zed** (`~/.config/zed/settings.json`):
+
+```json
+{
+  "context_servers": {
+    "celavii-resolve": {
+      "command": {
+        "path": "/path/to/celavii-davinci-resolve-mcp/.venv/bin/python3",
+        "args": ["-m", "celavii_resolve"],
+        "env": {
+          "PYTHONPATH": "/path/to/celavii-davinci-resolve-mcp/src"
+        }
+      },
+      "settings": {}
+    }
+  }
+}
+```
+
+---
+
+## 4. Skills, Agents & Hooks (Claude Code)
+
+Skills, agents, and hooks are **Claude Code features** (not available in Claude Desktop). They extend Claude Code's behavior with domain-specific knowledge, slash commands, and safety guardrails.
+
+### 4.1 How Skills Work
+
+Skills are Claude Code slash commands defined in `skills/*/SKILL.md` files. When you're in the Celavii-Resolve project directory, Claude Code auto-discovers them.
+
+**Available skills:**
+
+| Command | What it does |
+|---------|-------------|
+| `/deliver` | Quick render with preset shorthands |
+| `/preflight` | Pre-render verification checklist |
+| `/color-assist` | AI color grading assistant |
+| `/grade-log` | 6-node log footage grading workflow |
+| `/conform` | Timeline conform from EDL/XML |
+| `/ingest` | Media import with organisation |
+| `/assembly` | Build rough cut from clips |
+| `/review` | AI editorial feedback |
+| `/export-stills` | Gallery still batch export |
+
+**Usage in Claude Code:**
+
+```
+> /grade-log camera=sony-slog3
+> /deliver h264 1080p
+> /preflight
+```
+
+**Skills are project-level by default.** They work when Claude Code is running inside the `celavii-davinci-resolve-mcp` directory. To use them from any directory, see [Installing for Global Access](#44-installing-for-global-access).
+
+### 4.2 How Agents Work
+
+Agents are domain-specific roles defined in `agents/*.md` files. Each agent has a YAML frontmatter header defining its name, tools, and behavior. Claude Code can adopt these roles for specialized tasks.
+
+**Available agents:**
+
+| Agent | Role |
+|-------|------|
+| `editor` | Timeline assembly, clip arrangement, track management |
+| `colorist` | Color grading, node trees, LUTs, CDL, gallery stills |
+| `vfx` | Fusion compositions, node graphs, visual effects |
+| `sound` | Audio tracks, voice isolation, audio insertion |
+| `conform` | EDL/XML/AAF import, relinking, round-trip workflows |
+| `delivery` | Render configuration, format selection, quality control |
+| `producer` | Project overview, status reporting, database management |
+
+### 4.3 How Hooks Work
+
+Hooks are safety guardrails defined in `hooks/hooks.json`. They run automatically before/after tool calls to prevent destructive operations and enforce best practices.
+
+**Current hooks:**
+
+| Hook | Type | What it does |
+|------|------|-------------|
+| Block .env editing | PreToolUse | Prevents accidental exposure of API keys |
+| Destructive op warning | PreToolUse | Warns before delete project/clips/bins operations |
+| Script execution caution | PreToolUse | Warns before running arbitrary Python/Lua scripts |
+| Auto-lint Python | PostToolUse | Runs ruff format/check after editing .py files |
+
+### 4.4 Installing for Global Access
+
+To use Celavii-Resolve skills/agents/hooks from **any directory** in Claude Code (not just when inside the project folder), run the install script:
+
+```bash
+bash scripts/setup.sh --global
+```
+
+Or manually:
+
+**Global Skills** — Copy to `~/.claude/commands/`:
+
+```bash
+# Create the global commands directory
+mkdir -p ~/.claude/commands
+
+# Copy each skill as a global slash command
+for skill_dir in skills/*/; do
+  skill_name=$(basename "$skill_dir")
+  cp "$skill_dir/SKILL.md" "$HOME/.claude/commands/${skill_name}.md"
+done
+```
+
+**Global Hooks** — Merge into `~/.claude/settings.json`:
+
+```bash
+# If you don't have settings.json yet:
+mkdir -p ~/.claude
+cp hooks/hooks.json ~/.claude/settings.json
+
+# If you already have settings.json, manually merge the hooks arrays
+```
+
+**Global MCP Server** — Add to `~/.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "celavii-resolve": {
+      "command": "/path/to/celavii-davinci-resolve-mcp/.venv/bin/python3",
+      "args": ["-m", "celavii_resolve"],
+      "cwd": "/path/to/celavii-davinci-resolve-mcp"
+    }
+  }
+}
+```
+
+---
+
+## 5. Auto-Start with LaunchAgent (macOS)
+
+The LaunchAgent starts the Celavii-Resolve MCP server automatically when you log in, so it's always available when DaVinci Resolve is open.
+
+### Automatic Setup
+
+```bash
+bash scripts/setup.sh --launchagent
+```
+
+### Manual Setup
+
+1. **Copy the plist template:**
+
+```bash
+cp launchd/com.celavii.resolve-mcp.plist ~/Library/LaunchAgents/
+```
+
+2. **Edit the plist** to set your actual paths:
+
+```bash
+nano ~/Library/LaunchAgents/com.celavii.resolve-mcp.plist
+```
+
+Replace the placeholder paths with your actual install location. The template uses `__VENV_PYTHON__` and `__PROJECT_DIR__` as placeholders.
+
+3. **Load the LaunchAgent:**
+
+```bash
+launchctl load ~/Library/LaunchAgents/com.celavii.resolve-mcp.plist
+```
+
+4. **Verify it's running:**
+
+```bash
+launchctl list | grep celavii
+```
+
+### Managing the LaunchAgent
+
+```bash
+# Start
+launchctl load ~/Library/LaunchAgents/com.celavii.resolve-mcp.plist
+
+# Stop
+launchctl unload ~/Library/LaunchAgents/com.celavii.resolve-mcp.plist
+
+# Check status
+launchctl list | grep celavii
+
+# View logs
+cat /tmp/celavii-resolve-mcp.out.log
+cat /tmp/celavii-resolve-mcp.err.log
+
+# Remove completely
+launchctl unload ~/Library/LaunchAgents/com.celavii.resolve-mcp.plist
+rm ~/Library/LaunchAgents/com.celavii.resolve-mcp.plist
+```
+
+---
+
+## 6. Creating a Distributable Package
+
+To share Celavii-Resolve with others (e.g. team members, clients), create a distributable archive:
+
+```bash
+bash scripts/package.sh
+```
+
+This creates `celavii-resolve-v0.1.0.zip` containing:
+- All source code
+- Skills, agents, hooks
+- Install script
+- Setup script
+- LaunchAgent template
+- Documentation
+
+The recipient can then:
+
+```bash
+unzip celavii-resolve-v0.1.0.zip
+cd celavii-davinci-resolve-mcp
+bash scripts/setup.sh
+```
+
+### What's included in the package
+
+```
+celavii-resolve-v0.1.0.zip
+├── src/                    # All MCP tools (233 tools)
+├── skills/                 # 9 Claude Code skills
+├── agents/                 # 7 domain agents
+├── hooks/                  # Safety hooks
+├── scripts/
+│   ├── setup.sh           # One-command setup
+│   └── package.sh         # Creates this zip
+├── launchd/
+│   └── com.celavii.resolve-mcp.plist
+├── docs/
+│   └── SETUP.md           # This guide
+├── install.py             # Universal installer
+├── pyproject.toml         # Package config
+├── .mcp.json              # Claude Code config
+├── .env.example           # Environment template
+└── README.md              # Overview
+```
+
+### What's NOT included (and shouldn't be)
+
+- `.env` (contains your API keys)
+- `.venv/` (virtual environment — recreated on install)
+- `__pycache__/` (Python cache)
+- `.git/` (git history)
+
+---
+
+## 7. Verification & Testing
+
+After setup, verify everything works:
+
+### Check Resolve Connection
+
+```bash
+cd celavii-davinci-resolve-mcp
+source .venv/bin/activate
+python -c "
+import sys; sys.path.insert(0, 'src')
+from celavii_resolve.resolve import get_resolve
+r = get_resolve()
+print(f'Connected: {r.GetProductName()} {r.GetVersionString()}')
+"
+```
+
+Expected output: `Connected: DaVinci Resolve Studio 20.x.x.x`
+
+### Check MCP Server Starts
+
+```bash
+source .venv/bin/activate
+python -m celavii_resolve
+# Should start without errors. Ctrl+C to stop.
+```
+
+### Run the Test Suite
+
+```bash
+source .venv/bin/activate
+pytest tests/ -v
+# Should show 197 passed
+```
+
+### Test in Claude Desktop
+
+Open Claude Desktop, start a new conversation, and try:
+
+> "Use the celavii_get_version tool to check the Resolve connection"
+
+You should see the tool being called and returning the Resolve version.
+
+### Test in Claude Code
+
+```bash
+cd celavii-davinci-resolve-mcp
+claude
+```
+
+Then type:
+
+```
+> /grade-log
+> Use celavii_get_version to check the connection
+```
+
+---
+
+## 8. Troubleshooting
+
+### "MCP tools not showing up in Claude Desktop"
+
+1. Verify the config file exists and is valid JSON:
+   ```bash
+   cat ~/Library/Application\ Support/Claude/claude_desktop_config.json | python3 -m json.tool
+   ```
+2. Check the Python path is correct — it must be the **absolute** path to the venv Python:
+   ```bash
+   ls -la /path/to/celavii-davinci-resolve-mcp/.venv/bin/python3
+   ```
+3. Restart Claude Desktop completely (Cmd+Q, not just close window)
+4. Check Claude Desktop's developer console for errors
+
+### "scriptapp returned None"
+
+- You're running the free edition of DaVinci Resolve. You need **DaVinci Resolve Studio**.
+- External scripting is not enabled. Go to Preferences > System > General > External scripting: **Local**
+- Resolve is not running. The MCP server needs Resolve open to connect.
+
+### "Module not found" errors
+
+```bash
+cd celavii-davinci-resolve-mcp
+source .venv/bin/activate
+pip install -e ".[dev]"
+```
+
+### "Permission denied" for LaunchAgent
+
+```bash
+chmod 644 ~/Library/LaunchAgents/com.celavii.resolve-mcp.plist
+```
+
+### Skills not appearing in Claude Code
+
+- Make sure you're running Claude Code **from inside the project directory**:
+  ```bash
+  cd celavii-davinci-resolve-mcp
+  claude
+  ```
+- Or install globally: `bash scripts/setup.sh --global`
+
+### AI tools not working
+
+- Set your Gemini API key:
+  ```bash
+  cp .env.example .env
+  # Edit .env and add: GEMINI_API_KEY=your-key-here
+  ```
+- Install AI dependencies:
+  ```bash
+  pip install -e ".[ai]"
+  ```

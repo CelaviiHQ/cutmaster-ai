@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Celavii-Resolve MCP Server — macOS LaunchAgent
+
+  This plist starts the Celavii-Resolve MCP server automatically on login.
+  The server will wait for DaVinci Resolve to become available.
+
+  Install:
+    cp launchd/com.celavii.resolve-mcp.plist ~/Library/LaunchAgents/
+    # Edit the plist to set your paths, or use: bash scripts/setup.sh -\-launchagent
+
+  Load:   launchctl load ~/Library/LaunchAgents/com.celavii.resolve-mcp.plist
+  Unload: launchctl unload ~/Library/LaunchAgents/com.celavii.resolve-mcp.plist
+  Status: launchctl list | grep celavii
+  Logs:   cat /tmp/celavii-resolve-mcp.out.log
+-->
+<plist version="1.0">
+<dict>
+    <!-- Unique identifier for this launch agent -->
+    <key>Label</key>
+    <string>com.celavii.resolve-mcp</string>
+
+    <!-- Command to run -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>__VENV_PYTHON__</string>
+        <string>-m</string>
+        <string>__SERVER_MODULE__</string>
+    </array>
+
+    <!-- Working directory -->
+    <key>WorkingDirectory</key>
+    <string>__PROJECT_DIR__</string>
+
+    <!-- Environment variables -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONPATH</key>
+        <string>__PROJECT_DIR__/src</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+    </dict>
+
+    <!-- Start on login -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Keep alive — restart if it crashes -->
+    <key>KeepAlive</key>
+    <dict>
+        <!-- Only restart on non-zero exit (crash), not on clean exit -->
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <!-- Throttle restarts: wait 30 seconds between restarts -->
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <!-- Log output -->
+    <key>StandardOutPath</key>
+    <string>/tmp/celavii-resolve-mcp.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/celavii-resolve-mcp.err.log</string>
+
+    <!-- Nice level — run at low priority so it doesn't affect Resolve performance -->
+    <key>Nice</key>
+    <integer>10</integer>
+
+    <!-- Process type — not interactive, background service -->
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>
