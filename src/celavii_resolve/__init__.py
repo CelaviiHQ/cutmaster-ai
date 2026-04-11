@@ -33,6 +33,7 @@ from .workflows import assembly  # noqa: F401, E402
 from .workflows import delivery  # noqa: F401, E402
 from .workflows import conform  # noqa: F401, E402
 from .workflows import grade  # noqa: F401, E402
+from .workflows import chroma_key  # noqa: F401, E402
 from .ai import vision  # noqa: F401, E402
 from .ai import color_assist  # noqa: F401, E402
 from .ai import timeline_critique  # noqa: F401, E402
