@@ -1,0 +1,145 @@
+/** TypeScript mirror of the backend Pydantic models. */
+
+export type PresetKey =
+  | "vlog"
+  | "product_demo"
+  | "wedding"
+  | "interview"
+  | "tutorial"
+  | "podcast"
+  | "reaction"
+  | "auto";
+
+export interface PresetBundle {
+  key: PresetKey;
+  label: string;
+  role: string;
+  hook_rule: string;
+  pacing: string;
+  cue_vocabulary: string[];
+  marker_vocabulary: string[];
+  theme_axes: string[];
+  scrub_defaults: Record<string, unknown>;
+}
+
+export interface TranscriptWord {
+  word: string;
+  speaker_id: string;
+  start_time: number;
+  end_time: number;
+}
+
+export interface PresetRecommendation {
+  preset: PresetKey;
+  confidence: number;
+  reasoning: string;
+}
+
+export interface Chapter {
+  start_s: number;
+  end_s: number;
+  title: string;
+}
+
+export interface HookCandidate {
+  start_s: number;
+  end_s: number;
+  text: string;
+  engagement_score: number;
+}
+
+export interface StoryAnalysis {
+  chapters: Chapter[];
+  hook_candidates: HookCandidate[];
+  theme_candidates: string[];
+}
+
+export interface CutSegment {
+  start_s: number;
+  end_s: number;
+  reason: string;
+}
+
+export interface DirectorPlan {
+  hook_index: number;
+  selected_clips: CutSegment[];
+  reasoning: string;
+}
+
+export interface MarkerSuggestion {
+  at_s: number;
+  color: string;
+  name: string;
+  note: string;
+  duration_frames: number;
+}
+
+export interface MarkerPlan {
+  markers: MarkerSuggestion[];
+}
+
+export interface ResolvedCutSegment {
+  start_s: number;
+  end_s: number;
+  reason: string;
+  source_item_id: string;
+  source_item_name: string;
+  source_in_frame: number;
+  source_out_frame: number;
+  timeline_start_frame: number;
+  timeline_end_frame: number;
+  speed: number;
+  speed_ramped: boolean;
+  warnings: string[];
+}
+
+export interface BuildPlanResult {
+  preset: PresetKey;
+  user_settings: UserSettings;
+  director: DirectorPlan;
+  markers: MarkerPlan;
+  resolved_segments: ResolvedCutSegment[];
+}
+
+export interface UserSettings {
+  target_length_s: number | null;
+  themes: string[];
+  scrub_params?: Record<string, unknown> | null;
+}
+
+export interface ScrubParams {
+  remove_fillers?: boolean;
+  remove_dead_air?: boolean;
+  collapse_restarts?: boolean;
+  dead_air_threshold_s?: number;
+}
+
+export type StageName =
+  | "vfr_check"
+  | "audio_extract"
+  | "stt"
+  | "scrub"
+  | "done"
+  | "error";
+
+export interface PipelineEvent {
+  stage: StageName | string;
+  status: "started" | "complete" | "failed" | "progress" | string;
+  message: string;
+  data: unknown;
+  ts: number;
+}
+
+export interface RunState {
+  run_id: string;
+  timeline_name: string;
+  preset: string;
+  created_at: string;
+  status: "pending" | "running" | "done" | "failed";
+  stages: Record<string, Partial<PipelineEvent>>;
+  events: PipelineEvent[];
+  transcript: TranscriptWord[];
+  scrubbed: TranscriptWord[];
+  plan?: BuildPlanResult;
+  error: string | null;
+}

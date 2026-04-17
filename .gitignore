@@ -5,6 +5,14 @@ Implementation/
 # Claude Code project-local slash commands
 .claude/commands/
 
+# CutMaster panel — built bundle (run `cd panel && npm run build:install` to populate)
+src/celavii_resolve/http/static/*
+!src/celavii_resolve/http/static/.gitkeep
+
+# CutMaster panel — node dependencies
+panel/node_modules/
+panel/dist/
+
 # Python
 __pycache__/
 *.py[cod]

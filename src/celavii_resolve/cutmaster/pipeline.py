@@ -65,7 +65,7 @@ async def _vfr_check(tl, run, emit) -> bool:
     return True
 
 
-async def _extract_audio(tl, run, emit) -> Path | None:
+async def _extract_audio(tl, run, emit) -> tuple[Path, float] | None:
     await emit(run, stage="audio_extract", status="started",
                message="Reassembling timeline audio via ffmpeg")
     from .ffmpeg_audio import extract_timeline_audio  # lazy
@@ -81,10 +81,15 @@ async def _extract_audio(tl, run, emit) -> Path | None:
     await emit(run, stage="audio_extract", status="complete",
                message=f"Wrote {result['duration_s']:.1f}s WAV ({result['segments']} segment(s))",
                data=result)
-    return wav_path
+    return wav_path, float(result["duration_s"])
 
 
-async def _transcribe(wav_path: Path, run, emit) -> list[dict] | None:
+async def _transcribe(
+    wav_path: Path,
+    audio_duration_s: float,
+    run,
+    emit,
+) -> list[dict] | None:
     await emit(run, stage="stt", status="started",
                message="Transcribing with Gemini (word-level timestamps)")
     from .stt import transcribe_audio  # lazy
@@ -96,13 +101,23 @@ async def _transcribe(wav_path: Path, run, emit) -> list[dict] | None:
                    message=f"STT failed: {exc}")
         return None
 
-    words = [w.model_dump() for w in transcript.words]
+    raw_words = [w.model_dump() for w in transcript.words]
+    # Guard: Gemini sometimes extrapolates timestamps past the end of the
+    # audio. Drop any word whose end_time exceeds the actual WAV duration,
+    # plus a 0.25s grace for rounding.
+    limit = audio_duration_s + 0.25
+    words = [w for w in raw_words if w["end_time"] <= limit]
+    dropped = len(raw_words) - len(words)
+
     run["transcript"] = words
     state.save(run)
 
+    msg = f"Transcribed {len(words)} words"
+    if dropped:
+        msg += f" (dropped {dropped} with timestamps past audio end of {audio_duration_s:.1f}s)"
     await emit(run, stage="stt", status="complete",
-               message=f"Transcribed {len(words)} words",
-               data={"word_count": len(words)})
+               message=msg,
+               data={"word_count": len(words), "dropped_out_of_range": dropped})
     return words
 
 
@@ -164,15 +179,16 @@ async def run_analyze(
             await state.emit(run, stage="done", status="failed", message="halted on VFR")
             return
 
-        wav_path = await _extract_audio(tl, run, state.emit)
-        if wav_path is None:
+        audio_result = await _extract_audio(tl, run, state.emit)
+        if audio_result is None:
             run["status"] = "failed"
             run["error"] = "audio_extract_failed"
             state.save(run)
             await state.emit(run, stage="done", status="failed", message="halted on audio extract")
             return
+        wav_path, audio_duration_s = audio_result
 
-        words = await _transcribe(wav_path, run, state.emit)
+        words = await _transcribe(wav_path, audio_duration_s, run, state.emit)
         if words is None:
             run["status"] = "failed"
             run["error"] = "stt_failed"

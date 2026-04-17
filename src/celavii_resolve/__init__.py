@@ -47,5 +47,13 @@ from .cutmaster import state as cutmaster_state  # noqa: F401, E402
 from .cutmaster import stt  # noqa: F401, E402
 from .cutmaster import scrubber  # noqa: F401, E402
 from .cutmaster import pipeline  # noqa: F401, E402
+from .cutmaster import llm as cutmaster_llm  # noqa: F401, E402
+from .cutmaster import presets as cutmaster_presets  # noqa: F401, E402
+from .cutmaster import director  # noqa: F401, E402
+from .cutmaster import marker_agent  # noqa: F401, E402
+from .cutmaster import auto_detect  # noqa: F401, E402
+from .cutmaster import themes as cutmaster_themes  # noqa: F401, E402
+from .cutmaster import resolve_segments  # noqa: F401, E402
+from .cutmaster import execute as cutmaster_execute  # noqa: F401, E402
 from . import lut_registry  # noqa: F401, E402
 from . import resources  # noqa: F401, E402

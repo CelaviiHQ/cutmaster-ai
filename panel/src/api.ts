@@ -1,0 +1,96 @@
+/** Typed HTTP client for the celavii-resolve-panel backend. */
+
+import type {
+  BuildPlanResult,
+  PresetBundle,
+  PresetRecommendation,
+  RunState,
+  StoryAnalysis,
+  UserSettings,
+} from "./types";
+
+/** All requests are same-origin in production (served from the Python app).
+ *  In dev, Vite proxies /cutmaster/* and /ping to 127.0.0.1:8765. */
+const BASE = "";
+
+async function http<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init?.headers ?? {}),
+    },
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`${res.status} ${path} — ${body || res.statusText}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+export const api = {
+  ping: () => http<{ ok: boolean; service: string; version: string }>("/ping"),
+
+  listPresets: () =>
+    http<{ presets: PresetBundle[] }>("/cutmaster/presets"),
+
+  analyze: (timelineName: string, preset: string) =>
+    http<{ run_id: string; status: string }>("/cutmaster/analyze", {
+      method: "POST",
+      body: JSON.stringify({ timeline_name: timelineName, preset }),
+    }),
+
+  getState: (runId: string) =>
+    http<RunState>(`/cutmaster/state/${runId}`),
+
+  detectPreset: (runId: string) =>
+    http<PresetRecommendation>("/cutmaster/detect-preset", {
+      method: "POST",
+      body: JSON.stringify({ run_id: runId }),
+    }),
+
+  analyzeThemes: (runId: string, preset: string) =>
+    http<StoryAnalysis>("/cutmaster/analyze-themes", {
+      method: "POST",
+      body: JSON.stringify({ run_id: runId, preset }),
+    }),
+
+  buildPlan: (runId: string, preset: string, userSettings: UserSettings) =>
+    http<BuildPlanResult>("/cutmaster/build-plan", {
+      method: "POST",
+      body: JSON.stringify({
+        run_id: runId,
+        preset,
+        user_settings: userSettings,
+      }),
+    }),
+
+  execute: (runId: string) =>
+    http<ExecuteResult>("/cutmaster/execute", {
+      method: "POST",
+      body: JSON.stringify({ run_id: runId }),
+    }),
+
+  deleteCut: (runId: string) =>
+    http<DeleteCutResult>("/cutmaster/delete-cut", {
+      method: "POST",
+      body: JSON.stringify({ run_id: runId }),
+    }),
+};
+
+export interface ExecuteResult {
+  new_timeline_name: string;
+  appended: number;
+  append_errors: string[];
+  markers_added: number;
+  markers_skipped: Array<{ name?: string; original_at_s: number; reason: string }>;
+  snapshot_path: string;
+  snapshot_size_kb: number;
+}
+
+export interface DeleteCutResult {
+  deleted: boolean;
+  timeline?: string;
+  reason?: string;
+  snapshot_preserved_at?: string;
+}

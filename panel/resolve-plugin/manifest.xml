@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Workflow Integration manifest for Celavii CutMaster AI.
+
+    The exact XML schema Resolve expects varies by version. If Resolve
+    rejects this file, check your Resolve install's built-in sample plugins
+    under:
+
+    macOS:
+      /Library/Application Support/Blackmagic Design/DaVinci Resolve/
+      Developer/Workflow Integrations/Examples/
+
+    Windows:
+      %PROGRAMDATA%\Blackmagic Design\DaVinci Resolve\
+      Support\Developer\Workflow Integrations\Examples\
+
+    Adjust tag names to match the example manifest.
+-->
+<plugin>
+    <name>CelaviiCutMaster</name>
+    <displayName>CutMaster AI</displayName>
+    <description>AI-powered A-Roll curation, scrubbing, and structural editing.</description>
+    <version>0.1.0</version>
+    <author>Celavii</author>
+    <entrypoint>index.html</entrypoint>
+</plugin>

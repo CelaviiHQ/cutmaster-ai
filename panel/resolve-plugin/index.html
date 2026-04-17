@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>CutMaster AI</title>
+    <style>
+        html, body { margin: 0; padding: 0; height: 100%; background: #141418; }
+        iframe { width: 100vw; height: 100vh; border: 0; }
+        .err {
+            color: #ff453a;
+            padding: 24px;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+    </style>
+</head>
+<body>
+<iframe id="panel" src="http://127.0.0.1:8765/"></iframe>
+<script>
+    // If the backend isn't reachable, show a friendly error instead of a
+    // browser default "can't connect" page.
+    fetch("http://127.0.0.1:8765/ping", { cache: "no-store" }).catch(() => {
+        document.body.innerHTML =
+            '<div class="err"><h2>CutMaster backend not running</h2>' +
+            '<p>Start it in a terminal:</p>' +
+            '<pre>celavii-resolve-panel</pre>' +
+            '<p>Then close and re-open this panel.</p></div>';
+    });
+</script>
+</body>
+</html>
