@@ -279,12 +279,24 @@ def execute_plan(run: dict) -> dict:
                 "reason": "AddMarker returned False (duplicate frame?)",
             })
 
-    # 6. Captions (v2-10). Build caption lines from the scrubbed transcript
-    # restricted to words that survived the cut, then write an SRT next to
-    # the snapshot + best-effort populate a subtitle track.
+    # 6. Captions (v2-10). Build caption lines from the transcript the
+    # Director saw, restricted to words that survived the cut, then write
+    # an SRT next to the snapshot and best-effort populate a subtitle
+    # track. The basis switch matters in assembled + takes_already_scrubbed
+    # mode: the Director picked spans on the raw transcript, so captions
+    # must come from raw — otherwise they'd show a polished subset that
+    # doesn't match the word-indices the plan referenced.
     caption_info: dict[str, Any] = {"enabled": captions_enabled}
     if captions_enabled:
-        kept_words = remap_words_to_new_timeline(run.get("scrubbed") or [], resolved)
+        transcript_basis = (
+            run.get("transcript")
+            if user_settings.get("takes_already_scrubbed")
+            else run.get("scrubbed")
+        ) or []
+        kept_words = remap_words_to_new_timeline(transcript_basis, resolved)
+        caption_info["basis"] = (
+            "raw" if user_settings.get("takes_already_scrubbed") else "scrubbed"
+        )
         caption_info.update(_write_captions_file(kept_words, snap["path"]))
         if caption_info.get("path"):
             caption_info["subtitle_track"] = _populate_subtitle_track(
