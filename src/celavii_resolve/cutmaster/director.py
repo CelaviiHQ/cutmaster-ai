@@ -224,3 +224,253 @@ def build_cut_plan(
         validate=lambda plan: validate_plan(plan, transcript),
         temperature=0.4,
     )
+
+
+# ---------------------------------------------------------------------------
+# Assembled-mode Director (v2-2)
+# ---------------------------------------------------------------------------
+#
+# In assembled mode the editor has pre-cut the timeline into takes on V1.
+# Boundaries are sacred: the Director never crosses them. What remains
+# user-controllable (via UserSettings):
+#
+#   - scrubbing within a take (filler / dead-air cleanup) — the scrubbed
+#     transcript comes in already-cleaned; Director picks word-index spans
+#     from it.
+#   - reordering whole takes (``reorder_allowed`` flag) — when false, the
+#     server-side validator enforces the input order and the retry loop
+#     re-prompts.
+#
+# Wire contract: the caller hands the Director a list of Take dicts shaped
+# like :class:`AssembledTakeEntry`; the Director returns word-index spans
+# so verbatim timestamp validation (the hard-won v1 safeguard) is bypassed
+# entirely — spans reference positions in the same transcript the prompt
+# showed, so there's no rounding surface.
+
+
+class WordSpan(BaseModel):
+    a: int = Field(..., ge=0, description="Inclusive start word-index into the take's transcript.")
+    b: int = Field(..., ge=0, description="Inclusive end word-index into the take's transcript.")
+
+
+class AssembledItemSelection(BaseModel):
+    item_index: int = Field(
+        ..., ge=0,
+        description="0-based index into the input TAKES array.",
+    )
+    kept_word_spans: list[WordSpan] = Field(
+        ...,
+        description="Ranges of word indices to keep from this take. Non-overlapping, ascending.",
+    )
+
+
+class AssembledDirectorPlan(BaseModel):
+    hook_index: int = Field(
+        ...,
+        description="Index into selections (0-based) identifying the hook take.",
+    )
+    selections: list[AssembledItemSelection]
+    reasoning: str = Field(default="", description="1-2 sentences on overall structure.")
+
+
+def _reorder_instruction(reorder_allowed: bool) -> str:
+    if reorder_allowed:
+        return (
+            "You MAY reorder takes: return `selections` in the order the cut "
+            "should play, with the hook's take first. You may drop takes that "
+            "don't belong in the cut."
+        )
+    return (
+        "You MUST NOT reorder takes: return `selections` with `item_index` "
+        "values in strictly ascending order (the same order they appear in "
+        "the input). You may still drop takes that don't belong in the cut. "
+        "Hook is the take you want viewers to see first; set hook_index to "
+        "identify which of the surviving selections plays that role, even "
+        "though order stays fixed."
+    )
+
+
+def _assembled_prompt(
+    preset: PresetBundle,
+    takes: list[dict],
+    user_settings: dict | None,
+) -> str:
+    """Render the assembled-mode prompt.
+
+    ``takes`` shape per entry:
+        {
+          "item_index": int,
+          "source_name": str,
+          "start_s": float, "end_s": float,
+          "transcript": [{"i": int, "word": str,
+                          "start_time": float, "end_time": float,
+                          "speaker_id": str}, ...]
+        }
+    """
+    reorder_allowed = bool((user_settings or {}).get("reorder_allowed", True))
+    exclude = _exclude_block(preset, user_settings)
+    focus = _focus_block(user_settings)
+    optional_blocks = "\n\n".join(b for b in (exclude, focus) if b)
+    optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
+
+    return f"""You are a {preset.role}.
+
+The editor has pre-cut this timeline into takes on the video track. Each TAKE below is one timeline item — a self-contained clip. Your job is to choose which takes survive and which word-index spans inside each take are kept.
+
+RULES — follow exactly:
+1. Identify the HOOK: {preset.hook_rule}. Set `hook_index` to the position of the hook take within your returned `selections` array.
+2. Pacing: {preset.pacing}.
+3. You MUST NOT merge material across takes. Every kept_word_span references word indices within ONE take's transcript.
+4. kept_word_spans must reference valid `i` values from that take's transcript. Spans are inclusive on both ends: [a, b] keeps words i=a through i=b.
+5. Within a take, spans must be non-overlapping and in ascending order of `a`.
+6. Omit takes entirely when they don't belong in the cut — do NOT include empty `kept_word_spans` arrays.
+7. {_reorder_instruction(reorder_allowed)}
+
+USER SETTINGS
+{_user_settings_block(user_settings)}{optional_section}
+
+TAKES (JSON array):
+{json.dumps(takes, separators=(",", ":"))}
+
+Return an `AssembledDirectorPlan` with:
+- `selections`: list of {{item_index, kept_word_spans}} entries in play order (hook's take at position `hook_index`).
+- `hook_index`: index into selections (0-based).
+- `reasoning`: 1–2 sentences on the overall structure.
+"""
+
+
+def validate_assembled_plan(
+    plan: AssembledDirectorPlan,
+    takes: list[dict],
+    reorder_allowed: bool = True,
+) -> list[str]:
+    """Validate an assembled plan against the input takes.
+
+    Checks:
+      1. `selections` is non-empty.
+      2. Every `item_index` corresponds to a real take.
+      3. No take appears twice.
+      4. Every span has a <= b and both indices are in-range for that take's transcript.
+      5. Spans within a take are non-overlapping and in ascending order.
+      6. `hook_index` is in range.
+      7. When reorder_allowed is False, selections' item_index sequence is strictly ascending.
+    """
+    errors: list[str] = []
+    if not plan.selections:
+        return ["selections is empty — the Director must pick at least one take"]
+
+    if not (0 <= plan.hook_index < len(plan.selections)):
+        errors.append(
+            f"hook_index {plan.hook_index} out of range for "
+            f"{len(plan.selections)} selections"
+        )
+
+    take_by_index = {t["item_index"]: t for t in takes}
+    seen_takes: set[int] = set()
+    prev_item_index: int | None = None
+
+    for i, sel in enumerate(plan.selections):
+        if sel.item_index in seen_takes:
+            errors.append(f"selections[{i}]: item_index {sel.item_index} appears twice")
+        seen_takes.add(sel.item_index)
+
+        take = take_by_index.get(sel.item_index)
+        if take is None:
+            errors.append(
+                f"selections[{i}]: item_index {sel.item_index} does not match any input take"
+            )
+            continue
+
+        if (
+            not reorder_allowed
+            and prev_item_index is not None
+            and sel.item_index <= prev_item_index
+        ):
+            errors.append(
+                f"selections[{i}]: item_index {sel.item_index} breaks input order "
+                f"(must be > {prev_item_index}; reorder_allowed=false)"
+            )
+        prev_item_index = sel.item_index
+
+        if not sel.kept_word_spans:
+            errors.append(
+                f"selections[{i}]: kept_word_spans is empty — drop the take entirely instead"
+            )
+            continue
+
+        transcript_len = len(take.get("transcript") or [])
+        if transcript_len == 0:
+            errors.append(
+                f"selections[{i}]: take {sel.item_index} has no transcript"
+            )
+            continue
+
+        last_b = -1
+        for j, span in enumerate(sel.kept_word_spans):
+            if span.a > span.b:
+                errors.append(
+                    f"selections[{i}].spans[{j}]: a={span.a} > b={span.b}"
+                )
+                continue
+            if span.a >= transcript_len or span.b >= transcript_len:
+                errors.append(
+                    f"selections[{i}].spans[{j}]: [{span.a},{span.b}] "
+                    f"out of range for take with {transcript_len} words"
+                )
+                continue
+            if span.a <= last_b:
+                errors.append(
+                    f"selections[{i}].spans[{j}]: start a={span.a} overlaps previous span end {last_b}"
+                )
+            last_b = span.b
+
+    return errors
+
+
+def build_assembled_cut_plan(
+    takes: list[dict],
+    preset: PresetBundle,
+    user_settings: dict | None = None,
+) -> AssembledDirectorPlan:
+    """Run the assembled-mode Director, retrying on structural violations."""
+    reorder_allowed = bool((user_settings or {}).get("reorder_allowed", True))
+    prompt = _assembled_prompt(preset, takes, user_settings)
+    return llm.call_structured(
+        agent="director",
+        prompt=prompt,
+        response_schema=AssembledDirectorPlan,
+        validate=lambda plan: validate_assembled_plan(plan, takes, reorder_allowed),
+        temperature=0.4,
+    )
+
+
+def expand_assembled_plan(
+    plan: AssembledDirectorPlan,
+    takes: list[dict],
+) -> tuple[list[CutSegment], int]:
+    """Convert an AssembledDirectorPlan into timeline-seconds `CutSegment`s.
+
+    Returns ``(segments, hook_cut_segment_index)``. Callers feed ``segments``
+    into the existing :func:`resolve_segments.resolve_segments` resolver,
+    which maps them to source frames. Because spans stay within one item,
+    the resolver's auto-split path never fires.
+
+    ``hook_cut_segment_index`` is the index within the flat segments list
+    that corresponds to the Director's chosen hook take (the first span of
+    that take). Useful so downstream UIs can label the hook beat.
+    """
+    take_by_index = {t["item_index"]: t for t in takes}
+    segments: list[CutSegment] = []
+    hook_cut_index = 0
+    for sel_pos, sel in enumerate(plan.selections):
+        take = take_by_index[sel.item_index]
+        words = take["transcript"]
+        if sel_pos == plan.hook_index and sel.kept_word_spans:
+            hook_cut_index = len(segments)
+        for span in sel.kept_word_spans:
+            segments.append(CutSegment(
+                start_s=float(words[span.a]["start_time"]),
+                end_s=float(words[span.b]["end_time"]),
+                reason=f"take {sel.item_index}: '{take.get('source_name', '')}'",
+            ))
+    return segments, hook_cut_index

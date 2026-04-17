@@ -57,6 +57,7 @@ TOOL_MODULES = [
     "celavii_resolve.cutmaster.formats",
     "celavii_resolve.cutmaster.captions",
     "celavii_resolve.cutmaster.time_mapping",
+    "celavii_resolve.cutmaster.assembled",
     "celavii_resolve.cutmaster.director",
     "celavii_resolve.cutmaster.marker_agent",
     "celavii_resolve.cutmaster.auto_detect",
@@ -87,10 +88,14 @@ def _collect_tool_functions() -> list[tuple[str, str]]:
                     continue
                 for dec in node.decorator_list:
                     # Match @mcp.tool
-                    if isinstance(dec, ast.Attribute) and isinstance(dec.value, ast.Name):
-                        if dec.value.id == "mcp" and dec.attr == "tool":
-                            results.append((module_name, node.name))
-                            break
+                    if (
+                        isinstance(dec, ast.Attribute)
+                        and isinstance(dec.value, ast.Name)
+                        and dec.value.id == "mcp"
+                        and dec.attr == "tool"
+                    ):
+                        results.append((module_name, node.name))
+                        break
     return results
 
 

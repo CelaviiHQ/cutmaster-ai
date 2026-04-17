@@ -41,6 +41,9 @@ export default function App() {
         format: "horizontal",
         captions_enabled: false,
         safe_zones_enabled: false,
+        timeline_mode: "raw_dump",
+        reorder_allowed: true,
+        takes_already_scrubbed: false,
     });
     const [backendOk, setBackendOk] = useState<boolean | null>(null);
     const [resume, setResume] = useState<ResumeInfo | null>(null);
@@ -100,6 +103,9 @@ export default function App() {
             format: "horizontal",
             captions_enabled: false,
             safe_zones_enabled: false,
+            timeline_mode: "raw_dump",
+            reorder_allowed: true,
+            takes_already_scrubbed: false,
         });
     };
 
@@ -170,6 +176,10 @@ export default function App() {
                     onTimelineChange={setTimelineName}
                     preset={preset}
                     onPresetChange={setPreset}
+                    timelineMode={userSettings.timeline_mode ?? "raw_dump"}
+                    onTimelineModeChange={(m) =>
+                        setUserSettings({ ...userSettings, timeline_mode: m })
+                    }
                     onNext={async () => {
                         const r = await api.analyze(timelineName, preset);
                         setRunId(r.run_id);

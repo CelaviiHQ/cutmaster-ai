@@ -129,6 +129,8 @@ export interface FormatSpec {
   reframe_default: "center_crop" | "smart_reframe" | "none";
 }
 
+export type TimelineMode = "raw_dump" | "assembled";
+
 export interface UserSettings {
   target_length_s: number | null;
   themes: string[];
@@ -138,6 +140,9 @@ export interface UserSettings {
   format?: FormatKey;
   captions_enabled?: boolean;
   safe_zones_enabled?: boolean;
+  timeline_mode?: TimelineMode;
+  reorder_allowed?: boolean;
+  takes_already_scrubbed?: boolean;
 }
 
 export interface ScrubParams {

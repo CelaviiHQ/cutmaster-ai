@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import type { PresetBundle, PresetKey } from "../types";
+import type { PresetBundle, PresetKey, TimelineMode } from "../types";
 
 interface Props {
     timelineName: string;
     onTimelineChange: (n: string) => void;
     preset: PresetKey;
     onPresetChange: (p: PresetKey) => void;
+    timelineMode: TimelineMode;
+    onTimelineModeChange: (m: TimelineMode) => void;
     onNext: () => void | Promise<void>;
 }
 
@@ -15,6 +17,8 @@ export default function PresetPickScreen({
     onTimelineChange,
     preset,
     onPresetChange,
+    timelineMode,
+    onTimelineModeChange,
     onNext,
 }: Props) {
     const [presets, setPresets] = useState<PresetBundle[]>([]);
@@ -50,6 +54,29 @@ export default function PresetPickScreen({
                     onChange={(e) => onTimelineChange(e.target.value)}
                     placeholder="Timeline 1"
                 />
+            </div>
+
+            <div className="card">
+                <h2>Is this timeline already edited?</h2>
+                <p className="muted">
+                    Raw dump = one or more source clips, no cuts yet. Assembled =
+                    you've already picked takes / laid them out; CutMaster should
+                    respect those boundaries.
+                </p>
+                <div className="row">
+                    <button
+                        className={timelineMode === "raw_dump" ? "" : "secondary"}
+                        onClick={() => onTimelineModeChange("raw_dump")}
+                    >
+                        Raw dump (v1 default)
+                    </button>
+                    <button
+                        className={timelineMode === "assembled" ? "" : "secondary"}
+                        onClick={() => onTimelineModeChange("assembled")}
+                    >
+                        Assembled — takes picked
+                    </button>
+                </div>
             </div>
 
             <div className="card">

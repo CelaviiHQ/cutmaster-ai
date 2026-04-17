@@ -122,6 +122,182 @@ def test_build_plan_accepts_and_persists_v2_10_format_fields(
     assert saved["safe_zones_enabled"] is True
 
 
+def test_build_plan_assembled_mode_uses_assembled_director(
+    client, monkeypatch, scrubbed_run,
+):
+    """When timeline_mode='assembled', the route should call
+    build_assembled_cut_plan (not the v1 Director), feed it items from
+    read_items_on_track, and expand the result into normal CutSegments
+    before the Marker / resolver run."""
+    from celavii_resolve.cutmaster.director import (
+        AssembledDirectorPlan,
+        AssembledItemSelection,
+        WordSpan,
+    )
+
+    call_log: dict[str, object] = {}
+
+    def fake_build_assembled(takes, preset, settings):
+        call_log["takes"] = takes
+        call_log["settings"] = settings
+        return AssembledDirectorPlan(
+            hook_index=0,
+            selections=[
+                AssembledItemSelection(
+                    item_index=0,
+                    kept_word_spans=[WordSpan(a=0, b=1)],
+                )
+            ],
+            reasoning="hook",
+        )
+
+    def forbidden_build_cut_plan(*_a, **_k):
+        raise AssertionError("v1 Director should not run in assembled mode")
+
+    monkeypatch.setattr(routes, "build_assembled_cut_plan", fake_build_assembled)
+    monkeypatch.setattr(routes, "build_cut_plan", forbidden_build_cut_plan)
+    monkeypatch.setattr(
+        routes, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[])
+    )
+
+    # Stub items on the timeline: one take covering [0, 2) s.
+    fake_items = [
+        {
+            "item_index": 0,
+            "source_name": "take1.mov",
+            "start_s": 0.0,
+            "end_s": 2.0,
+        }
+    ]
+    monkeypatch.setattr(routes, "read_items_on_track", lambda _tl, track_index=1: fake_items)
+
+    fake_tl = MagicMock()
+    fake_tl.GetSetting.return_value = "24"
+
+    def fake_boilerplate():
+        return MagicMock(), MagicMock(), MagicMock()
+
+    import celavii_resolve.cutmaster.pipeline as pipeline_mod
+    import celavii_resolve.resolve as resolve_mod
+
+    monkeypatch.setattr(resolve_mod, "_boilerplate", fake_boilerplate)
+    monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl)
+    # Resolver receives the expanded segments — stub it to a known value.
+    resolved_stub = [
+        ResolvedCutSegment(
+            start_s=0.0, end_s=0.95, reason="take 0",
+            source_item_id="UID1", source_item_name="take1.mov",
+            source_in_frame=0, source_out_frame=23,
+            timeline_start_frame=0, timeline_end_frame=23,
+            speed=1.0, speed_ramped=False, warnings=[],
+        ),
+    ]
+    monkeypatch.setattr(routes, "resolve_segments", lambda _tl, _segs: resolved_stub)
+
+    r = client.post(
+        "/cutmaster/build-plan",
+        json={
+            "run_id": scrubbed_run["run_id"],
+            "preset": "vlog",
+            "user_settings": {
+                "target_length_s": None,
+                "themes": [],
+                "timeline_mode": "assembled",
+                "reorder_allowed": True,
+            },
+        },
+    )
+    assert r.status_code == 200, r.text
+
+    # The assembled Director received a take payload shaped from the scrubbed
+    # transcript — words falling inside item 0's range are its transcript.
+    assert "takes" in call_log
+    take = call_log["takes"][0]
+    assert take["item_index"] == 0
+    assert take["source_name"] == "take1.mov"
+    assert len(take["transcript"]) > 0
+    # Settings round-trip carries the mode.
+    assert call_log["settings"]["timeline_mode"] == "assembled"
+
+    persisted = state.load(scrubbed_run["run_id"])
+    saved = persisted["plan"]["user_settings"]
+    assert saved["timeline_mode"] == "assembled"
+    assert saved["reorder_allowed"] is True
+    # The expanded plan was persisted as a normal DirectorPlan shape.
+    assert len(persisted["plan"]["director"]["selected_clips"]) == 1
+
+
+def test_build_plan_assembled_uses_raw_transcript_when_takes_already_scrubbed(
+    client, monkeypatch, scrubbed_run,
+):
+    """When takes_already_scrubbed=true, build-plan must feed the raw
+    transcript (not the scrubbed one) into the assembled Director."""
+    from celavii_resolve.cutmaster.director import (
+        AssembledDirectorPlan,
+        AssembledItemSelection,
+        WordSpan,
+    )
+
+    # Seed run with a raw transcript that differs from scrubbed.
+    run = state.load(scrubbed_run["run_id"])
+    run["transcript"] = [
+        {"word": "umm", "start_time": 0.0, "end_time": 0.3, "speaker_id": "S1"},
+        {"word": "hello", "start_time": 0.3, "end_time": 0.7, "speaker_id": "S1"},
+    ]
+    state.save(run)
+
+    seen_takes: dict[str, object] = {}
+
+    def fake_build_assembled(takes, preset, settings):
+        seen_takes["takes"] = takes
+        return AssembledDirectorPlan(
+            hook_index=0,
+            selections=[AssembledItemSelection(
+                item_index=0, kept_word_spans=[WordSpan(a=0, b=0)],
+            )],
+            reasoning="",
+        )
+
+    monkeypatch.setattr(routes, "build_assembled_cut_plan", fake_build_assembled)
+    monkeypatch.setattr(routes, "build_cut_plan",
+                        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError()))
+    monkeypatch.setattr(routes, "suggest_markers",
+                        lambda *_a, **_k: MarkerPlan(markers=[]))
+    monkeypatch.setattr(routes, "read_items_on_track", lambda _tl, track_index=1: [
+        {"item_index": 0, "source_name": "t.mov", "start_s": 0.0, "end_s": 1.0},
+    ])
+    monkeypatch.setattr(routes, "resolve_segments", lambda _tl, _segs: [])
+
+    fake_tl = MagicMock()
+    fake_tl.GetSetting.return_value = "24"
+
+    import celavii_resolve.cutmaster.pipeline as pipeline_mod
+    import celavii_resolve.resolve as resolve_mod
+
+    monkeypatch.setattr(resolve_mod, "_boilerplate",
+                        lambda: (MagicMock(), MagicMock(), MagicMock()))
+    monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name",
+                        lambda _p, _n: fake_tl)
+
+    r = client.post(
+        "/cutmaster/build-plan",
+        json={
+            "run_id": scrubbed_run["run_id"],
+            "preset": "vlog",
+            "user_settings": {
+                "timeline_mode": "assembled",
+                "takes_already_scrubbed": True,
+            },
+        },
+    )
+    assert r.status_code == 200, r.text
+
+    # The take's transcript should include the filler 'umm' (raw) — proof
+    # we consumed run["transcript"] not run["scrubbed"].
+    take_words = [t["word"] for t in seen_takes["takes"][0]["transcript"]]
+    assert "umm" in take_words
+
+
 def test_build_plan_rejects_unknown_format(client, monkeypatch, scrubbed_run):
     """Pydantic's Literal guard should 422 on an invalid format key."""
     r = client.post(

@@ -19,7 +19,17 @@ from sse_starlette.sse import EventSourceResponse
 from ...cutmaster import auto_detect as auto_detect_mod
 from ...cutmaster import state
 from ...cutmaster import themes as themes_mod
-from ...cutmaster.director import DirectorPlan, build_cut_plan
+from ...cutmaster.assembled import (
+    build_take_entries,
+    read_items_on_track,
+    split_transcript_per_item,
+)
+from ...cutmaster.director import (
+    DirectorPlan,
+    build_assembled_cut_plan,
+    build_cut_plan,
+    expand_assembled_plan,
+)
 from ...cutmaster.execute import ExecuteError, execute_plan
 from ...cutmaster.formats import all_formats
 from ...cutmaster.marker_agent import MarkerPlan, suggest_markers
@@ -285,6 +295,31 @@ class UserSettings(BaseModel):
         default=False,
         description="When true and format is non-horizontal, execute drops platform-UI safe-zone guides on V2.",
     )
+    # v2-2: assembled-mode controls. Defaults preserve v1 behaviour.
+    timeline_mode: Literal["raw_dump", "assembled"] = Field(
+        default="raw_dump",
+        description=(
+            "'raw_dump' (v1 default) — Director picks word-level ranges anywhere, "
+            "auto-splits across item boundaries. 'assembled' — Director never "
+            "crosses take boundaries; within-take scrubbing and optional reordering "
+            "remain user-controllable via reorder_allowed and takes_already_scrubbed."
+        ),
+    )
+    reorder_allowed: bool = Field(
+        default=True,
+        description=(
+            "Assembled mode only. When false, the server-side validator rejects "
+            "plans whose take order differs from input order (retry loop re-prompts)."
+        ),
+    )
+    takes_already_scrubbed: bool = Field(
+        default=False,
+        description=(
+            "Assembled mode only. When true, build-plan uses the raw transcript "
+            "(no filler / dead-air cleanup) because the editor already polished "
+            "each take. Default false — editor picked takes but hasn't scrubbed."
+        ),
+    )
 
 
 class BuildPlanRequest(BaseModel):
@@ -304,17 +339,88 @@ async def build_plan(body: BuildPlanRequest) -> dict:
     if body.preset not in PRESETS:
         raise HTTPException(status_code=400, detail=f"unknown preset '{body.preset}'")
     preset = get_preset(body.preset)
+    settings_dict = body.user_settings.model_dump()
+    mode = body.user_settings.timeline_mode
 
-    # 1. Director
-    try:
-        plan: DirectorPlan = await asyncio.to_thread(
-            build_cut_plan, scrubbed, preset, body.user_settings.model_dump()
+    # v2-2: assembled mode uses a different Director. Both paths converge on
+    # the same CutSegment + resolver pipeline from step 2 onward.
+    if mode == "assembled":
+        if body.user_settings.takes_already_scrubbed:
+            transcript_for_takes = run.get("transcript") or []
+            if not transcript_for_takes:
+                raise HTTPException(
+                    status_code=400,
+                    detail="takes_already_scrubbed=true but run has no raw transcript",
+                )
+        else:
+            transcript_for_takes = scrubbed
+
+        from ...cutmaster.pipeline import _find_timeline_by_name
+        from ...resolve import _boilerplate  # lazy
+
+        try:
+            _, project, _ = _boilerplate()
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"Resolve unreachable: {exc}")
+
+        tl = _find_timeline_by_name(project, run["timeline_name"])
+        if tl is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"timeline '{run['timeline_name']}' not found (was it renamed?)",
+            )
+
+        items = read_items_on_track(tl, track_index=1)
+        if not items:
+            raise HTTPException(
+                status_code=400,
+                detail="timeline has no items on video track 1 — assembled mode needs takes",
+            )
+        per_item = split_transcript_per_item(transcript_for_takes, items)
+        takes = build_take_entries(items, per_item)
+
+        try:
+            assembled_plan = await asyncio.to_thread(
+                build_assembled_cut_plan, takes, preset, settings_dict
+            )
+        except Exception as exc:
+            log.exception("Assembled Director failed for run %s", body.run_id)
+            raise HTTPException(
+                status_code=500, detail=f"Assembled Director failed: {exc}"
+            )
+
+        selected_clips, hook_cut_index = expand_assembled_plan(assembled_plan, takes)
+        plan = DirectorPlan(
+            hook_index=hook_cut_index,
+            selected_clips=selected_clips,
+            reasoning=assembled_plan.reasoning,
         )
-    except Exception as exc:
-        log.exception("Director failed for run %s", body.run_id)
-        raise HTTPException(status_code=500, detail=f"Director agent failed: {exc}")
+    else:
+        # v1 raw-dump path — unchanged.
+        try:
+            plan = await asyncio.to_thread(
+                build_cut_plan, scrubbed, preset, settings_dict
+            )
+        except Exception as exc:
+            log.exception("Director failed for run %s", body.run_id)
+            raise HTTPException(status_code=500, detail=f"Director agent failed: {exc}")
 
-    # 2. Marker
+        from ...cutmaster.pipeline import _find_timeline_by_name
+        from ...resolve import _boilerplate  # lazy
+
+        try:
+            _, project, _ = _boilerplate()
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"Resolve unreachable: {exc}")
+
+        tl = _find_timeline_by_name(project, run["timeline_name"])
+        if tl is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"timeline '{run['timeline_name']}' not found (was it renamed?)",
+            )
+
+    # Marker agent runs against the flat CutSegment list in both modes.
     try:
         markers: MarkerPlan = await asyncio.to_thread(
             suggest_markers, plan, scrubbed, preset
@@ -323,31 +429,15 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         log.exception("Marker agent failed for run %s", body.run_id)
         raise HTTPException(status_code=500, detail=f"Marker agent failed: {exc}")
 
-    # 3. Resolve source frames (reads Resolve; does not mutate)
-    from ...cutmaster.pipeline import _find_timeline_by_name
-    from ...resolve import _boilerplate  # lazy
-
-    try:
-        _, project, _ = _boilerplate()
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Resolve unreachable: {exc}")
-
-    tl = _find_timeline_by_name(project, run["timeline_name"])
-    if tl is None:
-        raise HTTPException(
-            status_code=400,
-            detail=f"timeline '{run['timeline_name']}' not found (was it renamed?)",
-        )
-
+    # Resolve source frames — identical in both modes.
     try:
         resolved = await asyncio.to_thread(resolve_segments, tl, plan.selected_clips)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"source-frame mapping failed: {exc}")
 
-    # 4. Persist the plan onto the run state so /state/{id} and /execute see it
     run["plan"] = {
         "preset": body.preset,
-        "user_settings": body.user_settings.model_dump(),
+        "user_settings": settings_dict,
         "director": plan.model_dump(),
         "markers": markers.model_dump(),
         "resolved_segments": [r.model_dump() for r in resolved],

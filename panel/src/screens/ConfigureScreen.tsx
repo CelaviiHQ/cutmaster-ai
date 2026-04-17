@@ -188,6 +188,8 @@ export default function ConfigureScreen({
     const sourceMatchesTarget =
         source && source.recommended_format === currentFormat;
 
+    const assembledMode = (settings.timeline_mode ?? "raw_dump") === "assembled";
+
     return (
         <div>
             {rec && (
@@ -274,6 +276,61 @@ export default function ConfigureScreen({
                         ))}
                     </div>
                 </>
+            )}
+
+            {assembledMode && (
+                <div className="card">
+                    <h2>Assembled mode</h2>
+                    <p className="muted">
+                        Director will never cross take boundaries. Scrubbing
+                        happens inside each take; reordering whole takes is a
+                        separate switch.
+                    </p>
+                    <div className="row" style={{ marginTop: 6 }}>
+                        <label
+                            style={{
+                                display: "flex",
+                                gap: 6,
+                                alignItems: "center",
+                                margin: 0,
+                            }}
+                        >
+                            <input
+                                type="checkbox"
+                                checked={settings.reorder_allowed ?? true}
+                                onChange={(e) =>
+                                    onSettingsChange({
+                                        ...settings,
+                                        reorder_allowed: e.target.checked,
+                                    })
+                                }
+                            />
+                            Let the AI reorder takes for narrative flow
+                        </label>
+                    </div>
+                    <div className="row" style={{ marginTop: 6 }}>
+                        <label
+                            style={{
+                                display: "flex",
+                                gap: 6,
+                                alignItems: "center",
+                                margin: 0,
+                            }}
+                        >
+                            <input
+                                type="checkbox"
+                                checked={settings.takes_already_scrubbed ?? false}
+                                onChange={(e) =>
+                                    onSettingsChange({
+                                        ...settings,
+                                        takes_already_scrubbed: e.target.checked,
+                                    })
+                                }
+                            />
+                            Takes are already scrubbed — skip cleanup (use raw transcript)
+                        </label>
+                    </div>
+                </div>
             )}
 
             {excludeCats.length > 0 && (
