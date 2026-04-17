@@ -18,7 +18,6 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-
 log = logging.getLogger("celavii-resolve.cutmaster.state")
 
 RUN_ROOT = Path.home() / ".celavii" / "cutmaster"

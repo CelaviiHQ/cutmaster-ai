@@ -109,7 +109,11 @@ def validate_plan(plan: DirectorPlan, transcript: list[dict]) -> list[str]:
 
 
 def _user_settings_block(user_settings: dict | None) -> str:
-    """Render HIL settings as a markdown block the Director can consume."""
+    """Render HIL settings (length + themes) as a markdown block.
+
+    Exclusion categories and custom focus are rendered by dedicated helpers
+    below so the Director prompt can address them with stronger instructions.
+    """
     if not user_settings:
         return "(no user overrides — use preset defaults)"
     lines: list[str] = []
@@ -123,7 +127,65 @@ def _user_settings_block(user_settings: dict | None) -> str:
     return "\n".join(lines)
 
 
+def _exclude_block(
+    preset: PresetBundle,
+    user_settings: dict | None,
+) -> str:
+    """Render EXCLUDE CATEGORIES as a markdown block, or empty string.
+
+    Cross-references the keys the user ticked on the Configure screen
+    against the preset's declared category definitions so the Director
+    receives the full human description (not just the snake_case key).
+    Unknown keys are silently dropped — this is the wire contract between
+    the UI and the Director, not a place to surface UI bugs.
+    """
+    if not user_settings:
+        return ""
+    selected_keys = user_settings.get("exclude_categories") or []
+    if not selected_keys:
+        return ""
+
+    key_to_cat = {c.key: c for c in preset.exclude_categories}
+    rendered: list[str] = []
+    for key in selected_keys:
+        cat = key_to_cat.get(key)
+        if cat is None:
+            continue
+        rendered.append(f"- **{cat.label}** — {cat.description}")
+    if not rendered:
+        return ""
+
+    header = (
+        "EXCLUDE CATEGORIES — the editor has ticked these boxes. "
+        "Drop any block whose primary content falls into one of these "
+        "categories, even if the words are otherwise on-topic. When the "
+        "transcript briefly touches an excluded category inside an "
+        "otherwise valuable block, tighten the block's start/end around "
+        "the keep-worthy words rather than taking the whole block."
+    )
+    return f"{header}\n" + "\n".join(rendered)
+
+
+def _focus_block(user_settings: dict | None) -> str:
+    """Render USER FOCUS as a markdown block, or empty string."""
+    if not user_settings:
+        return ""
+    focus = (user_settings.get("custom_focus") or "").strip()
+    if not focus:
+        return ""
+    return (
+        "USER FOCUS — treat this as a soft priority: when two candidate "
+        "blocks compete for the same slot, prefer the one that serves "
+        "the focus. Do NOT force content in if the transcript doesn't "
+        f"support it.\n\"{focus}\""
+    )
+
+
 def _prompt(preset: PresetBundle, transcript: list[dict], user_settings: dict | None) -> str:
+    exclude = _exclude_block(preset, user_settings)
+    focus = _focus_block(user_settings)
+    optional_blocks = "\n\n".join(b for b in (exclude, focus) if b)
+    optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     return f"""You are a {preset.role}.
 
 You will receive a transcript array where each item has a `word`, `start_time`, and `end_time` in seconds. Your job is to select contiguous blocks of words that, when stitched together, form a compelling cut.
@@ -136,7 +198,7 @@ RULES — follow exactly:
 5. Blocks must be word-aligned and non-overlapping.
 
 USER SETTINGS
-{_user_settings_block(user_settings)}
+{_user_settings_block(user_settings)}{optional_section}
 
 TRANSCRIPT (JSON array):
 {json.dumps(transcript, separators=(",", ":"))}

@@ -2,12 +2,20 @@
 
 import type {
   BuildPlanResult,
+  FormatSpec,
   PresetBundle,
   PresetRecommendation,
   RunState,
   StoryAnalysis,
   UserSettings,
 } from "./types";
+
+export interface SourceAspectInfo {
+  width: number;
+  height: number;
+  aspect: number;
+  recommended_format: "horizontal" | "vertical_short" | "square";
+}
 
 /** All requests are same-origin in production (served from the Python app).
  *  In dev, Vite proxies /cutmaster/* and /ping to 127.0.0.1:8765. */
@@ -33,6 +41,12 @@ export const api = {
 
   listPresets: () =>
     http<{ presets: PresetBundle[] }>("/cutmaster/presets"),
+
+  listFormats: () =>
+    http<{ formats: FormatSpec[] }>("/cutmaster/formats"),
+
+  sourceAspect: (runId: string) =>
+    http<SourceAspectInfo>(`/cutmaster/source-aspect/${runId}`),
 
   analyze: (timelineName: string, preset: string) =>
     http<{ run_id: string; status: string }>("/cutmaster/analyze", {
@@ -86,6 +100,14 @@ export interface ExecuteResult {
   markers_skipped: Array<{ name?: string; original_at_s: number; reason: string }>;
   snapshot_path: string;
   snapshot_size_kb: number;
+  format?: { format: string; width: number; height: number; resolution_warning?: string };
+  captions?: {
+    enabled: boolean;
+    lines?: number;
+    path?: string | null;
+    subtitle_track?: { ok: boolean; method?: string; reason?: string; error?: string };
+  };
+  safe_zones?: { enabled: boolean; added?: number; reason?: string };
 }
 
 export interface DeleteCutResult {

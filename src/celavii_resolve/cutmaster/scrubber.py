@@ -13,7 +13,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
 # Sensible defaults — vlog-style.
 DEFAULT_FILLERS = frozenset({
     "um", "uh", "ah", "er", "erm", "uhh", "umm", "uhm",

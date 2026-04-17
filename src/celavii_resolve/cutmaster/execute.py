@@ -21,13 +21,16 @@ lands at different clock times).
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from ..resolve import _boilerplate
+from . import captions
+from .formats import FormatSpec, get_format
 from .pipeline import _find_timeline_by_name
 from .snapshot import snapshot_project
 from .subclips import append_subclips_with_ranges
-
+from .time_mapping import map_source_to_new_timeline, remap_words_to_new_timeline
 
 log = logging.getLogger("celavii-resolve.cutmaster.execute")
 
@@ -51,22 +54,111 @@ def _unique_timeline_name(project, base: str) -> str:
     return f"{base}_{n}"
 
 
-def _map_marker_to_new_timeline(
-    resolved: list[dict],
-    at_s: float,
-) -> float | None:
-    """Translate an original-timeline marker time to the NEW timeline time.
+def _apply_format(new_tl, spec: FormatSpec) -> dict[str, Any]:
+    """Set the cut timeline's resolution to the target format.
 
-    Returns the new-timeline position in seconds, or ``None`` if the marker
-    falls between selected segments (i.e. the editor cut that moment out).
+    Timelines inherit resolution from the project by default; we flip
+    ``useCustomSettings`` first so our width/height take effect without
+    touching project-wide settings (which would affect the source
+    timeline too). Per spec: Resolve's scripting API surface for these
+    keys is empirically validated — we tolerate failures so this phase
+    doesn't block on a per-build API quirk.
     """
-    running = 0.0
-    for piece in resolved:
-        piece_dur = piece["end_s"] - piece["start_s"]
-        if piece["start_s"] <= at_s <= piece["end_s"]:
-            return running + (at_s - piece["start_s"])
-        running += piece_dur
-    return None
+    result: dict[str, Any] = {
+        "format": spec.key,
+        "width": spec.width,
+        "height": spec.height,
+    }
+    try:
+        new_tl.SetSetting("useCustomSettings", "1")
+    except Exception as exc:  # pragma: no cover — Resolve edge case
+        log.info("execute: SetSetting useCustomSettings failed (%s)", exc)
+    try:
+        new_tl.SetSetting("timelineResolutionWidth", str(spec.width))
+        new_tl.SetSetting("timelineResolutionHeight", str(spec.height))
+    except Exception as exc:  # pragma: no cover — Resolve edge case
+        log.warning("execute: could not set timeline resolution (%s)", exc)
+        result["resolution_warning"] = str(exc)
+    return result
+
+
+def _write_captions_file(
+    kept_words: list[dict],
+    snapshot_path: str,
+) -> dict[str, Any]:
+    """Build caption lines from kept (already-remapped) words and write an SRT."""
+    if not kept_words:
+        return {"lines": 0, "path": None}
+    lines = captions.build_caption_lines(kept_words)
+    if not lines:
+        return {"lines": 0, "path": None}
+    srt_path = Path(snapshot_path).with_suffix(".srt")
+    captions.write_srt(lines, srt_path)
+    return {"lines": len(lines), "path": str(srt_path)}
+
+
+def _populate_subtitle_track(media_pool, new_tl, srt_path: str) -> dict[str, Any]:
+    """Best-effort: import the SRT and drop it onto a new subtitle track.
+
+    Resolve's scripting surface for subtitle tracks is inconsistent across
+    versions (20+ exposes ``ImportSubtitlesFromFile`` on some builds). We
+    try the most-likely method and report success/failure; a missing
+    subtitle track doesn't fail the whole run — the SRT on disk is the
+    authoritative artefact.
+    """
+    # Try to add a subtitle track so the import has somewhere to land.
+    try:
+        new_tl.AddTrack("subtitle")
+    except Exception as exc:  # pragma: no cover — API quirk
+        return {"ok": False, "reason": f"AddTrack('subtitle') raised: {exc}"}
+
+    for method_name in ("ImportSubtitlesFromFile", "ImportSubtitles"):
+        method = getattr(new_tl, method_name, None)
+        if callable(method):
+            try:
+                ok = method(srt_path)
+                return {"ok": bool(ok), "method": method_name}
+            except Exception as exc:  # pragma: no cover — API quirk
+                return {"ok": False, "method": method_name, "error": str(exc)}
+    return {
+        "ok": False,
+        "reason": "no ImportSubtitles* method on Timeline — SRT on disk is authoritative",
+    }
+
+
+def _drop_safe_zones(new_tl, spec: FormatSpec) -> dict[str, Any]:
+    """Drop platform-UI safe-zone guides. Best-effort, non-fatal.
+
+    Resolve's scripting API for inserting generators at specific positions
+    is version-dependent; we attempt ``InsertGeneratorIntoTimeline`` and
+    fall back to reporting skipped if the API doesn't cooperate. Full
+    implementation slated for the v2-10 manual spike once the correct
+    method signatures are confirmed against a live Resolve install.
+    """
+    zones = spec.safe_zones
+    if all(
+        pct <= 0
+        for pct in (
+            zones.top_pct,
+            zones.bottom_pct,
+            zones.left_pct,
+            zones.right_pct,
+        )
+    ):
+        return {"added": 0, "reason": "format declares no safe zones"}
+    insert = getattr(new_tl, "InsertGeneratorIntoTimeline", None)
+    if not callable(insert):
+        return {
+            "added": 0,
+            "reason": "InsertGeneratorIntoTimeline unavailable — manual spike pending",
+        }
+    # Placeholder: we know which zones to cover but the generator needs
+    # explicit size + position parameters that are not uniformly exposed
+    # across Resolve versions. Track as v2-10 follow-up.
+    return {
+        "added": 0,
+        "reason": "safe-zone generator placement requires Resolve-version spike",
+    }
 
 
 def execute_plan(run: dict) -> dict:
@@ -83,6 +175,15 @@ def execute_plan(run: dict) -> dict:
         raise ExecuteError("plan has no resolved_segments")
 
     markers: list[dict] = (plan.get("markers") or {}).get("markers") or []
+    user_settings: dict = plan.get("user_settings") or {}
+
+    # v2-10 fields, all optional — fall back to v1 defaults.
+    try:
+        fmt_spec = get_format(user_settings.get("format") or "horizontal")
+    except KeyError:
+        fmt_spec = get_format("horizontal")
+    captions_enabled = bool(user_settings.get("captions_enabled"))
+    safe_zones_enabled = bool(user_settings.get("safe_zones_enabled"))
 
     resolve, project, media_pool = _boilerplate()
 
@@ -115,6 +216,10 @@ def execute_plan(run: dict) -> dict:
             f"New timeline fps {new_fps} does not match source {source_fps}. "
             "Set Project Settings → Timeline frame rate to match and retry."
         )
+
+    # 3a. Format-specific sizing (v2-10). Applied before append so clips
+    # land into a frame of the intended aspect.
+    format_info = _apply_format(new_tl, fmt_spec)
     project.SetCurrentTimeline(new_tl)
 
     # 4. Append segments in order — linked audio follows by default
@@ -147,7 +252,7 @@ def execute_plan(run: dict) -> dict:
 
     for marker in markers:
         at_s = float(marker.get("at_s", 0.0))
-        new_pos_s = _map_marker_to_new_timeline(resolved, at_s)
+        new_pos_s = map_source_to_new_timeline(resolved, at_s)
         if new_pos_s is None:
             markers_skipped.append({
                 "name": marker.get("name"),
@@ -174,6 +279,23 @@ def execute_plan(run: dict) -> dict:
                 "reason": "AddMarker returned False (duplicate frame?)",
             })
 
+    # 6. Captions (v2-10). Build caption lines from the scrubbed transcript
+    # restricted to words that survived the cut, then write an SRT next to
+    # the snapshot + best-effort populate a subtitle track.
+    caption_info: dict[str, Any] = {"enabled": captions_enabled}
+    if captions_enabled:
+        kept_words = remap_words_to_new_timeline(run.get("scrubbed") or [], resolved)
+        caption_info.update(_write_captions_file(kept_words, snap["path"]))
+        if caption_info.get("path"):
+            caption_info["subtitle_track"] = _populate_subtitle_track(
+                media_pool, new_tl, caption_info["path"]
+            )
+
+    # 7. Safe-zone guides (v2-10). Opt-in; no-ops on horizontal format.
+    safe_zone_info: dict[str, Any] = {"enabled": safe_zones_enabled}
+    if safe_zones_enabled:
+        safe_zone_info.update(_drop_safe_zones(new_tl, fmt_spec))
+
     return {
         "new_timeline_name": new_name,
         "appended": append_result["appended"],
@@ -182,4 +304,7 @@ def execute_plan(run: dict) -> dict:
         "markers_skipped": markers_skipped,
         "snapshot_path": snap["path"],
         "snapshot_size_kb": snap["size_kb"],
+        "format": format_info,
+        "captions": caption_info,
+        "safe_zones": safe_zone_info,
     }

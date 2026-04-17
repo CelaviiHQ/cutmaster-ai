@@ -20,13 +20,6 @@ def test_errors_imports():
     from celavii_resolve.errors import (
         ResolveError,
         ResolveNotRunning,
-        ProjectNotOpen,
-        TimelineNotFound,
-        BinNotFound,
-        ClipNotFound,
-        ItemNotFound,
-        StudioRequired,
-        RenderError,
         safe_resolve_call,
     )
     assert issubclass(ResolveNotRunning, ResolveError)
@@ -35,11 +28,10 @@ def test_errors_imports():
 
 def test_constants_imports():
     from celavii_resolve.constants import (
-        MARKER_COLORS,
-        CLIP_COLORS,
-        TRACK_TYPES,
-        PAGES,
         COMPOSITE_MODES,
+        MARKER_COLORS,
+        PAGES,
+        TRACK_TYPES,
     )
     assert "Blue" in MARKER_COLORS
     assert "video" in TRACK_TYPES
@@ -49,14 +41,8 @@ def test_constants_imports():
 
 def test_resolve_helpers_import():
     from celavii_resolve.resolve import (
-        get_resolve,
         _boilerplate,
-        _find_bin,
-        _enumerate_bins,
-        _collect_clips_recursive,
-        _resolve_safe_dir,
-        _validate_path_within,
-        is_studio,
+        get_resolve,
     )
     assert callable(get_resolve)
     assert callable(_boilerplate)

@@ -36,6 +36,11 @@ export default function App() {
     const [userSettings, setUserSettings] = useState<UserSettings>({
         target_length_s: null,
         themes: [],
+        exclude_categories: [],
+        custom_focus: null,
+        format: "horizontal",
+        captions_enabled: false,
+        safe_zones_enabled: false,
     });
     const [backendOk, setBackendOk] = useState<boolean | null>(null);
     const [resume, setResume] = useState<ResumeInfo | null>(null);
@@ -87,7 +92,15 @@ export default function App() {
         setStep("preset");
         setRunId(null);
         setResume(null);
-        setUserSettings({ target_length_s: null, themes: [] });
+        setUserSettings({
+            target_length_s: null,
+            themes: [],
+            exclude_categories: [],
+            custom_focus: null,
+            format: "horizontal",
+            captions_enabled: false,
+            safe_zones_enabled: false,
+        });
     };
 
     const acceptResume = () => {

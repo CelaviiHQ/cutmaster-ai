@@ -10,6 +10,13 @@ export type PresetKey =
   | "reaction"
   | "auto";
 
+export interface ExcludeCategory {
+  key: string;
+  label: string;
+  description: string;
+  checked_by_default: boolean;
+}
+
 export interface PresetBundle {
   key: PresetKey;
   label: string;
@@ -20,6 +27,8 @@ export interface PresetBundle {
   marker_vocabulary: string[];
   theme_axes: string[];
   scrub_defaults: Record<string, unknown>;
+  exclude_categories: ExcludeCategory[];
+  default_custom_focus_placeholder: string;
 }
 
 export interface TranscriptWord {
@@ -101,10 +110,34 @@ export interface BuildPlanResult {
   resolved_segments: ResolvedCutSegment[];
 }
 
+export type FormatKey = "horizontal" | "vertical_short" | "square";
+
+export interface SafeZones {
+  top_pct: number;
+  bottom_pct: number;
+  left_pct: number;
+  right_pct: number;
+}
+
+export interface FormatSpec {
+  key: FormatKey;
+  label: string;
+  width: number;
+  height: number;
+  max_duration_s: number | null;
+  safe_zones: SafeZones;
+  reframe_default: "center_crop" | "smart_reframe" | "none";
+}
+
 export interface UserSettings {
   target_length_s: number | null;
   themes: string[];
   scrub_params?: Record<string, unknown> | null;
+  exclude_categories?: string[];
+  custom_focus?: string | null;
+  format?: FormatKey;
+  captions_enabled?: boolean;
+  safe_zones_enabled?: boolean;
 }
 
 export interface ScrubParams {

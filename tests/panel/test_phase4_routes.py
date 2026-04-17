@@ -61,6 +61,84 @@ def test_list_presets(client: TestClient):
             "tutorial", "podcast", "reaction"} <= set(keys)
 
 
+def test_list_formats(client: TestClient):
+    r = client.get("/cutmaster/formats")
+    assert r.status_code == 200
+    keys = [f["key"] for f in r.json()["formats"]]
+    assert keys == ["horizontal", "vertical_short", "square"]
+    # Shape check for the Configure screen's length-clamp logic.
+    for f in r.json()["formats"]:
+        assert "width" in f and "height" in f
+        assert "safe_zones" in f
+
+
+def test_build_plan_accepts_and_persists_v2_10_format_fields(
+    client, monkeypatch, scrubbed_run,
+):
+    """v2-10 adds `format` / `captions_enabled` / `safe_zones_enabled` to
+    UserSettings. The route must accept them, validate `format` as a
+    Literal, and round-trip them through persisted state."""
+    plan = DirectorPlan(
+        hook_index=0,
+        selected_clips=[CutSegment(start_s=0.0, end_s=0.95, reason="hook")],
+        reasoning="ok",
+    )
+    monkeypatch.setattr(routes, "build_cut_plan", lambda *_a, **_k: plan)
+    monkeypatch.setattr(routes, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+
+    fake_tl = MagicMock()
+    fake_tl.GetSetting.return_value = "24"
+
+    def fake_boilerplate():
+        return MagicMock(), MagicMock(), MagicMock()
+
+    import celavii_resolve.cutmaster.pipeline as pipeline_mod
+    import celavii_resolve.resolve as resolve_mod
+
+    monkeypatch.setattr(resolve_mod, "_boilerplate", fake_boilerplate)
+    monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl)
+    monkeypatch.setattr(routes, "resolve_segments", lambda _tl, _segs: [])
+
+    r = client.post(
+        "/cutmaster/build-plan",
+        json={
+            "run_id": scrubbed_run["run_id"],
+            "preset": "vlog",
+            "user_settings": {
+                "target_length_s": 60,
+                "themes": [],
+                "format": "vertical_short",
+                "captions_enabled": True,
+                "safe_zones_enabled": True,
+            },
+        },
+    )
+    assert r.status_code == 200, r.text
+
+    persisted = state.load(scrubbed_run["run_id"])
+    saved = persisted["plan"]["user_settings"]
+    assert saved["format"] == "vertical_short"
+    assert saved["captions_enabled"] is True
+    assert saved["safe_zones_enabled"] is True
+
+
+def test_build_plan_rejects_unknown_format(client, monkeypatch, scrubbed_run):
+    """Pydantic's Literal guard should 422 on an invalid format key."""
+    r = client.post(
+        "/cutmaster/build-plan",
+        json={
+            "run_id": scrubbed_run["run_id"],
+            "preset": "vlog",
+            "user_settings": {
+                "target_length_s": 60,
+                "themes": [],
+                "format": "ultrawide",  # not a valid key
+            },
+        },
+    )
+    assert r.status_code == 422
+
+
 def test_detect_preset(client: TestClient, scrubbed_run, monkeypatch):
     recommendation = PresetRecommendation(
         preset="vlog", confidence=0.85, reasoning="energy + first-person"
@@ -181,3 +259,95 @@ def test_build_plan(client: TestClient, scrubbed_run, monkeypatch):
     # Plan persists on the run state
     persisted = state.load(scrubbed_run["run_id"])
     assert persisted["plan"]["preset"] == "vlog"
+
+
+def test_build_plan_accepts_v2_fields_additively(client, monkeypatch, scrubbed_run):
+    """v2-0 adds exclude_categories + custom_focus to UserSettings.
+    The route must accept them and round-trip them through persisted state
+    without requiring any pipeline wiring yet (that lands in v2-1).
+    """
+    # Minimal mocks — we only assert the new fields are accepted + persisted.
+    plan = DirectorPlan(
+        hook_index=0,
+        selected_clips=[CutSegment(start_s=0.0, end_s=0.95, reason="hook")],
+        reasoning="one beat",
+    )
+    monkeypatch.setattr(routes, "build_cut_plan", lambda *_a, **_k: plan)
+    monkeypatch.setattr(
+        routes,
+        "suggest_markers",
+        lambda *_a, **_k: MarkerPlan(markers=[]),
+    )
+
+    fake_tl = MagicMock()
+    fake_tl.GetSetting.return_value = "24"
+
+    def fake_boilerplate():
+        return MagicMock(), MagicMock(), MagicMock()
+
+    import celavii_resolve.cutmaster.pipeline as pipeline_mod
+    import celavii_resolve.resolve as resolve_mod
+
+    monkeypatch.setattr(resolve_mod, "_boilerplate", fake_boilerplate)
+    monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl)
+    monkeypatch.setattr(routes, "resolve_segments", lambda _tl, _segs: [])
+
+    r = client.post(
+        "/cutmaster/build-plan",
+        json={
+            "run_id": scrubbed_run["run_id"],
+            "preset": "wedding",
+            "user_settings": {
+                "target_length_s": 120,
+                "themes": [],
+                "exclude_categories": ["vendor_mentions", "mc_talking"],
+                "custom_focus": "emphasise the vows",
+            },
+        },
+    )
+    assert r.status_code == 200, r.text
+
+    persisted = state.load(scrubbed_run["run_id"])
+    saved_settings = persisted["plan"]["user_settings"]
+    assert saved_settings["exclude_categories"] == ["vendor_mentions", "mc_talking"]
+    assert saved_settings["custom_focus"] == "emphasise the vows"
+
+
+def test_build_plan_omitted_v2_fields_use_safe_defaults(client, monkeypatch, scrubbed_run):
+    """v1 clients don't send exclude_categories / custom_focus. Route must
+    accept the old payload shape unchanged (defaults fill in)."""
+    plan = DirectorPlan(
+        hook_index=0,
+        selected_clips=[CutSegment(start_s=0.0, end_s=0.95, reason="hook")],
+        reasoning="ok",
+    )
+    monkeypatch.setattr(routes, "build_cut_plan", lambda *_a, **_k: plan)
+    monkeypatch.setattr(routes, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+
+    fake_tl = MagicMock()
+    fake_tl.GetSetting.return_value = "24"
+
+    def fake_boilerplate():
+        return MagicMock(), MagicMock(), MagicMock()
+
+    import celavii_resolve.cutmaster.pipeline as pipeline_mod
+    import celavii_resolve.resolve as resolve_mod
+
+    monkeypatch.setattr(resolve_mod, "_boilerplate", fake_boilerplate)
+    monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl)
+    monkeypatch.setattr(routes, "resolve_segments", lambda _tl, _segs: [])
+
+    r = client.post(
+        "/cutmaster/build-plan",
+        json={
+            "run_id": scrubbed_run["run_id"],
+            "preset": "vlog",
+            "user_settings": {"target_length_s": 60, "themes": []},
+        },
+    )
+    assert r.status_code == 200, r.text
+
+    persisted = state.load(scrubbed_run["run_id"])
+    saved_settings = persisted["plan"]["user_settings"]
+    assert saved_settings["exclude_categories"] == []
+    assert saved_settings["custom_focus"] is None

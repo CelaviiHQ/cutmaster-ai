@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { ExecuteResult } from "../api";
-import type { BuildPlanResult, PresetKey, UserSettings } from "../types";
+import type {
+    BuildPlanResult,
+    PresetBundle,
+    PresetKey,
+    UserSettings,
+} from "../types";
 
 interface Props {
     runId: string;
@@ -19,6 +24,7 @@ export default function ReviewScreen({
     onReset,
 }: Props) {
     const [plan, setPlan] = useState<BuildPlanResult | null>(null);
+    const [bundle, setBundle] = useState<PresetBundle | null>(null);
     const [loading, setLoading] = useState(true);
     const [err, setErr] = useState<string | null>(null);
     const [building, setBuilding] = useState(false);
@@ -32,8 +38,15 @@ export default function ReviewScreen({
             setLoading(true);
             setErr(null);
             try {
-                const p = await api.buildPlan(runId, preset, settings);
-                if (!cancelled) setPlan(p);
+                const [p, presetList] = await Promise.all([
+                    api.buildPlan(runId, preset, settings),
+                    api.listPresets().catch(() => ({ presets: [] })),
+                ]);
+                if (cancelled) return;
+                setPlan(p);
+                setBundle(
+                    presetList.presets.find((b) => b.key === preset) ?? null,
+                );
             } catch (e) {
                 if (!cancelled) setErr(String(e));
             } finally {
@@ -75,6 +88,17 @@ export default function ReviewScreen({
         0,
     );
 
+    const appliedExcludes = plan.user_settings.exclude_categories ?? [];
+    const appliedFocus = plan.user_settings.custom_focus ?? null;
+    const excludeLabels = bundle
+        ? appliedExcludes
+              .map(
+                  (key) =>
+                      bundle.exclude_categories.find((c) => c.key === key)?.label ??
+                      key,
+              )
+        : appliedExcludes;
+
     return (
         <div>
             <div className="card">
@@ -86,6 +110,20 @@ export default function ReviewScreen({
                 </p>
                 {plan.director.reasoning && (
                     <p className="muted">{plan.director.reasoning}</p>
+                )}
+                {(excludeLabels.length > 0 || appliedFocus) && (
+                    <p className="muted" style={{ marginTop: 8 }}>
+                        {excludeLabels.length > 0 && (
+                            <>
+                                Applied exclusions ({excludeLabels.length}):{" "}
+                                {excludeLabels.join(", ")}
+                            </>
+                        )}
+                        {excludeLabels.length > 0 && appliedFocus && " · "}
+                        {appliedFocus && (
+                            <>Focus: &ldquo;{appliedFocus}&rdquo;</>
+                        )}
+                    </p>
                 )}
             </div>
 
@@ -172,6 +210,47 @@ export default function ReviewScreen({
                             <> · {buildResult.markers_skipped.length} skipped (cut out)</>
                         )}
                     </p>
+                    {buildResult.format && (
+                        <p className="muted">
+                            Format: <code>{buildResult.format.format}</code>
+                            &nbsp;· {buildResult.format.width}×{buildResult.format.height}
+                            {buildResult.format.resolution_warning && (
+                                <span style={{ color: "var(--warn)" }}>
+                                    {" "}
+                                    · resolution apply warning: {buildResult.format.resolution_warning}
+                                </span>
+                            )}
+                        </p>
+                    )}
+                    {buildResult.captions?.enabled && (
+                        <p className="muted">
+                            Captions: {buildResult.captions.lines ?? 0} line(s)
+                            {buildResult.captions.path && (
+                                <>
+                                    {" "}
+                                    · SRT at <code>{buildResult.captions.path}</code>
+                                </>
+                            )}
+                            {buildResult.captions.subtitle_track &&
+                                !buildResult.captions.subtitle_track.ok && (
+                                    <span style={{ color: "var(--warn)" }}>
+                                        {" "}
+                                        · subtitle track not populated (
+                                        {buildResult.captions.subtitle_track.reason ??
+                                            buildResult.captions.subtitle_track.error ??
+                                            "unknown"}
+                                        )
+                                    </span>
+                                )}
+                        </p>
+                    )}
+                    {buildResult.safe_zones?.enabled &&
+                        buildResult.safe_zones.added === 0 &&
+                        buildResult.safe_zones.reason && (
+                            <p className="muted" style={{ color: "var(--warn)" }}>
+                                Safe-zone guides skipped: {buildResult.safe_zones.reason}
+                            </p>
+                        )}
                     <p className="muted">
                         Snapshot: <code>{buildResult.snapshot_path}</code>&nbsp;
                         ({buildResult.snapshot_size_kb.toFixed(1)} KB)

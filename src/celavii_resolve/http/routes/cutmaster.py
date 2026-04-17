@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -20,12 +21,12 @@ from ...cutmaster import state
 from ...cutmaster import themes as themes_mod
 from ...cutmaster.director import DirectorPlan, build_cut_plan
 from ...cutmaster.execute import ExecuteError, execute_plan
+from ...cutmaster.formats import all_formats
 from ...cutmaster.marker_agent import MarkerPlan, suggest_markers
 from ...cutmaster.pipeline import run_analyze
 from ...cutmaster.presets import PRESETS, all_presets, get_preset
 from ...cutmaster.resolve_segments import resolve_segments
 from ...cutmaster.scrubber import ScrubParams
-
 
 log = logging.getLogger("celavii-resolve.http.cutmaster")
 
@@ -105,7 +106,7 @@ async def events(run_id: str):
         while True:
             try:
                 event = await asyncio.wait_for(queue.get(), timeout=300.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 yield {"event": "keepalive", "data": "{}"}
                 continue
 
@@ -138,6 +139,76 @@ async def get_state(run_id: str) -> dict:
 async def list_presets() -> dict:
     """List all preset bundles (metadata only — useful for the panel's picker)."""
     return {"presets": [p.model_dump() for p in all_presets()]}
+
+
+@router.get("/formats")
+async def list_formats() -> dict:
+    """List all output-format specs (horizontal / vertical_short / square)."""
+    return {"formats": [f.model_dump() for f in all_formats()]}
+
+
+class SourceAspectResponse(BaseModel):
+    width: int
+    height: int
+    aspect: float
+    recommended_format: str
+
+
+@router.get("/source-aspect/{run_id}", response_model=SourceAspectResponse)
+async def source_aspect(run_id: str) -> SourceAspectResponse:
+    """Read the source timeline's pixel dimensions and recommend a Format.
+
+    Used by the Configure screen to preselect the Format picker and to
+    suppress the aspect-mismatch reframe when source and target already
+    match (e.g. a 9:16 phone vlog into a Short).
+    """
+    run = state.load(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"run {run_id} not found")
+
+    from ...cutmaster.formats import recommend_format
+    from ...cutmaster.pipeline import _find_timeline_by_name
+    from ...resolve import _boilerplate  # lazy — avoids import-time Resolve dependency
+
+    try:
+        _, project, _ = _boilerplate()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Resolve unreachable: {exc}")
+
+    tl = _find_timeline_by_name(project, run["timeline_name"])
+    if tl is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"timeline '{run['timeline_name']}' not found",
+        )
+
+    # Resolve timelines expose pixel dims through GetSetting; fall back to
+    # project-level settings if the timeline inherits ("useCustomSettings"=0).
+    def _read_int(obj, key: str) -> int:
+        try:
+            v = obj.GetSetting(key)
+        except Exception:
+            return 0
+        try:
+            return int(v) if v else 0
+        except (TypeError, ValueError):
+            return 0
+
+    w = _read_int(tl, "timelineResolutionWidth") or _read_int(project, "timelineResolutionWidth")
+    h = _read_int(tl, "timelineResolutionHeight") or _read_int(project, "timelineResolutionHeight")
+    if w <= 0 or h <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="could not read timeline resolution — check Project Settings",
+        )
+
+    rec = recommend_format(w, h)
+    return SourceAspectResponse(
+        width=w,
+        height=h,
+        aspect=w / h,
+        recommended_format=rec.key,
+    )
 
 
 def _require_scrubbed(run_id: str) -> tuple[dict, list[dict]]:
@@ -186,6 +257,34 @@ class UserSettings(BaseModel):
     target_length_s: int | None = None
     themes: list[str] = []
     scrub_params: ScrubParams | None = None
+    # v2-0 groundwork: content-category exclusion + free-text focus.
+    # The Director prompt wiring lands in v2-1; these fields are accepted
+    # and round-tripped through state now so older clients (v1 panel) keep
+    # working and newer clients can start sending them.
+    exclude_categories: list[str] = Field(
+        default_factory=list,
+        description="Preset-defined ExcludeCategory.key values the user has ticked.",
+    )
+    custom_focus: str | None = Field(
+        default=None,
+        description="Free-text focus hint fed to the Director in v2-1.",
+    )
+    # v2-10: output format adaptation. Defaults to horizontal so v1 clients
+    # and first-time users get their existing behaviour. The execute step
+    # consumes this to set the new timeline's resolution and drive caption
+    # + crop handling.
+    format: Literal["horizontal", "vertical_short", "square"] = Field(
+        default="horizontal",
+        description="Output format key.",
+    )
+    captions_enabled: bool = Field(
+        default=False,
+        description="When true, execute writes an SRT next to the snapshot and populates a subtitle track.",
+    )
+    safe_zones_enabled: bool = Field(
+        default=False,
+        description="When true and format is non-horizontal, execute drops platform-UI safe-zone guides on V2.",
+    )
 
 
 class BuildPlanRequest(BaseModel):
@@ -225,8 +324,8 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         raise HTTPException(status_code=500, detail=f"Marker agent failed: {exc}")
 
     # 3. Resolve source frames (reads Resolve; does not mutate)
-    from ...resolve import _boilerplate  # lazy
     from ...cutmaster.pipeline import _find_timeline_by_name
+    from ...resolve import _boilerplate  # lazy
 
     try:
         _, project, _ = _boilerplate()

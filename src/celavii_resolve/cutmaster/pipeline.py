@@ -15,7 +15,6 @@ from pathlib import Path
 from . import state
 from .scrubber import ScrubParams, scrub
 
-
 log = logging.getLogger("celavii-resolve.cutmaster.pipeline")
 
 

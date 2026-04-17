@@ -1,8 +1,8 @@
 """Unit tests for cutmaster.execute — marker mapping + name collision, no Resolve."""
 
-from celavii_resolve.cutmaster.execute import (
-    _map_marker_to_new_timeline,
-    _unique_timeline_name,
+from celavii_resolve.cutmaster.execute import _unique_timeline_name
+from celavii_resolve.cutmaster.time_mapping import (
+    map_source_to_new_timeline as _map_marker_to_new_timeline,
 )
 
 

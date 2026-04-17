@@ -132,7 +132,7 @@ class TestConstants:
     def test_track_types(self):
         from celavii_resolve.constants import TRACK_TYPES
 
-        assert TRACK_TYPES == {"video", "audio", "subtitle"}
+        assert {"video", "audio", "subtitle"} == TRACK_TYPES
 
     def test_pages(self):
         from celavii_resolve.constants import PAGES
@@ -179,7 +179,7 @@ class TestConstants:
     def test_version_types(self):
         from celavii_resolve.constants import VERSION_TYPES
 
-        assert VERSION_TYPES == {"local", "remote"}
+        assert {"local", "remote"} == VERSION_TYPES
 
     def test_node_cache_modes(self):
         from celavii_resolve.constants import NODE_CACHE_MODES

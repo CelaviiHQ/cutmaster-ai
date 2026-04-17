@@ -13,12 +13,12 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Callable, TypeVar
+from collections.abc import Callable
+from typing import TypeVar
 
 from pydantic import BaseModel
 
 from ..config import get_gemini_client
-
 
 log = logging.getLogger("celavii-resolve.cutmaster.llm")
 

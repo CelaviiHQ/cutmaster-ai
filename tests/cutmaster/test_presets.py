@@ -4,7 +4,6 @@ import pytest
 
 from celavii_resolve.cutmaster.presets import PRESETS, all_presets, get_preset
 
-
 EXPECTED = {"vlog", "product_demo", "wedding", "interview", "tutorial", "podcast", "reaction"}
 
 

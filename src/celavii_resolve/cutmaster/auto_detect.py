@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field
 from . import llm
 from .presets import PRESETS, Preset
 
-
 WINDOW_SECONDS = 300.0  # analyse the first 5 min
 
 

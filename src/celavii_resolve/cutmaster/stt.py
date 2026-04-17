@@ -17,7 +17,6 @@ from pydantic import BaseModel, Field
 
 from ..config import get_gemini_client
 
-
 log = logging.getLogger("celavii-resolve.cutmaster.stt")
 
 DEFAULT_MODEL = os.environ.get("CELAVII_STT_MODEL", "gemini-3.1-flash-lite-preview")

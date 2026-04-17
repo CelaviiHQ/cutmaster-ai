@@ -18,7 +18,6 @@ from ..config import mcp
 from ..errors import safe_resolve_call
 from ..resolve import _boilerplate
 
-
 DEFAULT_SNAPSHOT_DIR = Path.home() / "Documents" / "celavii-snapshots"
 
 
