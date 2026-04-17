@@ -14,6 +14,7 @@ PACKAGE_DIR = Path(__file__).resolve().parent.parent / "src" / "celavii_resolve"
 TOOLS_DIR = PACKAGE_DIR / "tools"
 WORKFLOWS_DIR = PACKAGE_DIR / "workflows"
 AI_DIR = PACKAGE_DIR / "ai"
+CUTMASTER_DIR = PACKAGE_DIR / "cutmaster"
 TOOL_MODULES = [
     "celavii_resolve.tools.project",
     "celavii_resolve.tools.media_storage",
@@ -36,9 +37,20 @@ TOOL_MODULES = [
     "celavii_resolve.workflows.delivery",
     "celavii_resolve.workflows.conform",
     "celavii_resolve.workflows.grade",
+    "celavii_resolve.workflows.chroma_key",
     "celavii_resolve.ai.vision",
     "celavii_resolve.ai.color_assist",
     "celavii_resolve.ai.timeline_critique",
+    "celavii_resolve.cutmaster.frame_math",
+    "celavii_resolve.cutmaster.source_mapper",
+    "celavii_resolve.cutmaster.subclips",
+    "celavii_resolve.cutmaster.ffmpeg_audio",
+    "celavii_resolve.cutmaster.vfr",
+    "celavii_resolve.cutmaster.snapshot",
+    "celavii_resolve.cutmaster.state",
+    "celavii_resolve.cutmaster.stt",
+    "celavii_resolve.cutmaster.scrubber",
+    "celavii_resolve.cutmaster.pipeline",
 ]
 
 
@@ -50,6 +62,7 @@ def _collect_tool_functions() -> list[tuple[str, str]]:
         (TOOLS_DIR, "celavii_resolve.tools"),
         (WORKFLOWS_DIR, "celavii_resolve.workflows"),
         (AI_DIR, "celavii_resolve.ai"),
+        (CUTMASTER_DIR, "celavii_resolve.cutmaster"),
     ]
     for scan_dir, module_prefix in scan_dirs:
         for py_file in scan_dir.glob("*.py"):
@@ -153,7 +166,12 @@ class TestModuleCoverage:
             for f in AI_DIR.glob("*.py")
             if f.name != "__init__.py"
         }
-        all_files = tool_files | workflow_files | ai_files
+        cutmaster_files = {
+            f"celavii_resolve.cutmaster.{f.stem}"
+            for f in CUTMASTER_DIR.glob("*.py")
+            if f.name != "__init__.py"
+        }
+        all_files = tool_files | workflow_files | ai_files | cutmaster_files
         imported = set(TOOL_MODULES)
         missing = all_files - imported
         assert not missing, f"Module files not imported in tests: {missing}"

@@ -37,5 +37,15 @@ from .workflows import chroma_key  # noqa: F401, E402
 from .ai import vision  # noqa: F401, E402
 from .ai import color_assist  # noqa: F401, E402
 from .ai import timeline_critique  # noqa: F401, E402
+from .cutmaster import frame_math  # noqa: F401, E402
+from .cutmaster import source_mapper  # noqa: F401, E402
+from .cutmaster import subclips  # noqa: F401, E402
+from .cutmaster import ffmpeg_audio  # noqa: F401, E402
+from .cutmaster import vfr  # noqa: F401, E402
+from .cutmaster import snapshot  # noqa: F401, E402
+from .cutmaster import state as cutmaster_state  # noqa: F401, E402
+from .cutmaster import stt  # noqa: F401, E402
+from .cutmaster import scrubber  # noqa: F401, E402
+from .cutmaster import pipeline  # noqa: F401, E402
 from . import lut_registry  # noqa: F401, E402
 from . import resources  # noqa: F401, E402

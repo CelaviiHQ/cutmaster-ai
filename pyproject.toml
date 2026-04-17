@@ -36,8 +36,14 @@ interchange = [
     "opentimelineio>=0.18.1",
     "otio-fcp-adapter>=1.0.0",
 ]
+panel = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sse-starlette>=2.0",
+    "anthropic>=0.40",
+]
 all = [
-    "celavii-resolve[ai,interchange]",
+    "celavii-resolve[ai,interchange,panel]",
 ]
 dev = [
     "ruff>=0.9.0",
@@ -47,6 +53,7 @@ dev = [
 
 [project.scripts]
 celavii-resolve = "celavii_resolve:main"
+celavii-resolve-panel = "celavii_resolve.http.app:main"
 
 [project.urls]
 Homepage = "https://github.com/CelaviiHQ/celavii-davinci-resolve-mcp"

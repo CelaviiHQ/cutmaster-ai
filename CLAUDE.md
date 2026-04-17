@@ -18,8 +18,19 @@ src/celavii_resolve/
 ├── tools/            Modular tool files — one per domain
 ├── workflows/        Compound workflow tools (multi-step operations)
 ├── ai/               AI-powered tools (Gemini vision, color assist)
+├── cutmaster/        CutMaster AI primitives (frame math, source mapping, ffmpeg audio, VFR, snapshot)
+├── http/             FastAPI backend for the CutMaster React panel (optional)
 └── utils/            Platform detection, path safety, serialisation
 ```
+
+## Two consumers, one codebase
+
+| Entry point | Transport | Consumer | Install |
+|---|---|---|---|
+| `celavii-resolve` | MCP stdio | Claude Code / Desktop | `pip install celavii-resolve` |
+| `celavii-resolve-panel` | HTTP on `127.0.0.1:8765` | React Workflow Integration panel | `pip install 'celavii-resolve[panel]'` |
+
+Both call the same underlying Resolve logic. Every tool function under `cutmaster/` exposes a **plain Python function** (callable from `http/`) and a thin `@mcp.tool` wrapper (callable over MCP). When adding a new primitive that both consumers need, keep the business logic in the plain function and make the `@mcp.tool` a thin adapter.
 
 ## Adding a New Tool
 
@@ -63,8 +74,13 @@ Use conventional format:
 ## Running
 
 ```bash
-# Development
+# MCP stdio server (Claude Code / Desktop)
 uv run python -m celavii_resolve
+
+# Panel HTTP server (React Workflow Integration)
+uv run celavii-resolve-panel
+# → http://127.0.0.1:8765/ping
+# Override via CELAVII_PANEL_HOST / CELAVII_PANEL_PORT
 
 # Tests
 uv run pytest tests/ -v

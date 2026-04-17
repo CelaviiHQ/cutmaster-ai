@@ -1,0 +1,196 @@
+"""CutMaster analyze pipeline — VFR check → audio extract → STT → scrub.
+
+Runs as an asyncio background task. Each stage emits an event to the run's
+queue (for live SSE) and persists to disk (for restart-tolerant state).
+
+Phase 3 scope: analyze only. Director + Marker agents arrive in Phase 4.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from pathlib import Path
+
+from . import state
+from .scrubber import ScrubParams, scrub
+
+
+log = logging.getLogger("celavii-resolve.cutmaster.pipeline")
+
+
+def _find_timeline_by_name(project, name: str):
+    for i in range(1, project.GetTimelineCount() + 1):
+        t = project.GetTimelineByIndex(i)
+        if t and t.GetName() == name:
+            return t
+    return None
+
+
+async def _vfr_check(tl, run, emit) -> bool:
+    """Scan all V1 source files for VFR. Returns True on pass."""
+    await emit(run, stage="vfr_check", status="started",
+               message="Checking source media for variable frame rate")
+
+    from .vfr import detect_vfr  # lazy — avoids ffprobe requirement at import
+
+    items = tl.GetItemListInTrack("video", 1) or []
+    seen: set[str] = set()
+    problems: list[dict] = []
+    for item in items:
+        mp_item = item.GetMediaPoolItem()
+        if not mp_item:
+            continue
+        src = mp_item.GetClipProperty("File Path")
+        if not src or src in seen:
+            continue
+        seen.add(src)
+        try:
+            result = await asyncio.to_thread(detect_vfr, Path(src))
+        except Exception as exc:
+            log.warning("VFR probe failed for %s: %s", src, exc)
+            continue
+        if result.get("is_vfr"):
+            problems.append(result)
+
+    if problems:
+        await emit(run, stage="vfr_check", status="failed",
+                   message=f"{len(problems)} VFR file(s) detected — transcode to CFR first",
+                   data={"files": problems})
+        return False
+
+    await emit(run, stage="vfr_check", status="complete",
+               message=f"Checked {len(seen)} unique source file(s), all CFR",
+               data={"checked": len(seen)})
+    return True
+
+
+async def _extract_audio(tl, run, emit) -> Path | None:
+    await emit(run, stage="audio_extract", status="started",
+               message="Reassembling timeline audio via ffmpeg")
+    from .ffmpeg_audio import extract_timeline_audio  # lazy
+
+    wav_path = state.audio_path_for(run["run_id"])
+    try:
+        result = await asyncio.to_thread(extract_timeline_audio, tl, wav_path)
+    except Exception as exc:
+        await emit(run, stage="audio_extract", status="failed",
+                   message=f"ffmpeg extraction failed: {exc}")
+        return None
+
+    await emit(run, stage="audio_extract", status="complete",
+               message=f"Wrote {result['duration_s']:.1f}s WAV ({result['segments']} segment(s))",
+               data=result)
+    return wav_path
+
+
+async def _transcribe(wav_path: Path, run, emit) -> list[dict] | None:
+    await emit(run, stage="stt", status="started",
+               message="Transcribing with Gemini (word-level timestamps)")
+    from .stt import transcribe_audio  # lazy
+
+    try:
+        transcript = await asyncio.to_thread(transcribe_audio, wav_path)
+    except Exception as exc:
+        await emit(run, stage="stt", status="failed",
+                   message=f"STT failed: {exc}")
+        return None
+
+    words = [w.model_dump() for w in transcript.words]
+    run["transcript"] = words
+    state.save(run)
+
+    await emit(run, stage="stt", status="complete",
+               message=f"Transcribed {len(words)} words",
+               data={"word_count": len(words)})
+    return words
+
+
+async def _scrub_stage(words: list[dict], params: ScrubParams, run, emit) -> list[dict]:
+    await emit(run, stage="scrub", status="started",
+               message="Removing fillers, dead air, and restarts")
+
+    result = await asyncio.to_thread(scrub, words, params)
+    run["scrubbed"] = result.kept
+    state.save(run)
+
+    await emit(run, stage="scrub", status="complete",
+               message=(
+                   f"Kept {result.kept_count}/{result.original_count} words "
+                   f"(removed {result.counts['filler']} filler, "
+                   f"{result.counts['restart']} restart)"
+               ),
+               data=result.model_dump(exclude={"kept", "removed"}))
+    return result.kept
+
+
+async def run_analyze(
+    run_id: str,
+    timeline_name: str,
+    preset: str = "auto",
+    scrub_params: ScrubParams | None = None,
+) -> None:
+    """Top-level analyze orchestrator.
+
+    Loads state by run_id, runs stages in sequence, emits events. Exceptions
+    are caught and converted to a final ``error`` event so the SSE stream
+    always terminates cleanly.
+    """
+    run = state.load(run_id)
+    if run is None:
+        log.error("run_analyze: run_id %s not found", run_id)
+        return
+    run["status"] = "running"
+    state.save(run)
+
+    try:
+        # Lazy import Resolve bridge — avoids import-time Resolve dependency for tests
+        from ..resolve import _boilerplate  # noqa: PLC0415
+
+        _, project, _ = _boilerplate()
+        tl = _find_timeline_by_name(project, timeline_name)
+        if tl is None:
+            await state.emit(run, stage="error", status="failed",
+                             message=f"Timeline '{timeline_name}' not found in project")
+            run["status"] = "failed"
+            run["error"] = f"timeline '{timeline_name}' not found"
+            state.save(run)
+            return
+
+        if not await _vfr_check(tl, run, state.emit):
+            run["status"] = "failed"
+            run["error"] = "vfr_detected"
+            state.save(run)
+            await state.emit(run, stage="done", status="failed", message="halted on VFR")
+            return
+
+        wav_path = await _extract_audio(tl, run, state.emit)
+        if wav_path is None:
+            run["status"] = "failed"
+            run["error"] = "audio_extract_failed"
+            state.save(run)
+            await state.emit(run, stage="done", status="failed", message="halted on audio extract")
+            return
+
+        words = await _transcribe(wav_path, run, state.emit)
+        if words is None:
+            run["status"] = "failed"
+            run["error"] = "stt_failed"
+            state.save(run)
+            await state.emit(run, stage="done", status="failed", message="halted on STT")
+            return
+
+        await _scrub_stage(words, scrub_params or ScrubParams(), run, state.emit)
+
+        run["status"] = "done"
+        state.save(run)
+        await state.emit(run, stage="done", status="complete",
+                         message="Analyze complete — ready for configure step")
+
+    except Exception as exc:
+        log.exception("Pipeline crashed")
+        run["status"] = "failed"
+        run["error"] = str(exc)
+        state.save(run)
+        await state.emit(run, stage="error", status="failed", message=str(exc))
+        await state.emit(run, stage="done", status="failed", message="crashed")

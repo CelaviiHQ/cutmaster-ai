@@ -1,5 +1,9 @@
 # Implementation plans and internal docs
 Implementations/
+Implementation/
+
+# Claude Code project-local slash commands
+.claude/commands/
 
 # Python
 __pycache__/
