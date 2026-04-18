@@ -319,14 +319,89 @@ label {
     margin: 0 auto var(--s-3);
 }
 .mascot--loading {
-    width: 200px;
-    height: 200px;
-    margin: 0 auto var(--s-2);
+    width: 180px;
+    height: 180px;
+    margin: 0 auto;
 }
+
+/* MascotLoading card — tight vertical stack, no wasted space. */
+.mascot-loading-card {
+    padding: var(--s-5) var(--s-4);
+}
+.mascot-loading-inner {
+    max-width: 440px;
+    margin: 0 auto;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--s-3);
+}
+.mascot-loading-label {
+    margin: 0;
+    font-size: var(--fs-4);
+    color: var(--text-primary);
+}
+.mascot-loading-hint {
+    margin: calc(-1 * var(--s-2)) 0 0;
+    font-size: var(--fs-2);
+}
+.mascot-loading-stages {
+    text-align: left;
+    margin-top: 0;
+}
+.mascot-loading-stages .stage-row {
+    padding-top: 8px;
+    padding-bottom: 8px;
+}
+.mascot-loading-elapsed {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: var(--fs-2);
+    color: var(--text-tertiary);
+    letter-spacing: 0.02em;
+}
+
+/* Indeterminate progress bar — pulse-scans left→right to reinforce motion
+   while the single HTTP request is in flight. */
+.mascot-loading-progress {
+    height: 3px;
+    background: var(--surface-3);
+    border-radius: 999px;
+    overflow: hidden;
+    position: relative;
+}
+.mascot-loading-progress .bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 40%;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        var(--accent-blue),
+        transparent
+    );
+    animation: scan 1.6s ease-in-out infinite;
+}
+@keyframes scan {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(250%); }
+}
+
 @media (max-width: 480px) {
     .mascot--analyze { width: 120px; height: 120px; }
     .mascot--celebrate { width: 180px; height: 180px; }
     .mascot--loading { width: 140px; height: 140px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .mascot-loading-progress .bar {
+        animation: none;
+        transform: none;
+        width: 100%;
+        opacity: 0.5;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {

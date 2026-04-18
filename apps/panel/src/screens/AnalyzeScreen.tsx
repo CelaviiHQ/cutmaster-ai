@@ -148,11 +148,6 @@ export default function AnalyzeScreen({ runId, onDone, onReset }: Props) {
                             muted
                             playsInline
                             aria-hidden="true"
-                            onEnded={() => {
-                                // Let the last frame linger briefly, then clear
-                                // the mascot so the user can focus on Configure.
-                                window.setTimeout(() => setShowCelebrate(false), 600);
-                            }}
                         />
                     )}
                 </div>
