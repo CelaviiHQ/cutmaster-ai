@@ -916,34 +916,40 @@ def _short_generator_prompt(
     optional_blocks = "\n\n".join(b for b in (exclude, focus, themes, speakers, clip_meta) if b)
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     transcript_for_prompt = _shape_for_prompt(transcript, user_settings)
-    low = target_short_length_s * 0.5
-    high = target_short_length_s * 1.5
+    # Recipe approach: pre-solve the arithmetic for the model. Don't ask it to
+    # sum spans — tell it exactly how many spans and what length each should be.
+    # Lite models satisfice on numeric constraints; a concrete recipe gives
+    # them something deterministic to imitate instead of a range to minimise.
+    low = max(target_short_length_s * 0.75, target_short_length_s - 15)  # aspirational floor
+    min_spans = max(6, min(8, round(target_short_length_s / 8)))  # ~8s avg spans
+    avg_span = target_short_length_s / min_spans
     return f"""You are a {preset.role}.
 
-You receive a transcript and will **compose {num_shorts} punchy assembled shorts** — each a list of 3–8 source spans jump-cut together around a single through-line theme.
+You receive a transcript and will **compose {num_shorts} punchy assembled shorts** — each a list of source spans jump-cut together around a single through-line theme.
 
-### CRITICAL DURATION CONSTRAINT
-For every short, sum the duration of its spans (end_s − start_s) across all spans in the short. That sum **MUST be between {low:.0f} and {high:.0f} seconds**. A short whose spans sum to less than {low:.0f} s is rejected — add more spans until the sum is in range. Target is {target_short_length_s:.0f} s.
+### TARGET LENGTH — NON-NEGOTIABLE
+Each short runs **{target_short_length_s:.0f} seconds** on screen. Not 20s. Not 30s. **{target_short_length_s:.0f}s.** This is a YouTube/TikTok/Reels short — editors pay you to fill the full runtime with the best moments, not to deliver the minimum viable cut.
 
-### RULES — follow exactly:
-1. Each short has 3–8 spans. If the combined duration is below {low:.0f} s with 3 spans, add more spans (up to 8) or make individual spans longer.
-2. Each short has a clear THEME — a through-line (e.g. "why AR replaces phones", "the loneliness debate"). Every span must serve that theme.
-3. The FIRST span of each short is the HOOK — it must earn the next 5 s on its own. Use {preset.hook_rule}.
-4. Subsequent spans advance the short: setup → payoff, claim → callback, question → answer. Mark the role on each span.
-5. Each span's `start_s` MUST equal the `start_time` of its first word; `end_s` MUST equal `end_time` of its last word. Verbatim — no rounding.
-6. Individual spans should be 3–25 s. A span under 3 s is almost always too short to read on camera — prefer longer punchy spans over sub-3s fragments.
-7. Within a short, spans MUST NOT overlap each other in source time.
-8. Across different shorts, cross-short overlap is allowed (two shorts can reference the same hook).
-9. Pacing: {preset.pacing}.
-10. Return candidates in descending engagement order.
-11. `suggested_caption` ≤ 120 chars, social-ready.
+### RECIPE — follow exactly to hit the target:
+- Pick **at least {min_spans} spans** per short (you can go up to 8).
+- Each span should average **~{avg_span:.0f} seconds** (individual spans 3–25s are legal; aim for 5–12s).
+- The {min_spans} × {avg_span:.0f}s math lands you on {target_short_length_s:.0f}s. If your short comes in below {low:.0f}s you picked too few spans — go back and add more from the transcript.
 
-### BEFORE YOU RESPOND
-For each short, mentally compute: sum of (end_s − start_s) across all spans. If that number is below {low:.0f}, the short is invalid — extend spans or add more until the sum is {low:.0f}–{high:.0f} s. Do not submit a short whose spans sum below the minimum.
+If the transcript genuinely does not have {target_short_length_s:.0f}s of content worth keeping on a given theme, skip that theme and pick a different one with enough material. This transcript is long enough — find {num_shorts} themes that each have {target_short_length_s:.0f}s of worthwhile content.
+
+### RULES:
+1. Each short has a clear THEME — a through-line (e.g. "why AR replaces phones", "the loneliness debate"). Every span must serve that theme.
+2. The FIRST span is the HOOK — it must earn the next 5s on its own. Use {preset.hook_rule}.
+3. Subsequent spans advance the short: setup → payoff, claim → callback, question → answer. Mark the role on each span.
+4. Each span's `start_s` MUST equal the `start_time` of its first word; `end_s` MUST equal `end_time` of its last word. Verbatim — no rounding.
+5. Within a short, spans MUST NOT overlap each other in source time. Across shorts, overlap is allowed.
+6. Pacing: {preset.pacing}.
+7. Return candidates in descending engagement order.
+8. `suggested_caption` ≤ 120 chars, social-ready.
 
 USER SETTINGS
 {_user_settings_block(user_settings)}
-- Target short length: {target_short_length_s:.0f} s (acceptable range {low:.0f}–{high:.0f} s)
+- Target short length: {target_short_length_s:.0f}s (≥ {min_spans} spans, aim for ~{avg_span:.0f}s each)
 - Number of shorts: {num_shorts}{optional_section}
 
 TRANSCRIPT (JSON array):
