@@ -362,7 +362,58 @@ export default function ConfigureScreen({
             {analysis && !isTightener && !isMultiCandidate && (
                 <>
                     <div className="card">
+                        <h2>Hook candidates</h2>
+                        <p className="muted">
+                            Click one to lock it as the opening beat — the Director will build the rest of the narrative outward from it. Leave all unselected to let the Director pick.
+                        </p>
+                        {analysis.hook_candidates.map((h, i) => {
+                            const selected =
+                                settings.selected_hook_s != null &&
+                                Math.abs(settings.selected_hook_s - h.start_s) < 0.01;
+                            return (
+                                <div
+                                    key={i}
+                                    className={`seg hook-row ${selected ? "hook-row--selected" : ""}`}
+                                    title={h.text}
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() =>
+                                        onSettingsChange({
+                                            ...settings,
+                                            selected_hook_s: selected ? null : h.start_s,
+                                        })
+                                    }
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter" || e.key === " ") {
+                                            e.preventDefault();
+                                            onSettingsChange({
+                                                ...settings,
+                                                selected_hook_s: selected ? null : h.start_s,
+                                            });
+                                        }
+                                    }}
+                                >
+                                    <span className="seg-time">
+                                        {h.start_s.toFixed(1)}s
+                                    </span>
+                                    <span className="seg-time">
+                                        {(h.engagement_score * 100).toFixed(0)}%
+                                    </span>
+                                    <span className="seg-reason">
+                                        {selected ? "● " : ""}{h.text}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    <div className="card">
                         <h2>Chapters detected</h2>
+                        <p className="muted">
+                            {settings.selected_hook_s != null
+                                ? "Chapters are just context — the Director won't force coverage of each one."
+                                : "Detected structure. The Director will bias toward covering each chapter."}
+                        </p>
                         {analysis.chapters.map((c, i) => (
                             <div key={i} className="seg">
                                 <span className="seg-time">
@@ -372,22 +423,6 @@ export default function ConfigureScreen({
                                     {(c.end_s - c.start_s).toFixed(1)}s
                                 </span>
                                 <span>{c.title}</span>
-                            </div>
-                        ))}
-                    </div>
-
-                    <div className="card">
-                        <h2>Hook candidates</h2>
-                        <p className="muted">The Director will pick one of these (or something close to it) as the opening beat.</p>
-                        {analysis.hook_candidates.map((h, i) => (
-                            <div key={i} className="seg" title={h.text}>
-                                <span className="seg-time">
-                                    {h.start_s.toFixed(1)}s
-                                </span>
-                                <span className="seg-time">
-                                    {(h.engagement_score * 100).toFixed(0)}%
-                                </span>
-                                <span className="seg-reason">{h.text}</span>
                             </div>
                         ))}
                     </div>

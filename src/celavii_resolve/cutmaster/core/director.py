@@ -65,7 +65,31 @@ def _close_to_any(value: float, sorted_values: list[float]) -> bool:
     return any(abs(value - v) <= TIMESTAMP_TOLERANCE_S for v in sorted_values)
 
 
-def validate_plan(plan: DirectorPlan, transcript: list[dict]) -> list[str]:
+def _duration_budget(target_length_s: float) -> tuple[float, float, int, float]:
+    """Return (floor_s, ceiling_s, min_segments, avg_span_s) for a target length.
+
+    Mirrors the v2-11 Short Generator recipe: lite models satisfice on soft
+    ranges, so we hand them pre-solved arithmetic (N segments × D seconds =
+    target) and reject plans that come in below the 75 % floor. Vlog-scale
+    average span (~22 s) is longer than a short's 8 s, matching the pacing
+    preset authors already wrote.
+    """
+    min_segments = max(8, round(target_length_s / 22))
+    avg_span = target_length_s / min_segments
+    low = target_length_s * 0.75
+    high = target_length_s * 1.25
+    return low, high, min_segments, avg_span
+
+
+HOOK_TOLERANCE_S = 2.0
+
+
+def validate_plan(
+    plan: DirectorPlan,
+    transcript: list[dict],
+    target_length_s: float | None = None,
+    selected_hook_s: float | None = None,
+) -> list[str]:
     """Return a list of validation errors. Empty list = valid.
 
     Checks:
@@ -73,8 +97,8 @@ def validate_plan(plan: DirectorPlan, transcript: list[dict]) -> list[str]:
       2. Every ``end_s`` matches a word's ``end_time`` within tolerance.
       3. Segments have positive duration.
       4. hook_index is in range.
-      5. No overlapping or out-of-order segments *within the same clip*
-         (ordering between clips is the Director's choice — hook-first is OK).
+      5. When ``target_length_s`` is set: total span-sum within
+         ``[0.75×, 1.25×]`` of target.
     """
     starts, ends = _build_timestamp_sets(transcript)
     errors: list[str] = []
@@ -101,6 +125,48 @@ def validate_plan(plan: DirectorPlan, transcript: list[dict]) -> list[str]:
             errors.append(
                 f"segment[{i}]: end_s {seg.end_s} does not match any "
                 f"word end_time in the transcript (verbatim required)"
+            )
+
+    if selected_hook_s is not None and plan.selected_clips:
+        first = (
+            plan.selected_clips[plan.hook_index]
+            if 0 <= plan.hook_index < len(plan.selected_clips)
+            else plan.selected_clips[0]
+        )
+        drift = abs(first.start_s - selected_hook_s)
+        if drift > HOOK_TOLERANCE_S:
+            errors.append(
+                f"hook drift: your hook segment starts at {first.start_s:.2f}s "
+                f"but the editor picked {selected_hook_s:.2f}s. Pick a block "
+                f"whose first word starts within {HOOK_TOLERANCE_S:.1f}s of "
+                f"{selected_hook_s:.2f}s and place it at hook_index."
+            )
+
+    if target_length_s and target_length_s > 0:
+        low, high, min_segments, avg_span = _duration_budget(target_length_s)
+        total = sum(max(0.0, seg.end_s - seg.start_s) for seg in plan.selected_clips)
+        log.info(
+            "director: plan total=%.1fs target=%.0fs floor=%.1fs ceiling=%.1fs segments=%d",
+            total,
+            target_length_s,
+            low,
+            high,
+            len(plan.selected_clips),
+        )
+        if total < low:
+            errors.append(
+                f"plan total {total:.1f}s is below the floor {low:.1f}s "
+                f"(target {target_length_s:.0f}s). You selected "
+                f"{len(plan.selected_clips)} segments — add more spans from the "
+                f"transcript or extend existing ones. Aim for at least "
+                f"{min_segments} segments averaging ~{avg_span:.0f}s each."
+            )
+        elif total > high:
+            errors.append(
+                f"plan total {total:.1f}s exceeds the ceiling {high:.1f}s "
+                f"(target {target_length_s:.0f}s). Drop weaker segments or "
+                f"tighten long ones so the total lands near "
+                f"{target_length_s:.0f}s."
             )
 
     return errors
@@ -313,6 +379,61 @@ def _focus_block(user_settings: dict | None) -> str:
     )
 
 
+def _selected_hook_block(user_settings: dict | None) -> str:
+    """Render the SELECTED HOOK block when the editor picked one in the UI."""
+    if not user_settings:
+        return ""
+    raw = user_settings.get("selected_hook_s")
+    if raw is None:
+        return ""
+    try:
+        hook_at_s = float(raw)
+    except (TypeError, ValueError):
+        return ""
+    return f"""### SELECTED HOOK — NON-NEGOTIABLE
+The editor chose the quote that begins at **{hook_at_s:.2f}s** as the hook \
+of this cut. Your first `selected_clip` MUST start within 2.0 seconds of \
+{hook_at_s:.2f}s (window: [{max(0, hook_at_s - 2):.2f}s, \
+{hook_at_s + 2:.2f}s]). Build the rest of the narrative outward from that \
+opening beat. Do not substitute a different hook, even if you think \
+another line would be stronger."""
+
+
+def _target_length_recipe_block(user_settings: dict | None) -> str:
+    """Render the NON-NEGOTIABLE target-length recipe block, or empty string.
+
+    Only emits when ``target_length_s`` is set. Pre-solves the segment-count
+    arithmetic so the model has a concrete recipe to imitate rather than a
+    range to minimise against — same intervention that fixed the Short
+    Generator's under-selection failure mode in v2-11.
+    """
+    if not user_settings:
+        return ""
+    target = user_settings.get("target_length_s")
+    if not target or float(target) <= 0:
+        return ""
+    target = float(target)
+    low, high, min_segments, avg_span = _duration_budget(target)
+    return f"""### TARGET LENGTH — NON-NEGOTIABLE
+The final cut runs **{target:.0f} seconds** on screen. Not half that. Not a \
+minute-viable highlight. **{target:.0f}s.** The editor is paying to fill \
+the full runtime with the best moments available — a cut that comes in \
+under {low:.0f}s is a failed deliverable.
+
+### RECIPE — follow exactly to hit the target:
+- Pick **at least {min_segments} segments**.
+- Average segment length **~{avg_span:.0f} seconds** (individual segments \
+5–35s are legal; aim for 12–25s on vlog-style content).
+- {min_segments} × {avg_span:.0f}s = {target:.0f}s. If your plan comes in \
+below {low:.0f}s, you picked too few segments — go back and add more from \
+the transcript.
+
+If the transcript genuinely does not have {target:.0f}s of content worth \
+keeping, still pick as close to {target:.0f}s as the material allows. Do \
+not under-cut to protect editorial purity; the editor will drop segments \
+they don't like in review."""
+
+
 def _prompt(preset: PresetBundle, transcript: list[dict], user_settings: dict | None) -> str:
     exclude = _exclude_block(preset, user_settings)
     focus = _focus_block(user_settings)
@@ -320,10 +441,14 @@ def _prompt(preset: PresetBundle, transcript: list[dict], user_settings: dict | 
     clip_meta = _clip_metadata_block(transcript)
     optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers, clip_meta) if b)
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
+    recipe = _target_length_recipe_block(user_settings)
+    hook = _selected_hook_block(user_settings)
+    recipe_section = "\n\n".join(b for b in (hook, recipe) if b)
+    recipe_section = f"\n\n{recipe_section}" if recipe_section else ""
     transcript_for_prompt = _shape_for_prompt(transcript, user_settings)
     return f"""You are a {preset.role}.
 
-You will receive a transcript array where each item has a `word`, `start_time`, and `end_time` in seconds. Your job is to select contiguous blocks of words that, when stitched together, form a compelling cut.
+You will receive a transcript array where each item has a `word`, `start_time`, and `end_time` in seconds. Your job is to select contiguous blocks of words that, when stitched together, form a compelling cut.{recipe_section}
 
 RULES — follow exactly:
 1. Identify the HOOK: {preset.hook_rule}. The hook's CutSegment becomes position 0 in the output, even if it's not the earliest in the transcript.
@@ -352,11 +477,26 @@ def build_cut_plan(
 ) -> DirectorPlan:
     """Run the Director agent, retrying on verbatim-timestamp violations."""
     prompt = _prompt(preset, transcript, user_settings)
+    target_length_s: float | None = None
+    selected_hook_s: float | None = None
+    if user_settings:
+        raw_t = user_settings.get("target_length_s")
+        if raw_t:
+            try:
+                target_length_s = float(raw_t)
+            except (TypeError, ValueError):
+                target_length_s = None
+        raw_h = user_settings.get("selected_hook_s")
+        if raw_h is not None:
+            try:
+                selected_hook_s = float(raw_h)
+            except (TypeError, ValueError):
+                selected_hook_s = None
     return llm.call_structured(
         agent="director",
         prompt=prompt,
         response_schema=DirectorPlan,
-        validate=lambda plan: validate_plan(plan, transcript),
+        validate=lambda plan: validate_plan(plan, transcript, target_length_s, selected_hook_s),
         temperature=0.4,
     )
 

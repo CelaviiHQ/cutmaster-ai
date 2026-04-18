@@ -170,6 +170,17 @@ class UserSettings(BaseModel):
             "Marker prompts show the human labels instead of the raw STT ids."
         ),
     )
+    # v3-hook: editor picks one of the surfaced HookCandidates in the
+    # Configure screen. When set, the Director must open the cut within
+    # tolerance of this source-time (validator rejects otherwise).
+    selected_hook_s: float | None = Field(
+        default=None,
+        description=(
+            "Source-time in seconds of the HookCandidate the editor picked. "
+            "When set, the Director's first selected_clip must start within "
+            "a tolerance of this value or the plan is rejected."
+        ),
+    )
 
 
 class BuildPlanRequest(BaseModel):

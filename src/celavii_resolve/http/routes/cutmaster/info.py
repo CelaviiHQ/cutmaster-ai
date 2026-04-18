@@ -117,16 +117,15 @@ async def project_info() -> ProjectInfoResponse:
     except Exception:
         count = 0
 
+    from ....cutmaster.media.source_resolver import count_effective_cuts
+
     for i in range(1, count + 1):
         tl = project.GetTimelineByIndex(i)
         if tl is None:
             continue
         name = tl.GetName() or f"Timeline {i}"
         try:
-            items = (tl.GetItemListInTrack("video", 1) or []) + (
-                tl.GetItemListInTrack("audio", 1) or []
-            )
-            item_count = len(items)
+            item_count = count_effective_cuts(project, tl)
         except Exception:
             item_count = 0
         timelines.append(

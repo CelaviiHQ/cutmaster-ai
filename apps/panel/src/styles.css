@@ -426,6 +426,13 @@ label {
 }
 .seg:hover { background: var(--surface-3); }
 .seg.hook { background: var(--accent-blue-tint); }
+.hook-row { transition: background 120ms, border-left 120ms; border-left: 2px solid transparent; }
+.hook-row:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: -2px; }
+.hook-row--selected {
+    background: var(--accent-blue-tint);
+    border-left: 2px solid var(--accent-blue);
+}
+.hook-row--selected .seg-reason { color: var(--accent-blue); font-weight: 600; }
 .seg-time { color: var(--text-tertiary); }
 .seg-hook { color: var(--accent-blue); font-weight: 600; }
 .seg-reason { color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

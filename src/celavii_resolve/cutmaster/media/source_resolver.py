@@ -51,6 +51,39 @@ def _find_timeline_by_name(project, name: str):
     return None
 
 
+def count_effective_cuts(project, tl, *, max_depth: int = _MAX_DEPTH) -> int:
+    """Count how many real source-cuts a timeline contains.
+
+    Top-level V1 items that are file-backed count as 1 each. Compound /
+    nested-timeline items recurse into their matching project timeline and
+    contribute that timeline's effective count. Meant for UI labels — if a
+    timeline has 1 compound wrapping 24 takes, users read "24 cuts", not "1".
+
+    Returns the raw V1 item count when recursion is disabled / hits the
+    safety depth, so the number is always conservative rather than wrong.
+    """
+    return _count(project, tl, depth=0, max_depth=max_depth)
+
+
+def _count(project, tl, *, depth: int, max_depth: int) -> int:
+    if depth > max_depth:
+        return len(tl.GetItemListInTrack("video", 1) or [])
+    items = tl.GetItemListInTrack("video", 1) or []
+    total = 0
+    for item in items:
+        mp = item.GetMediaPoolItem()
+        if mp is None:
+            total += 1
+            continue
+        if mp.GetClipProperty("Type") == "Timeline":
+            inner = _find_timeline_by_name(project, mp.GetName() or "")
+            if inner is not None:
+                total += _count(project, inner, depth=depth + 1, max_depth=max_depth)
+                continue
+        total += 1
+    return total
+
+
 def resolve_item_to_segments(
     project,
     item,

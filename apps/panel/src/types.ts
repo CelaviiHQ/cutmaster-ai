@@ -173,6 +173,7 @@ export interface UserSettings {
   takes_already_scrubbed?: boolean;
   num_clips?: number;
   speaker_labels?: Record<string, string> | null;
+  selected_hook_s?: number | null;
 }
 
 export interface SpeakerRosterEntry {
