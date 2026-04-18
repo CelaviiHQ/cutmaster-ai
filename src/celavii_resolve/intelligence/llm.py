@@ -69,12 +69,16 @@ def call_structured(
     temperature: float = 0.3,
     max_retries: int = 3,
     validate: Callable[[T], list[str]] | None = None,
+    accept_best_effort: bool = False,
 ) -> T:
     """Call Gemini with ``response_schema`` enforcement + optional validator.
 
     If ``validate`` returns a non-empty list of errors, the call is retried
-    with the errors fed back into the prompt. After ``max_retries``, raises
-    :class:`AgentError` with the final validation errors.
+    with the errors fed back into the prompt. After ``max_retries``:
+      - ``accept_best_effort=True``: return the attempt with the fewest
+        validation errors (caller surfaces the remaining errors as warnings
+        rather than failing the request).
+      - ``accept_best_effort=False`` (default): raise :class:`AgentError`.
 
     Args:
         agent: Logical agent name — used to pick the model via env override.
@@ -85,6 +89,11 @@ def call_structured(
         max_retries: Max attempts including the first call.
         validate: Optional callback returning a list of error strings; empty
             list means accept.
+        accept_best_effort: When all retries fail, return the best attempt
+            instead of raising. The returned object's ``_validation_errors``
+            attribute (set via object.__setattr__) carries the final error
+            list so the caller can surface warnings. Use only for agents
+            whose output is a *suggestion* reviewed by the editor.
     """
     client = get_gemini_client()
     if client is None:
@@ -95,7 +104,10 @@ def call_structured(
     model = model_for(agent)
     log.info("agent=%s model=%s", agent, model)
 
+    best_parsed: T | None = None
+    best_errors: list[str] = []
     last_errors: list[str] = []
+
     for attempt in range(1, max_retries + 1):
         retry_prompt = prompt
         if last_errors:
@@ -117,14 +129,31 @@ def call_structured(
 
         parsed = _parse_response(response, response_schema)
 
-        if validate is not None:
-            errors = validate(parsed)
-            if errors:
-                log.warning("agent=%s attempt=%d validation_errors=%d", agent, attempt, len(errors))
-                last_errors = errors
-                continue
+        if validate is None:
+            return parsed
 
-        return parsed
+        errors = validate(parsed)
+        if not errors:
+            return parsed
+
+        log.warning("agent=%s attempt=%d validation_errors=%d", agent, attempt, len(errors))
+        if best_parsed is None or len(errors) < len(best_errors):
+            best_parsed = parsed
+            best_errors = errors
+        last_errors = errors
+
+    if accept_best_effort and best_parsed is not None:
+        log.warning(
+            "agent=%s using best-effort after %d retries (%d remaining errors)",
+            agent,
+            max_retries,
+            len(best_errors),
+        )
+        try:
+            object.__setattr__(best_parsed, "_validation_errors", best_errors)
+        except Exception:
+            pass  # Pydantic v2 allows __setattr__ on extra attrs; swallow otherwise
+        return best_parsed
 
     raise AgentError(
         f"{agent} agent failed after {max_retries} retries. Last errors: {last_errors}"

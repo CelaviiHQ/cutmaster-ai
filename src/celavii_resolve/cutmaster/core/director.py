@@ -254,19 +254,26 @@ def validate_plan(
             len(plan.selected_clips),
         )
         if total < low:
+            deficit = target_length_s - total
+            needed_extra = max(1, round(deficit / max(avg_span, 1.0)))
             errors.append(
-                f"plan total {total:.1f}s is below the floor {low:.1f}s "
-                f"(target {target_length_s:.0f}s). You selected "
-                f"{len(plan.selected_clips)} segments — add more spans from the "
-                f"transcript or extend existing ones. Aim for at least "
-                f"{min_segments} segments averaging ~{avg_span:.0f}s each."
+                f"plan total {total:.1f}s is {deficit:.1f}s short of the "
+                f"{target_length_s:.0f}s target (floor {low:.1f}s). "
+                f"You have {len(plan.selected_clips)} segments; "
+                f"add ~{needed_extra} MORE segments of ~{avg_span:.0f}s each "
+                f"(from currently-unused parts of the transcript) so the "
+                f"total reaches ~{target_length_s:.0f}s. Do NOT lengthen "
+                f"existing segments past the pacing bounds — add new ones."
             )
         elif total > high:
+            excess = total - target_length_s
+            drop_n = max(1, round(excess / max(avg_span, 1.0)))
             errors.append(
-                f"plan total {total:.1f}s exceeds the ceiling {high:.1f}s "
-                f"(target {target_length_s:.0f}s). Drop weaker segments or "
-                f"tighten long ones so the total lands near "
-                f"{target_length_s:.0f}s."
+                f"plan total {total:.1f}s is {excess:.1f}s over the "
+                f"{target_length_s:.0f}s target (ceiling {high:.1f}s). "
+                f"Drop the {drop_n} weakest segment(s) so the total lands "
+                f"at ~{target_length_s:.0f}s. Do NOT just shorten existing "
+                f"segments past the min-pacing bound."
             )
 
     return errors
@@ -674,6 +681,8 @@ def build_cut_plan(
             plan, transcript, target_length_s, selected_hook_s, preset
         ),
         temperature=0.4,
+        max_retries=5,
+        accept_best_effort=True,
     )
 
 
