@@ -87,6 +87,12 @@ export const api = {
   getState: (runId: string) =>
     http<RunState>(`/cutmaster/state/${runId}`),
 
+  cancel: (runId: string) =>
+    http<{ run_id: string; status: string; noop: boolean }>(
+      `/cutmaster/cancel/${runId}`,
+      { method: "POST" },
+    ),
+
   detectPreset: (runId: string) =>
     http<PresetRecommendation>("/cutmaster/detect-preset", {
       method: "POST",

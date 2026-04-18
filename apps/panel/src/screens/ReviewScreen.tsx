@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { ExecuteResult } from "../api";
+import MascotLoading from "./MascotLoading";
 import type {
     BuildPlanResult,
     PresetBundle,
@@ -86,11 +87,15 @@ export default function ReviewScreen({
 
     if (loading) {
         return (
-            <div className="card">
-                <p className="muted">
-                    Running Director + Marker agents… this usually takes 5–15 s.
-                </p>
-            </div>
+            <MascotLoading
+                label="Building plan"
+                hint="Director agent composes the cut; Marker agent picks B-roll cues. Usually 5–15 s."
+                stages={[
+                    { label: "Director agent (plan the cut)", status: "started" },
+                    { label: "Marker agent (B-roll cues)", status: "started" },
+                    { label: "Resolve source-frame mapping", status: "pending" },
+                ]}
+            />
         );
     }
 
@@ -409,7 +414,20 @@ export default function ReviewScreen({
             </div>
 
             {buildResult && (
-                <div className="card" style={{ borderColor: "var(--ok)" }}>
+                <div
+                    className="card"
+                    style={{ borderColor: "var(--ok)", textAlign: "center" }}
+                >
+                    {/* v3-4.5 preview — celebration mascot plays once on the
+                        post-build success card. */}
+                    <video
+                        className="mascot mascot--celebrate"
+                        src="/mascot/celebration-960.webm"
+                        autoPlay
+                        muted
+                        playsInline
+                        aria-hidden="true"
+                    />
                     <h2>✓ Timeline created</h2>
                     <p>
                         New timeline:&nbsp;<code>{buildResult.new_timeline_name}</code>

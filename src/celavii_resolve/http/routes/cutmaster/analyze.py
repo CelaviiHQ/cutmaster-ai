@@ -99,3 +99,41 @@ async def get_state(run_id: str) -> dict:
     if data is None:
         raise HTTPException(status_code=404, detail=f"run {run_id} not found")
     return data
+
+
+@router.post("/cancel/{run_id}")
+async def cancel(run_id: str) -> dict:
+    """Mark a run as cancelled. v3-2.2.
+
+    This does NOT hard-abort any in-flight LLM / STT request — those complete
+    on their own and become orphaned results. The marker is advisory: the UI
+    uses it to free the user to return to the Preset screen immediately, and
+    any subscribers to the SSE stream receive a terminal ``cancelled`` event
+    so they can tear down their listeners.
+    """
+    data = state.load(run_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail=f"run {run_id} not found")
+
+    if data.get("status") in {"complete", "failed", "cancelled"}:
+        return {"run_id": run_id, "status": data["status"], "noop": True}
+
+    data["status"] = "cancelled"
+    data["cancelled_at"] = state._now_iso()  # type: ignore[attr-defined]
+    cancel_event = {
+        "stage": "cancelled",
+        "status": "cancelled",
+        "message": "Run cancelled by user",
+        "data": None,
+    }
+    state.append_event(data, cancel_event)
+    state.save(data)
+
+    queue = state.get_queue(run_id)
+    try:
+        queue.put_nowait(cancel_event)
+    except asyncio.QueueFull:  # pragma: no cover — queue is unbounded in practice
+        pass
+
+    log.info("Run %s marked as cancelled via /cancel", run_id)
+    return {"run_id": run_id, "status": "cancelled", "noop": False}

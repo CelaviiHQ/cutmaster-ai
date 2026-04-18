@@ -252,19 +252,90 @@ label {
     align-items: center;
     gap: var(--s-3);
     padding: 10px 0;
+    padding-left: var(--s-2);
     border-bottom: var(--border-thin);
+    border-left: 2px solid transparent;
+    transition: border-left-color 120ms, color 120ms;
 }
-.stage-row:last-child { border: 0; }
+.stage-row:last-child { border-bottom: 0; }
+
+/* v3-2.3 — Failed stages get a red left-border + inline err color so they
+   read as alarming next to in-progress rows (same file, same surface). */
+.stage-row--failed {
+    border-left-color: var(--err);
+    padding-left: var(--s-2);
+}
+.stage-row--failed .stage-name,
+.stage-row--failed .stage-msg {
+    color: var(--err);
+}
+
 .stage-icon {
     width: 18px; height: 18px;
     border-radius: 50%;
     display: inline-flex; align-items: center; justify-content: center;
     font-size: var(--fs-1);
 }
-.stage-icon.started { background: #1f3a6a; color: var(--accent-blue); }
+.stage-icon.started {
+    background: #1f3a6a;
+    color: var(--accent-blue);
+    animation: pulse 1.4s ease-in-out infinite;
+}
 .stage-icon.complete { background: #0d3e1a; color: var(--ok); }
 .stage-icon.failed { background: #3e1818; color: var(--err); }
 .stage-icon.pending { background: var(--surface-3); color: var(--text-tertiary); }
+
+/* v3-2.4 — Animated dots after running-stage messages. */
+.dots::after {
+    display: inline-block;
+    content: "";
+    animation: dots 1.2s steps(4, end) infinite;
+}
+@keyframes dots {
+    0%, 20% { content: ""; }
+    40% { content: "."; }
+    60% { content: ".."; }
+    80%, 100% { content: "..."; }
+}
+@keyframes pulse {
+    0%, 100% { opacity: 0.75; }
+    50% { opacity: 1; }
+}
+
+/* v3-2 mascot (discovery) — sits alongside the Analyze stage list. */
+.mascot {
+    display: block;
+    flex-shrink: 0;
+    pointer-events: none;
+    user-select: none;
+}
+.mascot--analyze {
+    width: 240px;
+    height: 240px;
+}
+.mascot--celebrate {
+    width: 280px;
+    height: 280px;
+    margin: 0 auto var(--s-3);
+}
+.mascot--loading {
+    width: 200px;
+    height: 200px;
+    margin: 0 auto var(--s-2);
+}
+@media (max-width: 480px) {
+    .mascot--analyze { width: 120px; height: 120px; }
+    .mascot--celebrate { width: 180px; height: 180px; }
+    .mascot--loading { width: 140px; height: 140px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .mascot,
+    .dots::after,
+    .stage-icon.started {
+        animation: none !important;
+    }
+}
 
 .stage-name { font-weight: 500; width: 160px; }
 .stage-msg { color: var(--text-tertiary); font-size: var(--fs-2); flex: 1; }

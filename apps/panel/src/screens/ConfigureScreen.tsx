@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { SourceAspectInfo } from "../api";
+import MascotLoading from "./MascotLoading";
 import type {
     FormatKey,
     FormatSpec,
@@ -180,9 +181,14 @@ export default function ConfigureScreen({
 
     if (loading) {
         return (
-            <div className="card">
-                <p className="muted">Analysing themes… (~5–10 s)</p>
-            </div>
+            <MascotLoading
+                label="Analysing themes"
+                hint="Reading the transcript and clustering the strongest narrative threads. Usually ~5–10 s."
+                stages={[
+                    { label: "Cluster transcript into themes", status: "started" },
+                    { label: "Rank themes by salience", status: "pending" },
+                ]}
+            />
         );
     }
 
