@@ -47,23 +47,33 @@ CACHE_ROOT = Path.home() / ".celavii" / "cutmaster" / "per-clip-stt"
 class ClipAudioSpec:
     """Metadata + file pointers for one timeline audio item.
 
-    ``source_in_frame`` / ``source_out_frame`` pin the cache key so that
-    trimming a take invalidates its cache entry while leaving sibling
-    takes untouched.
+    A single timeline item can resolve to *multiple* contiguous source
+    ranges when it's a compound clip spanning several underlying files —
+    ``segments`` holds the authoritative list (seconds into the source
+    file), and the cache key hashes all of them so trimming invalidates
+    only the affected takes.
+
+    ``source_path`` / ``source_in_frame`` / ``source_out_frame`` retain
+    the pre-compound-support shape for the user-facing ``metadata()``
+    payload. For compound items they reflect the first segment only and
+    are marked with a ``...`` suffix on ``source_name``.
     """
 
     item_index: int  # 0-based within the audio track
     source_name: str  # media-pool clip name (user-facing)
-    source_path: str  # absolute path to source file
-    source_in_frame: int  # inclusive start frame in source
-    source_out_frame: int  # exclusive end frame in source
+    source_path: str  # primary source file (first segment)
+    source_in_frame: int  # inclusive start frame in source (first segment)
+    source_out_frame: int  # exclusive end frame in source (first segment)
     timeline_offset_s: float  # timeline seconds where this clip starts
     duration_s: float
+    # [(source_path, in_s, out_s), ...] — one entry per contiguous file range.
+    segments: list[tuple[str, float, float]] = field(default_factory=list)
     wav_path: str = ""  # filled by extract_per_clip_audio
 
     @property
     def cache_key(self) -> str:
-        payload = f"{self.source_path}|{self.source_in_frame}|{self.source_out_frame}|v1"
+        seg_payload = "||".join(f"{p}|{i:.6f}|{o:.6f}" for p, i, o in self.segments)
+        payload = f"{seg_payload}|v2"
         return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
     def metadata(self) -> dict:
@@ -75,6 +85,7 @@ class ClipAudioSpec:
             "timeline_offset_s": round(self.timeline_offset_s, 3),
             "source_in_frame": self.source_in_frame,
             "source_out_frame": self.source_out_frame,
+            "segment_count": len(self.segments),
         }
 
 
@@ -83,14 +94,23 @@ class ClipAudioSpec:
 # ---------------------------------------------------------------------------
 
 
-def build_clip_audio_specs(tl, track_index: int = 1) -> list[ClipAudioSpec]:
+def build_clip_audio_specs(tl, track_index: int = 1, project=None) -> list[ClipAudioSpec]:
     """Read audio track ``track_index`` and return one ``ClipAudioSpec`` per item.
 
-    Mirrors :func:`ffmpeg_audio.extract_timeline_audio`'s walk but keeps each
-    item separate. Items without a media-pool backing (compound/nested
-    clips) are skipped with a warning — per-clip STT can't handle them yet.
+    Each item is resolved to its underlying source file(s) via
+    :func:`source_resolver.resolve_item_to_segments`, which walks through
+    compound / nested-timeline MP items by matching project-timeline names
+    and recursing. Items that cannot be resolved (generators, unmatched
+    compounds, broken links) are skipped with a warning so the pipeline
+    can surface which takes need attention.
     """
     from ..media.frame_math import _timeline_fps, _timeline_start_frame
+    from ..media.source_resolver import resolve_item_to_segments
+
+    if project is None:
+        from ...resolve import _boilerplate  # lazy — Resolve connection
+
+        _, project, _ = _boilerplate()
 
     fps = _timeline_fps(tl)
     tl_start = _timeline_start_frame(tl)
@@ -100,35 +120,40 @@ def build_clip_audio_specs(tl, track_index: int = 1) -> list[ClipAudioSpec]:
     for idx, item in enumerate(items):
         mp_item = item.GetMediaPoolItem()
         if not mp_item:
-            log.warning(
-                "Audio item %d has no media pool item (compound/nested); "
-                "skipping per-clip STT for this take",
-                idx,
-            )
+            log.warning("Audio item %d has no media pool item (generator?); skipping", idx)
             continue
-        src_path = mp_item.GetClipProperty("File Path") or ""
-        if not src_path:
-            log.warning("Audio item %d has no File Path; skipping", idx)
+
+        segments = resolve_item_to_segments(project, item, outer_fps=fps)
+        if not segments:
+            log.warning(
+                "Audio item %d ('%s') could not be resolved to a source file; skipping",
+                idx,
+                mp_item.GetName() or "?",
+            )
             continue
 
         duration_frames = item.GetDuration()
-        try:
-            src_start = item.GetSourceStartFrame() or 0
-        except Exception:
-            src_start = 0
-        src_end = src_start + duration_frames
-
         timeline_offset_frame = item.GetStart() - tl_start
+        seg_tuples = [(str(s.path), s.in_s, s.out_s) for s in segments]
+        first_seg = segments[0]
+        first_fps = first_seg.source_fps or fps
+        first_in_frame = int(round(first_seg.in_s * first_fps))
+        first_out_frame = int(round(first_seg.out_s * first_fps))
+
+        source_name = str(mp_item.GetName() or f"item_{idx}")
+        if len(segments) > 1:
+            source_name = f"{source_name} (compound, {len(segments)} segments)"
 
         out.append(
             ClipAudioSpec(
                 item_index=idx,
-                source_name=str(mp_item.GetName() or f"item_{idx}"),
-                source_path=str(src_path),
-                source_in_frame=int(src_start),
-                source_out_frame=int(src_end),
+                source_name=source_name,
+                source_path=str(first_seg.path),
+                source_in_frame=first_in_frame,
+                source_out_frame=first_out_frame,
                 timeline_offset_s=timeline_offset_frame / fps,
                 duration_s=duration_frames / fps,
+                segments=seg_tuples,
             )
         )
 
@@ -162,53 +187,117 @@ def extract_per_clip_audio(
     only as a last resort; specs already carry the timeline fps through
     ``timeline_offset_s`` and ``duration_s``.
     """
+    import tempfile
+
     _require_ffmpeg()
     out_dir.mkdir(parents=True, exist_ok=True)
 
     for spec in specs:
         wav = out_dir / f"clip_{spec.item_index:03d}_{spec.cache_key[:8]}.wav"
-        src = Path(spec.source_path)
-        if not src.exists():
-            raise FileNotFoundError(f"Source file missing: {src}")
+        segments = spec.segments or [
+            (spec.source_path, spec.source_in_frame / _probe_fps(Path(spec.source_path)), None)
+        ]
 
-        # We don't know the source fps from the spec alone — but ffmpeg's
-        # -ss/-to takes seconds, and the duration is authoritative.
-        # Convert source-in-frame to seconds via ffprobe once per source if
-        # we need it; a simpler, equally correct approach is to use the
-        # timeline-derived duration and the spec's source-in offset in
-        # frames * (1 / src_fps). To avoid another ffprobe dance we expose
-        # the FPS back-derived from the caller: specs built from a Resolve
-        # timeline carry ``source_in_frame`` already in source frames, so
-        # we need the source fps — ffprobe it lazily.
-        src_fps = _probe_fps(src)
-        in_s = spec.source_in_frame / src_fps
-        out_s = in_s + spec.duration_s
+        # Validate sources up front so we fail fast rather than mid-concat.
+        for seg_path, _, _ in segments:
+            p = Path(seg_path)
+            if not p.exists():
+                raise FileNotFoundError(f"Source file missing: {p}")
 
-        r = subprocess.run(
-            [
-                "ffmpeg",
-                "-y",
-                "-loglevel",
-                "error",
-                "-ss",
-                f"{in_s:.3f}",
-                "-to",
-                f"{out_s:.3f}",
-                "-i",
-                str(src),
-                "-vn",
-                "-ac",
-                str(channels),
-                "-ar",
-                str(sample_rate),
-                str(wav),
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if r.returncode != 0:
-            raise RuntimeError(f"ffmpeg per-clip extract failed on {src.name}: {r.stderr.strip()}")
+        if len(segments) == 1:
+            seg_path, in_s, out_s = segments[0]
+            # Single-segment fast path.
+            if out_s is None:
+                out_s = in_s + spec.duration_s
+            r = subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-loglevel",
+                    "error",
+                    "-ss",
+                    f"{in_s:.3f}",
+                    "-to",
+                    f"{out_s:.3f}",
+                    "-i",
+                    seg_path,
+                    "-vn",
+                    "-ac",
+                    str(channels),
+                    "-ar",
+                    str(sample_rate),
+                    str(wav),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if r.returncode != 0:
+                raise RuntimeError(
+                    f"ffmpeg per-clip extract failed on {Path(seg_path).name}: {r.stderr.strip()}"
+                )
+        else:
+            # Multi-segment: extract each to a temp wav then concat.
+            with tempfile.TemporaryDirectory() as tmp:
+                tmp_dir = Path(tmp)
+                seg_wavs: list[Path] = []
+                for i, (seg_path, in_s, out_s) in enumerate(segments):
+                    seg_wav = tmp_dir / f"seg_{i:03d}.wav"
+                    r = subprocess.run(
+                        [
+                            "ffmpeg",
+                            "-y",
+                            "-loglevel",
+                            "error",
+                            "-ss",
+                            f"{in_s:.3f}",
+                            "-to",
+                            f"{out_s:.3f}",
+                            "-i",
+                            seg_path,
+                            "-vn",
+                            "-ac",
+                            str(channels),
+                            "-ar",
+                            str(sample_rate),
+                            str(seg_wav),
+                        ],
+                        capture_output=True,
+                        text=True,
+                        check=False,
+                    )
+                    if r.returncode != 0:
+                        raise RuntimeError(
+                            f"ffmpeg per-clip extract (segment {i}) failed on "
+                            f"{Path(seg_path).name}: {r.stderr.strip()}"
+                        )
+                    seg_wavs.append(seg_wav)
+
+                concat_list = tmp_dir / "concat.txt"
+                concat_list.write_text("".join(f"file '{w}'\n" for w in seg_wavs))
+                r = subprocess.run(
+                    [
+                        "ffmpeg",
+                        "-y",
+                        "-loglevel",
+                        "error",
+                        "-f",
+                        "concat",
+                        "-safe",
+                        "0",
+                        "-i",
+                        str(concat_list),
+                        "-c",
+                        "copy",
+                        str(wav),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                if r.returncode != 0:
+                    raise RuntimeError(f"ffmpeg per-clip concat failed: {r.stderr.strip()}")
+
         spec.wav_path = str(wav)
 
     return specs

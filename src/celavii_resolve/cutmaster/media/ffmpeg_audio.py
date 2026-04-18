@@ -20,7 +20,7 @@ from pathlib import Path
 from ...config import mcp
 from ...errors import safe_resolve_call
 from ...resolve import _boilerplate
-from .frame_math import _source_fps, _timeline_fps
+from .frame_math import _timeline_fps
 
 
 def _require_ffmpeg() -> None:
@@ -48,6 +48,8 @@ def extract_timeline_audio(
         FileNotFoundError: ffmpeg/ffprobe not on PATH, or a source file is gone.
         ValueError: the track is empty or items have no media pool item.
     """
+    from .source_resolver import resolve_item_to_segments
+
     _require_ffmpeg()
 
     fps = _timeline_fps(tl)
@@ -55,36 +57,23 @@ def extract_timeline_audio(
     if not items:
         raise ValueError(f"No items on audio track {track_index}.")
 
+    _, project, _ = _boilerplate()
+
     segments: list[tuple[Path, float, float]] = []
     for item in items:
-        mp_item = item.GetMediaPoolItem()
-        if not mp_item:
+        resolved = resolve_item_to_segments(project, item, outer_fps=fps)
+        if not resolved:
+            name = item.GetName() or "?"
+            mp = item.GetMediaPoolItem()
+            mp_name = mp.GetName() if mp else "(no media)"
             raise ValueError(
-                f"Audio item '{item.GetName()}' has no media pool item "
-                "(compound/nested/generator). Cannot reconstruct via ffmpeg."
+                f"Audio item '{name}' (mp '{mp_name}') could not be resolved to a source "
+                "file — likely a generator or a compound with no matching project timeline."
             )
-        src_str = mp_item.GetClipProperty("File Path")
-        if not src_str:
-            raise ValueError(f"Audio item '{mp_item.GetName()}' has no File Path.")
-        src = Path(src_str)
-        if not src.exists():
-            raise FileNotFoundError(f"Source file missing: {src}")
-
-        duration_frames = item.GetDuration()
-        try:
-            src_start_frame = item.GetSourceStartFrame() or 0
-        except Exception:
-            src_start_frame = 0
-
-        # `src_start_frame` is in source-media frames; when source fps differs
-        # from timeline fps (e.g. 30 fps source on a 24 fps timeline), dividing
-        # by `fps` would seek ffmpeg to the wrong moment. Use the source's
-        # native fps for the seek, and the timeline fps for the real-time
-        # duration (which Resolve has already conformed).
-        src_fps = _source_fps(mp_item, fallback=fps)
-        in_s = src_start_frame / src_fps
-        out_s = in_s + duration_frames / fps
-        segments.append((src, in_s, out_s))
+        for seg in resolved:
+            if not seg.path.exists():
+                raise FileNotFoundError(f"Source file missing: {seg.path}")
+            segments.append((seg.path, seg.in_s, seg.out_s))
 
     out_path = Path(out_path).expanduser().resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
