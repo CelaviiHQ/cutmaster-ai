@@ -8,6 +8,8 @@ import type {
   ProjectInfo,
   RunState,
   SpeakerRosterEntry,
+  SttProviderKey,
+  SttProviderList,
   StoryAnalysis,
   UserSettings,
 } from "./types";
@@ -46,6 +48,9 @@ export const api = {
 
   projectInfo: () => http<ProjectInfo>("/cutmaster/project-info"),
 
+  sttProviders: () =>
+    http<SttProviderList>("/cutmaster/stt-providers"),
+
   listFormats: () =>
     http<{ formats: FormatSpec[] }>("/cutmaster/formats"),
 
@@ -58,7 +63,11 @@ export const api = {
   analyze: (
     timelineName: string,
     preset: string,
-    options?: { perClipStt?: boolean; expectedSpeakers?: number | null },
+    options?: {
+      perClipStt?: boolean;
+      expectedSpeakers?: number | null;
+      sttProvider?: SttProviderKey | null;
+    },
   ) =>
     http<{ run_id: string; status: string }>("/cutmaster/analyze", {
       method: "POST",
@@ -68,6 +77,9 @@ export const api = {
         ...(options?.perClipStt ? { per_clip_stt: true } : {}),
         ...(options?.expectedSpeakers != null
           ? { expected_speakers: options.expectedSpeakers }
+          : {}),
+        ...(options?.sttProvider
+          ? { stt_provider: options.sttProvider }
           : {}),
       }),
     }),

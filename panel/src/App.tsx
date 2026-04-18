@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { PresetKey, UserSettings } from "./types";
+import type { PresetKey, SttProviderKey, UserSettings } from "./types";
 import PresetPickScreen from "./screens/PresetPickScreen";
 import AnalyzeScreen from "./screens/AnalyzeScreen";
 import ConfigureScreen from "./screens/ConfigureScreen";
@@ -51,6 +51,7 @@ export default function App() {
     const [resumeChecked, setResumeChecked] = useState(false);
     const [perClipStt, setPerClipStt] = useState(false);
     const [expectedSpeakers, setExpectedSpeakers] = useState<number | null>(null);
+    const [sttProvider, setSttProvider] = useState<SttProviderKey | null>(null);
 
     // Ping + resume check on mount
     useEffect(() => {
@@ -188,10 +189,13 @@ export default function App() {
                     onPerClipSttChange={setPerClipStt}
                     expectedSpeakers={expectedSpeakers}
                     onExpectedSpeakersChange={setExpectedSpeakers}
+                    sttProvider={sttProvider}
+                    onSttProviderChange={setSttProvider}
                     onNext={async () => {
                         const r = await api.analyze(timelineName, preset, {
                             perClipStt,
                             expectedSpeakers,
+                            sttProvider,
                         });
                         setRunId(r.run_id);
                         saveSession({

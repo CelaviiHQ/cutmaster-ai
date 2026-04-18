@@ -350,6 +350,7 @@ async def transcribe_per_clip(
     cache_root: Path | None = None,
     max_concurrency: int = 4,
     transcribe_fn=None,
+    provider: str | None = None,
 ) -> tuple[list[dict], dict]:
     """Run STT across every spec, returning ``(stitched_transcript, stats)``.
 
@@ -357,10 +358,15 @@ async def transcribe_per_clip(
     Gemini; default implementation calls :func:`stt.transcribe_audio` on
     ``spec.wav_path`` and unwraps the Pydantic result.
 
+    ``provider`` overrides the STT backend per run (``"gemini"`` or
+    ``"deepgram"``); used by pipeline to honour the user's Preset-screen
+    choice without mutating env vars. When ``transcribe_fn`` is supplied
+    the provider value is ignored (tests own the dispatch).
+
     Stats: ``{"cache_hits": n, "cache_misses": n, "dropped": n}``.
     """
     if transcribe_fn is None:
-        transcribe_fn = _default_transcribe
+        transcribe_fn = _make_default_transcribe(provider)
 
     sem = asyncio.Semaphore(max(1, max_concurrency))
     results: list[list[dict]] = [[] for _ in specs]
@@ -387,17 +393,26 @@ async def transcribe_per_clip(
     return stitched, stats
 
 
-def _default_transcribe(spec: ClipAudioSpec) -> list[dict]:
-    """Shim around :func:`stt.transcribe_audio` — returns raw word dicts."""
-    if not spec.wav_path:
-        raise ValueError(
-            f"spec for item {spec.item_index} has no wav_path — call "
-            "extract_per_clip_audio first"
-        )
-    from .stt import transcribe_audio  # lazy — Gemini client
+def _make_default_transcribe(provider: str | None):
+    """Bind ``provider`` into a closure matching ``transcribe_fn``'s signature."""
 
-    resp = transcribe_audio(Path(spec.wav_path))
-    return [w.model_dump() for w in resp.words]
+    def _run(spec: ClipAudioSpec) -> list[dict]:
+        if not spec.wav_path:
+            raise ValueError(
+                f"spec for item {spec.item_index} has no wav_path — call "
+                "extract_per_clip_audio first"
+            )
+        from .stt import transcribe_audio  # lazy
+
+        resp = transcribe_audio(Path(spec.wav_path), provider=provider)
+        return [w.model_dump() for w in resp.words]
+
+    return _run
+
+
+# Kept for callers that imported the old name directly.
+def _default_transcribe(spec: ClipAudioSpec) -> list[dict]:
+    return _make_default_transcribe(None)(spec)
 
 
 # ---------------------------------------------------------------------------

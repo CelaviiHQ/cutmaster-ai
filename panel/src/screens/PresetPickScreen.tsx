@@ -4,6 +4,8 @@ import type {
     PresetBundle,
     PresetKey,
     ProjectInfo,
+    SttProviderInfo,
+    SttProviderKey,
     TimelineMode,
 } from "../types";
 
@@ -18,6 +20,8 @@ interface Props {
     onPerClipSttChange: (v: boolean) => void;
     expectedSpeakers: number | null;
     onExpectedSpeakersChange: (v: number | null) => void;
+    sttProvider: SttProviderKey | null;
+    onSttProviderChange: (v: SttProviderKey | null) => void;
     onNext: () => void | Promise<void>;
 }
 
@@ -32,6 +36,8 @@ export default function PresetPickScreen({
     onPerClipSttChange,
     expectedSpeakers,
     onExpectedSpeakersChange,
+    sttProvider,
+    onSttProviderChange,
     onNext,
 }: Props) {
     const [presets, setPresets] = useState<PresetBundle[]>([]);
@@ -41,6 +47,8 @@ export default function PresetPickScreen({
     const [projectErr, setProjectErr] = useState<string | null>(null);
     const [projectLoading, setProjectLoading] = useState(false);
     const [fallbackToText, setFallbackToText] = useState(false);
+    const [providers, setProviders] = useState<SttProviderInfo[] | null>(null);
+    const [defaultProvider, setDefaultProvider] = useState<SttProviderKey>("gemini");
     // Auto-select the active timeline only the first time project info loads —
     // don't clobber a name the user typed manually.
     const hasAutoSelected = useRef(false);
@@ -49,6 +57,12 @@ export default function PresetPickScreen({
         api.listPresets()
             .then((r) => setPresets(r.presets))
             .catch((e) => setErr(String(e)));
+        api.sttProviders()
+            .then((r) => {
+                setProviders(r.providers);
+                setDefaultProvider(r.default);
+            })
+            .catch(() => setProviders([]));
     }, []);
 
     const loadProjectInfo = async () => {
@@ -220,6 +234,135 @@ export default function PresetPickScreen({
             </div>
 
             <div className="card">
+                <h2>Speakers on camera</h2>
+                <p className="muted" style={{ marginBottom: 10 }}>
+                    How many people speak in the shoot? Helps the Director /
+                    Marker agents reason about roles and stops Gemini from
+                    inventing phantom speakers on solo content. Leave blank
+                    if you're unsure.
+                </p>
+                <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                    {[1, 2, 3, 4].map((n) => (
+                        <button
+                            key={n}
+                            className={expectedSpeakers === n ? "" : "secondary"}
+                            onClick={() => onExpectedSpeakersChange(n)}
+                            style={{ minWidth: 64 }}
+                        >
+                            {n === 1 ? "1 (solo)" : `${n}`}
+                        </button>
+                    ))}
+                    <button
+                        className={
+                            expectedSpeakers != null && expectedSpeakers > 4
+                                ? ""
+                                : "secondary"
+                        }
+                        onClick={() => onExpectedSpeakersChange(5)}
+                        title="5 or more — enter a number below"
+                    >
+                        5+
+                    </button>
+                    <button
+                        className={expectedSpeakers == null ? "" : "secondary"}
+                        onClick={() => onExpectedSpeakersChange(null)}
+                    >
+                        Unsure
+                    </button>
+                </div>
+                {expectedSpeakers != null && expectedSpeakers > 4 && (
+                    <div style={{ marginTop: 10 }}>
+                        <label
+                            htmlFor="expected-speakers"
+                            style={{ display: "block", marginBottom: 4 }}
+                        >
+                            Exact count (5–10)
+                        </label>
+                        <input
+                            id="expected-speakers"
+                            type="number"
+                            min={5}
+                            max={10}
+                            step={1}
+                            value={expectedSpeakers}
+                            onChange={(e) => {
+                                const raw = e.target.value;
+                                if (!raw) return;
+                                onExpectedSpeakersChange(
+                                    Math.max(5, Math.min(10, Number(raw))),
+                                );
+                            }}
+                            style={{ maxWidth: 140 }}
+                        />
+                    </div>
+                )}
+                <p className="muted" style={{ marginTop: 10 }}>
+                    {expectedSpeakers === 1 && (
+                        <>Every word will be tagged as one speaker (S1).</>
+                    )}
+                    {expectedSpeakers != null && expectedSpeakers >= 2 && (
+                        <>
+                            With per-clip STT on, we'll reconcile each clip's
+                            local IDs into a consistent {expectedSpeakers}-speaker
+                            roster via one cheap Gemini-Flash-Lite call.
+                            Without per-clip STT, Gemini's global IDs from the
+                            concat transcript are kept as-is.
+                        </>
+                    )}
+                    {expectedSpeakers == null && (
+                        <>Gemini's raw speaker IDs are used unchanged.</>
+                    )}
+                </p>
+            </div>
+
+            {providers && providers.length > 0 && (
+                <div className="card">
+                    <h2>Transcription service</h2>
+                    <p className="muted" style={{ marginBottom: 10 }}>
+                        Gemini is free with a key and fine for ≤ 8 min audio.
+                        Deepgram Nova-3 handles long-form (no word-level
+                        output cap) and bundles diarization in one pass —
+                        recommended for interviews / podcasts.
+                    </p>
+                    <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                        {providers.map((p) => {
+                            const effective =
+                                sttProvider ?? defaultProvider;
+                            const selected = effective === p.key;
+                            const disabled = !p.configured;
+                            return (
+                                <button
+                                    key={p.key}
+                                    className={selected ? "" : "secondary"}
+                                    disabled={disabled}
+                                    onClick={() => onSttProviderChange(p.key)}
+                                    title={
+                                        disabled
+                                            ? `${p.key.toUpperCase()}_API_KEY not set in .env`
+                                            : p.label
+                                    }
+                                >
+                                    {p.label}
+                                    {disabled && " · key missing"}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    {!providers.some((p) => p.configured) && (
+                        <p
+                            className="muted"
+                            style={{ marginTop: 10, color: "var(--err, #e88)" }}
+                        >
+                            No STT key configured. Add either{" "}
+                            <code>GEMINI_API_KEY</code> or{" "}
+                            <code>DEEPGRAM_API_KEY</code> to your <code>.env</code>{" "}
+                            and restart the panel.
+                        </p>
+                    )}
+                </div>
+            )}
+
+            <div className="card">
                 <h2>Transcription mode (advanced)</h2>
                 <label style={{ display: "flex", gap: 6, alignItems: "center", margin: 0 }}>
                     <input
@@ -235,41 +378,6 @@ export default function PresetPickScreen({
                     results cache so re-analyzing a trimmed timeline only
                     re-transcribes the changed takes.
                 </p>
-
-                {perClipStt && (
-                    <div style={{ marginTop: 12 }}>
-                        <label
-                            htmlFor="expected-speakers"
-                            style={{ display: "block", marginBottom: 4 }}
-                        >
-                            Speakers in shots (optional)
-                        </label>
-                        <input
-                            id="expected-speakers"
-                            type="number"
-                            min={1}
-                            max={10}
-                            step={1}
-                            placeholder="leave blank if unsure"
-                            value={expectedSpeakers ?? ""}
-                            onChange={(e) => {
-                                const raw = e.target.value;
-                                onExpectedSpeakersChange(
-                                    raw ? Math.max(1, Math.min(10, Number(raw))) : null,
-                                );
-                            }}
-                            style={{ maxWidth: 180 }}
-                        />
-                        <p className="muted" style={{ marginTop: 6 }}>
-                            Per-clip STT assigns speaker IDs locally, so clip 0's
-                            "S1" isn't necessarily clip 1's "S1". Give us the
-                            count and we'll reconcile: 1 = trivial collapse to a
-                            single speaker (no extra LLM call), 2+ = one cheap
-                            Gemini reconciliation pass. Leave blank to keep raw
-                            per-clip IDs.
-                        </p>
-                    </div>
-                )}
             </div>
 
             {err && <div className="error-box">{err}</div>}

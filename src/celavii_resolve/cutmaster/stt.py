@@ -1,33 +1,40 @@
-"""Speech-to-text via Gemini Flash — word-level timestamps with schema enforcement.
+"""Speech-to-text — provider-pluggable dispatch over a shared schema.
 
-Phase 0 (v0_gemini_precision.py) locked the model to
-``gemini-3.1-flash-lite-preview`` with a Pydantic ``response_schema`` to
-eliminate shape ambiguity (wrapped object vs bare array) and string-vs-float
-timestamp inconsistency.
+v1 validated Gemini (``gemini-3.1-flash-lite-preview``) with a Pydantic
+``response_schema`` to kill shape ambiguity and string-vs-float timestamp
+regressions on ~8-minute audio. Beyond ~8 min the model's output token
+budget truncates per-word timestamps, which is why we've added Deepgram
+Nova-3 as an alternative backend — no token caps, word-level timestamps
++ diarization in one pass, and pro-grade accuracy on long-form audio.
+
+Provider selection (in order of precedence):
+
+  1. The ``provider`` argument to :func:`transcribe_audio` (caller override).
+  2. ``CELAVII_STT_PROVIDER`` env var.
+  3. Default: ``"gemini"``.
+
+Keeping the old ``transcribe_audio`` signature working is intentional —
+existing callers (``pipeline._transcribe``, ``per_clip_stt._default_transcribe``)
+don't need to learn about providers.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from ..config import get_gemini_client
-
 log = logging.getLogger("celavii-resolve.cutmaster.stt")
 
-DEFAULT_MODEL = os.environ.get("CELAVII_STT_MODEL", "gemini-3.1-flash-lite-preview")
 
-PROMPT = (
-    "You are an expert audio transcription engine. Analyze this audio file. "
-    "Return a JSON object with a `words` array. Each item contains: `word` "
-    "(string), `speaker_id` (string, e.g. 'S1'), `start_time` (seconds, 3 "
-    "decimals), `end_time` (seconds, 3 decimals). Absolute precision required. "
-    "Preserve punctuation as part of the word it belongs to."
-)
+DEFAULT_PROVIDER = os.environ.get("CELAVII_STT_PROVIDER", "gemini").lower()
+
+
+# ---------------------------------------------------------------------------
+# Shared schema — every provider lands here.
+# ---------------------------------------------------------------------------
 
 
 class TranscriptWord(BaseModel):
@@ -41,53 +48,63 @@ class TranscriptResponse(BaseModel):
     words: list[TranscriptWord]
 
 
-def transcribe_audio(audio_path: Path, model: str | None = None) -> TranscriptResponse:
-    """Upload ``audio_path`` to Gemini and return a schema-validated transcript.
+# ---------------------------------------------------------------------------
+# Dispatch
+# ---------------------------------------------------------------------------
+
+
+def transcribe_audio(
+    audio_path: Path,
+    model: str | None = None,
+    provider: str | None = None,
+) -> TranscriptResponse:
+    """Transcribe ``audio_path`` through the chosen provider.
+
+    Args:
+        audio_path: Path to a local audio file.
+        model: Optional provider-specific model override. Each backend
+            documents its own default.
+        provider: Optional override. Falls back to ``CELAVII_STT_PROVIDER``
+            env var, then to Gemini.
 
     Raises:
-        ValueError: GEMINI_API_KEY not set.
-        FileNotFoundError: audio_path missing.
-        RuntimeError: Gemini returned a response that failed schema validation.
+        FileNotFoundError: the audio file is missing.
+        ValueError: unknown provider, or the provider is missing its API
+            key / SDK.
+        RuntimeError: the provider responded but the payload didn't match
+            the ``TranscriptResponse`` schema.
     """
-    client = get_gemini_client()
-    if client is None:
-        raise ValueError(
-            "GEMINI_API_KEY not set. Add it to .env or the environment before running."
-        )
-
     audio_path = Path(audio_path)
     if not audio_path.exists():
         raise FileNotFoundError(str(audio_path))
 
-    from google.genai import types  # deferred — package is optional
-
-    used_model = model or DEFAULT_MODEL
-    log.info("Uploading %s to Gemini (%s)", audio_path.name, used_model)
-    uploaded = client.files.upload(file=str(audio_path))
-
-    response = client.models.generate_content(
-        model=used_model,
-        contents=[PROMPT, uploaded],
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=TranscriptResponse,
-        ),
+    chosen = (provider or DEFAULT_PROVIDER).lower()
+    if chosen == "gemini":
+        from .stt_gemini import transcribe as _gemini_transcribe
+        return _gemini_transcribe(audio_path, model)
+    if chosen == "deepgram":
+        from .stt_deepgram import transcribe as _deepgram_transcribe
+        return _deepgram_transcribe(audio_path, model)
+    raise ValueError(
+        f"unknown STT provider '{chosen}'. Valid: 'gemini', 'deepgram'."
     )
 
-    # Prefer the SDK's parsed Pydantic object when available
-    parsed = getattr(response, "parsed", None)
-    if isinstance(parsed, TranscriptResponse):
-        return parsed
 
-    # Fallback: raw JSON → validate
-    try:
-        payload = json.loads(response.text)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Gemini returned non-JSON: {exc}") from exc
+def available_providers() -> dict[str, bool]:
+    """Report which providers are configured. Surfaces in the UI / logs.
 
-    if isinstance(payload, list):
-        payload = {"words": payload}
+    Each provider self-reports via its module's ``is_configured()`` so we
+    don't import optional dependencies at module-load time.
+    """
+    status: dict[str, bool] = {}
     try:
-        return TranscriptResponse.model_validate(payload)
-    except Exception as exc:  # pydantic ValidationError
-        raise RuntimeError(f"Gemini response failed schema validation: {exc}") from exc
+        from .stt_gemini import is_configured as _gemini_ok
+        status["gemini"] = _gemini_ok()
+    except Exception:
+        status["gemini"] = False
+    try:
+        from .stt_deepgram import is_configured as _deepgram_ok
+        status["deepgram"] = _deepgram_ok()
+    except Exception:
+        status["deepgram"] = False
+    return status

@@ -49,6 +49,8 @@ TOOL_MODULES = [
     "celavii_resolve.cutmaster.snapshot",
     "celavii_resolve.cutmaster.state",
     "celavii_resolve.cutmaster.stt",
+    "celavii_resolve.cutmaster.stt_gemini",
+    "celavii_resolve.cutmaster.stt_deepgram",
     "celavii_resolve.cutmaster.scrubber",
     "celavii_resolve.cutmaster.pipeline",
     "celavii_resolve.cutmaster.llm",

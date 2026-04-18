@@ -86,6 +86,16 @@ class AnalyzeRequest(BaseModel):
             "global roster. When None, raw per-clip IDs are left in place."
         ),
     )
+    stt_provider: Literal["gemini", "deepgram"] | None = Field(
+        default=None,
+        description=(
+            "Per-run STT backend override. 'gemini' is the v1 default; "
+            "'deepgram' routes through Deepgram Nova-3 (requires "
+            "DEEPGRAM_API_KEY) and is the right choice for long-form "
+            "content since it has no word-level output token cap. "
+            "Falls back to CELAVII_STT_PROVIDER env var, then to 'gemini'."
+        ),
+    )
 
 
 class AnalyzeResponse(BaseModel):
@@ -120,6 +130,7 @@ async def analyze(body: AnalyzeRequest) -> AnalyzeResponse:
             scrub_params=body.scrub_params,
             per_clip_stt=body.per_clip_stt,
             expected_speakers=body.expected_speakers,
+            stt_provider=body.stt_provider,
         )
     )
 
@@ -191,6 +202,33 @@ async def list_presets() -> dict:
 async def list_formats() -> dict:
     """List all output-format specs (horizontal / vertical_short / square)."""
     return {"formats": [f.model_dump() for f in all_formats()]}
+
+
+@router.get("/stt-providers")
+async def list_stt_providers() -> dict:
+    """Report which STT backends are configured + which is the current default.
+
+    Drives the Preset screen's provider picker: if both Gemini and
+    Deepgram have keys present, the user sees a selector; otherwise we
+    hide the choice and just use whichever is available.
+    """
+    from ...cutmaster.stt import DEFAULT_PROVIDER, available_providers
+
+    status = available_providers()
+    return {
+        "default": DEFAULT_PROVIDER,
+        "providers": [
+            {
+                "key": name,
+                "label": {
+                    "gemini": "Gemini Flash-Lite (≤ 8 min audio validated)",
+                    "deepgram": "Deepgram Nova-3 (long-form, diarized)",
+                }.get(name, name),
+                "configured": configured,
+            }
+            for name, configured in status.items()
+        ],
+    }
 
 
 class SourceAspectResponse(BaseModel):

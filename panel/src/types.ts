@@ -175,6 +175,19 @@ export interface ProjectInfo {
   timelines: TimelineInfo[];
 }
 
+export type SttProviderKey = "gemini" | "deepgram";
+
+export interface SttProviderInfo {
+  key: SttProviderKey;
+  label: string;
+  configured: boolean;
+}
+
+export interface SttProviderList {
+  default: SttProviderKey;
+  providers: SttProviderInfo[];
+}
+
 export interface ClipCandidate {
   start_s: number;
   end_s: number;

@@ -625,6 +625,53 @@ def test_build_plan_rejects_unknown_format(client, monkeypatch, scrubbed_run):
     assert r.status_code == 422
 
 
+def test_stt_providers_endpoint_lists_both(client: TestClient, monkeypatch):
+    """v2-8.1: /cutmaster/stt-providers drives the Preset-screen selector.
+    Reports the default + configured state for each backend."""
+    monkeypatch.setenv("DEEPGRAM_API_KEY", "dg_xxx")
+    monkeypatch.setattr(
+        "celavii_resolve.cutmaster.stt_gemini.is_configured",
+        lambda: True,
+    )
+    r = client.get("/cutmaster/stt-providers")
+    assert r.status_code == 200
+    body = r.json()
+    keys = [p["key"] for p in body["providers"]]
+    assert set(keys) == {"gemini", "deepgram"}
+    by_key = {p["key"]: p for p in body["providers"]}
+    assert by_key["gemini"]["configured"] is True
+    assert by_key["deepgram"]["configured"] is True
+    assert "default" in body
+
+
+def test_analyze_accepts_stt_provider(client: TestClient, monkeypatch):
+    captured: dict = {}
+
+    async def fake_run_analyze(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(routes, "run_analyze", fake_run_analyze)
+    r = client.post("/cutmaster/analyze", json={
+        "timeline_name": "T1",
+        "stt_provider": "deepgram",
+    })
+    assert r.status_code == 200
+    import time as _time
+    for _ in range(10):
+        if captured:
+            break
+        _time.sleep(0.01)
+    assert captured.get("stt_provider") == "deepgram"
+
+
+def test_analyze_rejects_unknown_stt_provider(client: TestClient):
+    r = client.post("/cutmaster/analyze", json={
+        "timeline_name": "T1",
+        "stt_provider": "martian",
+    })
+    assert r.status_code == 422
+
+
 def test_project_info_returns_timelines_with_current_flag(
     client: TestClient, monkeypatch,
 ):

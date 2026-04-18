@@ -83,7 +83,9 @@ async def _extract_audio(tl, run, emit) -> tuple[Path, float] | None:
     return wav_path, float(result["duration_s"])
 
 
-async def _transcribe_per_clip(tl, run, emit) -> list[dict] | None:
+async def _transcribe_per_clip(
+    tl, run, emit, stt_provider: str | None = None,
+) -> list[dict] | None:
     """v2-6: run STT per timeline audio item, stitch the results.
 
     Falls back cleanly if any take has no media-pool backing — each skipped
@@ -125,11 +127,16 @@ async def _transcribe_per_clip(tl, run, emit) -> list[dict] | None:
         data={"clips": len(specs), "duration_s": total_duration, "mode": "per_clip"},
     )
 
-    await emit(run, stage="stt", status="started",
-               message="Transcribing per clip (Gemini parallel)")
+    provider_label = (stt_provider or "default").lower()
+    await emit(
+        run, stage="stt", status="started",
+        message=f"Transcribing per clip in parallel ({provider_label})",
+    )
 
     try:
-        stitched, stats = await transcribe_per_clip(specs)
+        stitched, stats = await transcribe_per_clip(
+            specs, provider=stt_provider,
+        )
     except Exception as exc:
         await emit(run, stage="stt", status="failed",
                    message=f"per-clip STT failed: {exc}")
@@ -161,12 +168,26 @@ async def _reconcile_speakers(
     run,
     emit,
 ) -> list[dict]:
-    """Cross-clip speaker reconciliation after per-clip STT.
+    """Apply the user's speaker-count hint to the transcript.
 
-    - expected_speakers == 1 → trivial collapse, no LLM call.
-    - expected_speakers >= 2 → one Gemini-Flash-Lite call that maps
-      clip-local IDs onto a consistent global roster.
-    - else → no-op (caller should not have invoked us).
+    Two transcript flavours show up here:
+
+    - **Per-clip STT** (``v2-6``) — words carry ``clip_index`` so each
+      clip's speaker IDs are local and need cross-clip reconciliation.
+    - **Concat STT** (v1 default) — one big WAV → Gemini already assigns
+      global IDs. Reconciliation across clips is unnecessary; only the
+      solo-collapse hint is worth acting on.
+
+    Behaviour:
+
+    - ``expected_speakers == 1`` → always collapse every ``speaker_id`` to
+      ``"S1"`` regardless of transcript flavour (useful on vlog-to-camera
+      shoots where Gemini occasionally invents a second speaker).
+    - ``expected_speakers >= 2`` + per-clip transcript → one cheap
+      Flash-Lite call that remaps clip-local IDs onto a global roster.
+    - ``expected_speakers >= 2`` + concat transcript → no-op; Gemini's
+      global IDs already satisfy the count. Emit a "kept as-is" event.
+    - anything else → no-op (caller shouldn't have invoked us).
 
     Errors are surfaced as stage events but never halt the pipeline —
     a failed reconciliation leaves the original transcript in place so
@@ -191,12 +212,36 @@ async def _reconcile_speakers(
         state.save(run)
         await emit(
             run, stage="speakers", status="complete",
-            message="Collapsed all clips to one speaker (S1)",
+            message="Collapsed to a single speaker (S1)",
             data={"detected": 1, "roster": ["S1"]},
         )
         return new_transcript
 
     if expected_speakers < 2:
+        return transcript
+
+    has_clip_index = any("clip_index" in w for w in transcript)
+    if not has_clip_index:
+        # Concat STT — Gemini already produced cross-clip-consistent IDs.
+        # Record the user's hint in state but skip the LLM reconciler
+        # (nothing to reconcile).
+        run["speaker_reconciliation"] = {
+            "expected_speakers": expected_speakers,
+            "strategy": "skip_concat",
+            "reasoning": (
+                "Concat STT already produced global speaker IDs; "
+                "cross-clip reconciliation not needed."
+            ),
+        }
+        state.save(run)
+        await emit(
+            run, stage="speakers", status="complete",
+            message=(
+                f"Concat STT: keeping Gemini's global IDs for up to "
+                f"{expected_speakers} speaker(s)"
+            ),
+            data={"strategy": "skip_concat"},
+        )
         return transcript
 
     await emit(
@@ -245,22 +290,29 @@ async def _transcribe(
     audio_duration_s: float,
     run,
     emit,
+    stt_provider: str | None = None,
 ) -> list[dict] | None:
-    await emit(run, stage="stt", status="started",
-               message="Transcribing with Gemini (word-level timestamps)")
+    provider_label = (stt_provider or "default").lower()
+    await emit(
+        run, stage="stt", status="started",
+        message=f"Transcribing with word-level timestamps ({provider_label})",
+    )
     from .stt import transcribe_audio  # lazy
 
     try:
-        transcript = await asyncio.to_thread(transcribe_audio, wav_path)
+        transcript = await asyncio.to_thread(
+            transcribe_audio, wav_path, None, stt_provider,
+        )
     except Exception as exc:
         await emit(run, stage="stt", status="failed",
                    message=f"STT failed: {exc}")
         return None
 
     raw_words = [w.model_dump() for w in transcript.words]
-    # Guard: Gemini sometimes extrapolates timestamps past the end of the
-    # audio. Drop any word whose end_time exceeds the actual WAV duration,
-    # plus a 0.25s grace for rounding.
+    # Guard: LLM STT occasionally extrapolates timestamps past the end of
+    # the audio. Drop any word whose end_time exceeds the actual WAV
+    # duration, plus a 0.25s grace for rounding. (Not hit by Deepgram in
+    # practice but the clamp is cheap and provider-agnostic.)
     limit = audio_duration_s + 0.25
     words = [w for w in raw_words if w["end_time"] <= limit]
     dropped = len(raw_words) - len(words)
@@ -268,12 +320,16 @@ async def _transcribe(
     run["transcript"] = words
     state.save(run)
 
-    msg = f"Transcribed {len(words)} words"
+    msg = f"Transcribed {len(words)} words via {provider_label}"
     if dropped:
         msg += f" (dropped {dropped} with timestamps past audio end of {audio_duration_s:.1f}s)"
     await emit(run, stage="stt", status="complete",
                message=msg,
-               data={"word_count": len(words), "dropped_out_of_range": dropped})
+               data={
+                   "word_count": len(words),
+                   "dropped_out_of_range": dropped,
+                   "provider": provider_label,
+               })
     return words
 
 
@@ -302,6 +358,7 @@ async def run_analyze(
     scrub_params: ScrubParams | None = None,
     per_clip_stt: bool = False,
     expected_speakers: int | None = None,
+    stt_provider: str | None = None,
 ) -> None:
     """Top-level analyze orchestrator.
 
@@ -340,7 +397,9 @@ async def run_analyze(
         if per_clip_stt:
             # v2-6: skip the global concat, run STT per timeline item, and
             # attach clip_index + clip_metadata to every word.
-            words = await _transcribe_per_clip(tl, run, state.emit)
+            words = await _transcribe_per_clip(
+                tl, run, state.emit, stt_provider=stt_provider,
+            )
             if words is None:
                 run["status"] = "failed"
                 run["error"] = "per_clip_stt_failed"
@@ -365,13 +424,23 @@ async def run_analyze(
                 return
             wav_path, audio_duration_s = audio_result
 
-            words = await _transcribe(wav_path, audio_duration_s, run, state.emit)
+            words = await _transcribe(
+                wav_path, audio_duration_s, run, state.emit,
+                stt_provider=stt_provider,
+            )
             if words is None:
                 run["status"] = "failed"
                 run["error"] = "stt_failed"
                 state.save(run)
                 await state.emit(run, stage="done", status="failed", message="halted on STT")
                 return
+            # Solo-speaker collapse works for concat STT too: Gemini
+            # sometimes invents S2/S3 on single-speaker content. Multi-
+            # speaker hints are a no-op on concat STT (global IDs already).
+            if expected_speakers:
+                words = await _reconcile_speakers(
+                    words, expected_speakers, run, state.emit,
+                )
 
         await _scrub_stage(words, scrub_params or ScrubParams(), run, state.emit)
 
