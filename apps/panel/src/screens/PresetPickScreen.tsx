@@ -25,6 +25,25 @@ interface Props {
     onNext: () => void | Promise<void>;
 }
 
+const TIMELINE_MODE_INFO: Record<TimelineMode, { title: string; blurb: string }> = {
+    raw_dump: {
+        title: "Raw dump",
+        blurb: "Pile of content. Agent picks keepers, sequences, and tightens.",
+    },
+    rough_cut: {
+        title: "Rough cut",
+        blurb: "Candidates with A/B alternates. Agent picks winners per group and sequences them.",
+    },
+    curated: {
+        title: "Curated",
+        blurb: "Final selects, no duplicates. Agent keeps every take and sequences them.",
+    },
+    assembled: {
+        title: "Assembled",
+        blurb: "Cut is locked. Agent only tightens within takes — no reordering.",
+    },
+};
+
 export default function PresetPickScreen({
     timelineName,
     onTimelineChange,
@@ -49,8 +68,10 @@ export default function PresetPickScreen({
     const [fallbackToText, setFallbackToText] = useState(false);
     const [providers, setProviders] = useState<SttProviderInfo[] | null>(null);
     const [defaultProvider, setDefaultProvider] = useState<SttProviderKey>("gemini");
-    // Auto-select the active timeline only the first time project info loads —
-    // don't clobber a name the user typed manually.
+    // v3-1.1: source timeline collapses to breadcrumb after the first auto-pick.
+    // User flips to expanded state via the breadcrumb "change" link.
+    const [timelineExpanded, setTimelineExpanded] = useState(false);
+    const [timelineUserTouched, setTimelineUserTouched] = useState(false);
     const hasAutoSelected = useRef(false);
 
     useEffect(() => {
@@ -104,152 +125,242 @@ export default function PresetPickScreen({
         }
     };
 
+    const currentTimelineItemCount =
+        projectInfo?.timelines.find((t) => t.name === timelineName)?.item_count ?? null;
+    const isCurrentOpen =
+        projectInfo?.timelines.find((t) => t.name === timelineName)?.is_current ?? false;
+    // Collapse the source-timeline card when: we auto-picked the currently-open
+    // timeline AND the user hasn't touched anything AND they haven't explicitly
+    // expanded via "change".
+    const timelineCollapsed =
+        !timelineExpanded &&
+        !timelineUserTouched &&
+        !fallbackToText &&
+        !projectErr &&
+        projectInfo !== null &&
+        isCurrentOpen &&
+        timelineName.trim() !== "";
+
+    const handleTimelineChange = (name: string) => {
+        setTimelineUserTouched(true);
+        onTimelineChange(name);
+    };
+
+    // v3-1.3: Tightener locks the timeline mode to assembled. Auto-apply on pick.
+    useEffect(() => {
+        if (preset === "tightener" && timelineMode !== "assembled") {
+            onTimelineModeChange("assembled");
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [preset]);
+
+    const sttConfigured = !!providers && providers.some((p) => p.configured);
+    const effectiveProvider = sttProvider ?? defaultProvider;
+
     return (
         <div>
-            <div className="card">
-                <div
-                    className="row between"
-                    style={{ alignItems: "baseline", marginBottom: 6 }}
-                >
-                    <label htmlFor="tl" style={{ margin: 0 }}>
-                        Source timeline
-                        {projectInfo && (
-                            <>
-                                {" "}
-                                <span className="muted">
-                                    · {projectInfo.project_name}
-                                </span>
-                            </>
-                        )}
-                    </label>
-                    <button
-                        className="secondary"
-                        onClick={loadProjectInfo}
-                        disabled={projectLoading}
-                        title="Re-read timelines from Resolve"
-                        style={{ padding: "4px 10px", fontSize: 12 }}
-                    >
-                        {projectLoading ? "…" : "↻ Refresh"}
-                    </button>
+            {/* v3-1.1 — Source timeline: collapsed breadcrumb after first auto-pick */}
+            {timelineCollapsed ? (
+                <div className="card" style={{ padding: "var(--s-3) var(--s-4)" }}>
+                    <div className="row between" style={{ margin: 0 }}>
+                        <span className="muted" style={{ fontSize: "var(--fs-2)" }}>
+                            Source:{" "}
+                            <code>{timelineName}</code>
+                            {currentTimelineItemCount ? (
+                                <>
+                                    {" "}
+                                    ·{" "}
+                                    {currentTimelineItemCount} item
+                                    {currentTimelineItemCount === 1 ? "" : "s"}
+                                </>
+                            ) : null}
+                            {projectInfo?.project_name ? (
+                                <> · {projectInfo.project_name}</>
+                            ) : null}
+                        </span>
+                        <button
+                            className="btn-ghost"
+                            onClick={() => setTimelineExpanded(true)}
+                            style={{ fontSize: "var(--fs-2)" }}
+                        >
+                            change
+                        </button>
+                    </div>
                 </div>
-
-                {projectErr && (
-                    <p className="muted" style={{ color: "var(--err, #e88)" }}>
-                        Couldn't reach Resolve — type the timeline name below.
-                    </p>
-                )}
-
-                {!fallbackToText && projectInfo ? (
-                    <select
-                        id="tl"
-                        value={timelineName}
-                        onChange={(e) => onTimelineChange(e.target.value)}
+            ) : (
+                <div className="card">
+                    <div
+                        className="row between"
+                        style={{ alignItems: "baseline", marginBottom: "var(--s-2)" }}
                     >
-                        {!projectInfo.timelines.some(
-                            (t) => t.name === timelineName,
-                        ) && (
-                            <option value={timelineName}>
-                                {timelineName || "(pick a timeline)"}
-                            </option>
-                        )}
-                        {projectInfo.timelines.map((t) => (
-                            <option key={t.name} value={t.name}>
-                                {t.name}
-                                {t.is_current ? "  · currently open" : ""}
-                                {t.item_count
-                                    ? `  · ${t.item_count} item${t.item_count === 1 ? "" : "s"}`
-                                    : ""}
-                            </option>
-                        ))}
-                    </select>
-                ) : (
-                    <input
-                        id="tl"
-                        type="text"
-                        value={timelineName}
-                        onChange={(e) => onTimelineChange(e.target.value)}
-                        placeholder="Timeline 1"
-                    />
-                )}
+                        <label htmlFor="tl" style={{ margin: 0 }}>
+                            Source timeline
+                            {projectInfo && (
+                                <>
+                                    {" "}
+                                    <span className="muted">
+                                        · {projectInfo.project_name}
+                                    </span>
+                                </>
+                            )}
+                        </label>
+                        <button
+                            className="btn-ghost"
+                            onClick={loadProjectInfo}
+                            disabled={projectLoading}
+                            title="Re-read timelines from Resolve"
+                            aria-label="Refresh timeline list"
+                            style={{ fontSize: "var(--fs-2)" }}
+                        >
+                            {projectLoading ? "…" : "↻ Refresh"}
+                        </button>
+                    </div>
 
-                {projectInfo && projectInfo.timelines.length === 0 && (
-                    <p className="muted" style={{ marginTop: 6 }}>
-                        The open project has no timelines — create one in Resolve first.
-                    </p>
-                )}
-            </div>
+                    {projectErr && (
+                        <p className="muted" style={{ color: "var(--err)" }}>
+                            Couldn't reach Resolve — type the timeline name below.
+                        </p>
+                    )}
 
+                    {!fallbackToText && projectInfo ? (
+                        <select
+                            id="tl"
+                            value={timelineName}
+                            onChange={(e) => handleTimelineChange(e.target.value)}
+                        >
+                            {!projectInfo.timelines.some(
+                                (t) => t.name === timelineName,
+                            ) && (
+                                <option value={timelineName}>
+                                    {timelineName || "(pick a timeline)"}
+                                </option>
+                            )}
+                            {projectInfo.timelines.map((t) => (
+                                <option key={t.name} value={t.name}>
+                                    {t.name}
+                                    {t.is_current ? "  · currently open" : ""}
+                                    {t.item_count
+                                        ? `  · ${t.item_count} item${t.item_count === 1 ? "" : "s"}`
+                                        : ""}
+                                </option>
+                            ))}
+                        </select>
+                    ) : (
+                        <input
+                            id="tl"
+                            type="text"
+                            value={timelineName}
+                            onChange={(e) => handleTimelineChange(e.target.value)}
+                            placeholder="Timeline 1"
+                        />
+                    )}
+
+                    {projectInfo && projectInfo.timelines.length === 0 && (
+                        <p className="muted" style={{ marginTop: "var(--s-2)" }}>
+                            The open project has no timelines — create one in Resolve first.
+                        </p>
+                    )}
+                </div>
+            )}
+
+            {/* v3-1.2 — Timeline state as 2×2 grid */}
             <div className="card">
                 <h2>What state is this timeline in?</h2>
                 <p className="muted">
-                    Tell CutMaster how much editorial work you've already done —
-                    that decides which decisions it's allowed to make.
+                    How much editorial work have you already done? That decides which
+                    decisions the agent is allowed to make.
                 </p>
-                <div className="row">
-                    <button
-                        className={timelineMode === "raw_dump" ? "" : "secondary"}
-                        onClick={() => onTimelineModeChange("raw_dump")}
-                        disabled={preset === "tightener"}
-                        title="Pile of content — help me formalize it."
+                {preset === "tightener" ? (
+                    // v3-1.3 — Tightener auto-lock: single info line replaces the grid
+                    <p
+                        className="muted"
+                        style={{
+                            marginTop: "var(--s-3)",
+                            padding: "var(--s-3)",
+                            background: "var(--surface-3)",
+                            borderRadius: "var(--radius-md)",
+                            fontSize: "var(--fs-2)",
+                        }}
                     >
-                        Raw dump
-                    </button>
-                    <button
-                        className={timelineMode === "rough_cut" ? "" : "secondary"}
-                        onClick={() => onTimelineModeChange("rough_cut")}
-                        disabled={preset === "tightener"}
-                        title="Candidates with A/B alternates — pick winners and arrange."
-                    >
-                        Rough cut
-                    </button>
-                    <button
-                        className={timelineMode === "curated" ? "" : "secondary"}
-                        onClick={() => onTimelineModeChange("curated")}
-                        disabled={preset === "tightener"}
-                        title="Final selects, no duplicates — arrange them."
-                    >
-                        Curated
-                    </button>
-                    <button
-                        className={timelineMode === "assembled" ? "" : "secondary"}
-                        onClick={() => onTimelineModeChange("assembled")}
-                    >
-                        Assembled
-                    </button>
-                </div>
-                <p className="muted" style={{ marginTop: 8, fontSize: "0.85em" }}>
-                    {timelineMode === "raw_dump" &&
-                        "Pile of content. Agent picks keepers, sequences, and tightens."}
-                    {timelineMode === "rough_cut" &&
-                        "Candidate takes with alternates (A/B). Agent picks winners per group, sequences them, and tightens. Group by clip color, flags, or transcript similarity."}
-                    {timelineMode === "curated" &&
-                        "Final selects with no duplicates. Agent keeps every take and sequences them."}
-                    {timelineMode === "assembled" &&
-                        "Cut is locked. Agent only tightens within takes — no reordering, no dropping."}
-                </p>
-                {preset === "tightener" && (
-                    <p className="muted" style={{ marginTop: 8 }}>
-                        Tightener always runs in Assembled mode.
+                        Tightener runs in <strong>Assembled</strong> mode — no other
+                        state supported. Your cut is locked; the agent only tightens
+                        within takes.
                     </p>
+                ) : (
+                    <div
+                        style={{
+                            display: "grid",
+                            gridTemplateColumns: "repeat(2, 1fr)",
+                            gap: "var(--s-2)",
+                            marginTop: "var(--s-3)",
+                        }}
+                    >
+                        {(
+                            ["raw_dump", "rough_cut", "curated", "assembled"] as TimelineMode[]
+                        ).map((mode) => {
+                            const info = TIMELINE_MODE_INFO[mode];
+                            const selected = timelineMode === mode;
+                            return (
+                                <div
+                                    key={mode}
+                                    role="button"
+                                    tabIndex={0}
+                                    className={`preset-card ${selected ? "selected" : ""}`}
+                                    onClick={() => onTimelineModeChange(mode)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter" || e.key === " ") {
+                                            e.preventDefault();
+                                            onTimelineModeChange(mode);
+                                        }
+                                    }}
+                                >
+                                    <h3>{info.title}</h3>
+                                    <p>{info.blurb}</p>
+                                </div>
+                            );
+                        })}
+                    </div>
                 )}
             </div>
 
-            <div className="card">
+            {/* v3-1.4 — Content type is the primary decision */}
+            <div className="card card--primary">
                 <h2>Content type</h2>
-                <p>Pick a preset — or let Auto-detect classify the content from the transcript.</p>
+                <p>
+                    Pick a preset — or let Auto-detect classify the content from the transcript.
+                </p>
                 <div className="grid-presets">
                     <div
+                        role="button"
+                        tabIndex={0}
                         className={`preset-card auto ${preset === "auto" ? "selected" : ""}`}
                         onClick={() => onPresetChange("auto")}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                onPresetChange("auto");
+                            }
+                        }}
                     >
                         <h3>✨ Auto-detect</h3>
-                        <p>Let the agent classify this clip after transcription. You can override in the next step.</p>
+                        <p>
+                            Let the agent classify this clip after transcription. You can
+                            override in the next step.
+                        </p>
                     </div>
                     {presets.map((p) => (
                         <div
                             key={p.key}
+                            role="button"
+                            tabIndex={0}
                             className={`preset-card ${preset === p.key ? "selected" : ""}`}
                             onClick={() => onPresetChange(p.key)}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    onPresetChange(p.key);
+                                }
+                            }}
                         >
                             <h3>{p.label}</h3>
                             <p>{p.hook_rule}</p>
@@ -258,21 +369,41 @@ export default function PresetPickScreen({
                 </div>
             </div>
 
+            {/* Speakers on camera — regular card. A semantic decision about
+                the content (who's on screen), not a transcription tuning knob.
+                Stays visible so users don't miss it. */}
             <div className="card">
                 <h2>Speakers on camera</h2>
-                <p className="muted" style={{ marginBottom: 10 }}>
+                <p className="muted">
                     How many people speak in the shoot? Helps the Director /
                     Marker agents reason about roles and stops Gemini from
-                    inventing phantom speakers on solo content. Leave blank
-                    if you're unsure.
+                    inventing phantom speakers on solo content.
                 </p>
-                <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                {/* v3-1.6 — Unsure (ghost) first, then numeric range 1…5+ */}
+                <div
+                    className="row"
+                    style={{ gap: "var(--s-2)", flexWrap: "wrap" }}
+                >
+                    <button
+                        className={expectedSpeakers == null ? "secondary" : "btn-ghost"}
+                        onClick={() => onExpectedSpeakersChange(null)}
+                        style={
+                            expectedSpeakers == null
+                                ? {
+                                      borderColor: "var(--accent-blue)",
+                                      color: "var(--accent-blue)",
+                                  }
+                                : undefined
+                        }
+                    >
+                        Unsure
+                    </button>
                     {[1, 2, 3, 4].map((n) => (
                         <button
                             key={n}
                             className={expectedSpeakers === n ? "" : "secondary"}
                             onClick={() => onExpectedSpeakersChange(n)}
-                            style={{ minWidth: 64 }}
+                            style={{ minWidth: 56 }}
                         >
                             {n === 1 ? "1 (solo)" : `${n}`}
                         </button>
@@ -288,18 +419,12 @@ export default function PresetPickScreen({
                     >
                         5+
                     </button>
-                    <button
-                        className={expectedSpeakers == null ? "" : "secondary"}
-                        onClick={() => onExpectedSpeakersChange(null)}
-                    >
-                        Unsure
-                    </button>
                 </div>
                 {expectedSpeakers != null && expectedSpeakers > 4 && (
-                    <div style={{ marginTop: 10 }}>
+                    <div style={{ marginTop: "var(--s-3)" }}>
                         <label
                             htmlFor="expected-speakers"
-                            style={{ display: "block", marginBottom: 4 }}
+                            style={{ display: "block", marginBottom: "var(--s-1)" }}
                         >
                             Exact count (5–10)
                         </label>
@@ -321,17 +446,18 @@ export default function PresetPickScreen({
                         />
                     </div>
                 )}
-                <p className="muted" style={{ marginTop: 10 }}>
+                <p
+                    className="muted"
+                    style={{ marginTop: "var(--s-3)", fontSize: "var(--fs-2)" }}
+                >
                     {expectedSpeakers === 1 && (
                         <>Every word will be tagged as one speaker (S1).</>
                     )}
                     {expectedSpeakers != null && expectedSpeakers >= 2 && (
                         <>
-                            With per-clip STT on, we'll reconcile each clip's
-                            local IDs into a consistent {expectedSpeakers}-speaker
-                            roster via one cheap Gemini-Flash-Lite call.
-                            Without per-clip STT, Gemini's global IDs from the
-                            concat transcript are kept as-is.
+                            With per-clip STT on, each clip's local IDs are reconciled
+                            into a consistent {expectedSpeakers}-speaker roster via one
+                            cheap Gemini-Flash-Lite call.
                         </>
                     )}
                     {expectedSpeakers == null && (
@@ -340,76 +466,123 @@ export default function PresetPickScreen({
                 </p>
             </div>
 
-            {providers && providers.length > 0 && (
-                <div className="card">
-                    <h2>Transcription service</h2>
-                    <p className="muted" style={{ marginBottom: 10 }}>
-                        Gemini is free with a key and fine for ≤ 8 min audio.
-                        Deepgram Nova-3 handles long-form (no word-level
-                        output cap) and bundles diarization in one pass —
-                        recommended for interviews / podcasts.
-                    </p>
-                    <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                        {providers.map((p) => {
-                            const effective =
-                                sttProvider ?? defaultProvider;
-                            const selected = effective === p.key;
-                            const disabled = !p.configured;
-                            return (
-                                <button
-                                    key={p.key}
-                                    className={selected ? "" : "secondary"}
-                                    disabled={disabled}
-                                    onClick={() => onSttProviderChange(p.key)}
-                                    title={
-                                        disabled
-                                            ? `${p.key.toUpperCase()}_API_KEY not set in .env`
-                                            : p.label
-                                    }
+            {/* v3-1.5 (revised) — Transcription details: STT provider + per-clip
+                mode only. Speakers graduated to its own regular card above. */}
+            <details className="card card--advanced">
+                <summary>
+                    <span>
+                        Transcription details
+                        {sttConfigured && (
+                            <>
+                                {" "}
+                                <span className="muted" style={{ fontSize: "var(--fs-2)" }}>
+                                    · {effectiveProvider}
+                                </span>
+                            </>
+                        )}
+                        {perClipStt && (
+                            <>
+                                {" "}
+                                <span className="muted" style={{ fontSize: "var(--fs-2)" }}>
+                                    · per-clip
+                                </span>
+                            </>
+                        )}
+                    </span>
+                </summary>
+                <div className="card-body">
+                    {providers && providers.length > 0 && (
+                        <div style={{ marginBottom: "var(--s-4)" }}>
+                            <label>Transcription service</label>
+                            <p className="muted" style={{ marginBottom: "var(--s-3)" }}>
+                                Gemini is free with a key and fine for ≤ 8 min audio.
+                                Deepgram Nova-3 handles long-form (no word-level cap)
+                                and bundles diarization — recommended for interviews.
+                            </p>
+                            <div
+                                className="row"
+                                style={{
+                                    gap: "var(--s-2)",
+                                    flexWrap: "wrap",
+                                    marginTop: 0,
+                                }}
+                            >
+                                {providers.map((p) => {
+                                    const selected = effectiveProvider === p.key;
+                                    const disabled = !p.configured;
+                                    return (
+                                        <button
+                                            key={p.key}
+                                            className={selected ? "" : "secondary"}
+                                            disabled={disabled}
+                                            onClick={() => onSttProviderChange(p.key)}
+                                            title={
+                                                disabled
+                                                    ? `${p.key.toUpperCase()}_API_KEY not set in .env`
+                                                    : p.label
+                                            }
+                                        >
+                                            {p.label}
+                                            {disabled && " · key missing"}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            {!sttConfigured && (
+                                <p
+                                    className="muted"
+                                    style={{
+                                        marginTop: "var(--s-3)",
+                                        color: "var(--err)",
+                                        fontSize: "var(--fs-2)",
+                                    }}
                                 >
-                                    {p.label}
-                                    {disabled && " · key missing"}
-                                </button>
-                            );
-                        })}
-                    </div>
-                    {!providers.some((p) => p.configured) && (
+                                    No STT key configured. Add either{" "}
+                                    <code>GEMINI_API_KEY</code> or{" "}
+                                    <code>DEEPGRAM_API_KEY</code> to your{" "}
+                                    <code>.env</code> and restart the panel.
+                                </p>
+                            )}
+                        </div>
+                    )}
+
+                    <div>
+                        <label
+                            style={{
+                                display: "flex",
+                                gap: "var(--s-2)",
+                                alignItems: "center",
+                                margin: 0,
+                                color: "var(--text-primary)",
+                                fontSize: "var(--fs-3)",
+                            }}
+                        >
+                            <input
+                                type="checkbox"
+                                checked={perClipStt}
+                                onChange={(e) => onPerClipSttChange(e.target.checked)}
+                                style={{ width: "auto", height: "auto" }}
+                            />
+                            Per-clip STT — transcribe each timeline item separately
+                        </label>
                         <p
                             className="muted"
-                            style={{ marginTop: 10, color: "var(--err, #e88)" }}
+                            style={{ marginTop: "var(--s-2)", fontSize: "var(--fs-2)" }}
                         >
-                            No STT key configured. Add either{" "}
-                            <code>GEMINI_API_KEY</code> or{" "}
-                            <code>DEEPGRAM_API_KEY</code> to your <code>.env</code>{" "}
-                            and restart the panel.
+                            Slower on the first run but richer context: Director sees
+                            per-clip metadata, and results cache so re-analyzing a
+                            trimmed timeline only re-transcribes the changed takes.
                         </p>
-                    )}
+                    </div>
                 </div>
-            )}
-
-            <div className="card">
-                <h2>Transcription mode (advanced)</h2>
-                <label style={{ display: "flex", gap: 6, alignItems: "center", margin: 0 }}>
-                    <input
-                        type="checkbox"
-                        checked={perClipStt}
-                        onChange={(e) => onPerClipSttChange(e.target.checked)}
-                    />
-                    Per-clip STT — transcribe each timeline item separately
-                </label>
-                <p className="muted" style={{ marginTop: 6 }}>
-                    Slower on the first run but richer context: the Director
-                    sees per-clip metadata (file, duration) and per-clip
-                    results cache so re-analyzing a trimmed timeline only
-                    re-transcribes the changed takes.
-                </p>
-            </div>
+            </details>
 
             {err && <div className="error-box">{err}</div>}
 
             <div className="row between">
                 <span className="muted">
-                    Preset: <code>{preset}</code> &nbsp;·&nbsp; Timeline: <code>{timelineName}</code>
+                    Preset: <code>{preset}</code> &nbsp;·&nbsp; Timeline:{" "}
+                    <code>{timelineName}</code>
                 </span>
                 <button disabled={loading || !timelineName.trim()} onClick={submit}>
                     {loading ? "Starting…" : "Analyze →"}
