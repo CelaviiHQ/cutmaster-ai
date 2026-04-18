@@ -319,6 +319,6 @@ Thirty minutes to build a mental model:
 3. [`cutmaster/director.py`](../src/celavii_resolve/cutmaster/director.py) — three prompt variants; read the docstrings before the prompt bodies.
 4. [`cutmaster/execute.py`](../src/celavii_resolve/cutmaster/execute.py) — how a plan becomes a real Resolve timeline.
 5. [`http/routes/cutmaster.py`](../src/celavii_resolve/http/routes/cutmaster.py) — `build_plan` is the best place to see all the branches at once.
-6. The panel: [`panel/src/App.tsx`](../panel/src/App.tsx) → any screen you touched.
+6. The panel: [`apps/panel/src/App.tsx`](../apps/panel/src/App.tsx) → any screen you touched.
 
 Then pick one item from §4's extension points and add it. Shipping a new preset is the fastest way to understand the whole data flow.

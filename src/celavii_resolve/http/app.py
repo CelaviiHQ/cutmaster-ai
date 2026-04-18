@@ -56,7 +56,7 @@ def create_app() -> FastAPI:
     app.include_router(cutmaster_routes.router)
 
     # Serve the React bundle if it's been built. Panel build step copies
-    # panel/dist/ → src/celavii_resolve/http/static/.
+    # apps/panel/dist/ → src/celavii_resolve/http/static/.
     if os.path.isdir(STATIC_DIR) and os.listdir(STATIC_DIR):
         app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="panel")
 

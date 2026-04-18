@@ -10,9 +10,9 @@ src/celavii_resolve/http/static/*
 !src/celavii_resolve/http/static/.gitkeep
 
 # CutMaster panel — node dependencies
-panel/node_modules/
-panel/dist/
-panel/.vite/
+apps/panel/node_modules/
+apps/panel/dist/
+apps/panel/.vite/
 
 # Python
 __pycache__/

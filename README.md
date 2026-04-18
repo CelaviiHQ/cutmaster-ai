@@ -259,6 +259,7 @@ celavii-davinci-resolve-mcp/
 │   ├── workflows/         # 6 modules, compound workflow tools
 │   ├── ai/                # 3 modules, AI-powered tools
 │   ├── cutmaster/         # CutMaster AI product (panel + MCP)
+│   ├── intelligence/      # Single-shot LLM tools + shared LLM dispatch
 │   ├── http/              # FastAPI backend for the panel
 │   └── utils/             # Platform, media, path helpers
 ├── .claude-plugin/
@@ -266,6 +267,9 @@ celavii-davinci-resolve-mcp/
 ├── skills/                # Claude Code skills (plugin distribution)
 ├── agents/                # Domain agents (plugin distribution)
 ├── hooks/                 # Safety hooks (plugin distribution)
+├── apps/
+│   ├── panel/             # React panel (Vite, talks to celavii-resolve-panel)
+│   └── resolve-plugin/    # DaVinci Resolve Workflow Integration manifest
 ├── scripts/
 │   ├── install.py         # Universal installer (10 MCP clients)
 │   ├── build-plugin.sh    # Build Claude Code plugin ZIP

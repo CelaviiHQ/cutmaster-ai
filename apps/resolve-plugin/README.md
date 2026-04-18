@@ -21,7 +21,7 @@ into Resolve's Workflow Integration Plugins folder, renaming it to
 **macOS**
 
 ```bash
-cp -r panel/resolve-plugin \
+cp -r apps/resolve-plugin \
   ~/Library/Application\ Support/Blackmagic\ Design/DaVinci\ Resolve/Fusion/Workflow\ Integration\ Plugins/CelaviiCutMaster
 ```
 
