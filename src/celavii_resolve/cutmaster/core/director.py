@@ -111,6 +111,7 @@ def validate_plan(
     target_length_s: float | None = None,
     selected_hook_s: float | None = None,
     preset: PresetBundle | None = None,
+    chapters: list[dict] | None = None,
 ) -> list[str]:
     """Return a list of validation errors. Empty list = valid.
 
@@ -128,6 +129,8 @@ def validate_plan(
          (≥ 30 words) are touched by some segment.
       8. When transcript words carry ``confidence`` (Deepgram runs): each
          segment's first and last word has confidence >= CONFIDENCE_FLOOR.
+      9. When ``preset.reorder_mode != "free"``: non-hook segments respect
+         source-time order (locked) or chapter-order (preserve_macro).
     """
     starts, ends = _build_timestamp_sets(transcript)
     errors: list[str] = []
@@ -319,6 +322,46 @@ def validate_plan(
                 f"at ~{target_length_s:.0f}s. Do NOT just shorten existing "
                 f"segments past the min-pacing bound."
             )
+
+    # Reorder policy: hook is exempt (floated to position 0). Non-hook
+    # segments must obey the preset's reorder_mode.
+    mode = getattr(preset, "reorder_mode", "free") if preset is not None else "free"
+    if mode in ("locked", "preserve_macro") and len(plan.selected_clips) > 1:
+        non_hook = [(i, seg) for i, seg in enumerate(plan.selected_clips) if i != plan.hook_index]
+        if mode == "locked":
+            prev_start = -1.0
+            for i, seg in non_hook:
+                if seg.start_s < prev_start:
+                    errors.append(
+                        f"segment[{i}] starts at {seg.start_s:.2f}s but the "
+                        f"previous non-hook segment started at {prev_start:.2f}s. "
+                        f"This preset's reorder policy is LOCKED — non-hook "
+                        f"segments must play in ascending source-time order."
+                    )
+                    break
+                prev_start = seg.start_s
+        elif mode == "preserve_macro" and chapters:
+
+            def chapter_of(t: float) -> int:
+                for ci, ch in enumerate(chapters):
+                    if ch["start_s"] <= t < ch["end_s"]:
+                        return ci
+                return -1
+
+            prev_chapter = -1
+            for i, seg in non_hook:
+                this_chapter = chapter_of(seg.start_s)
+                if this_chapter == -1:
+                    continue  # segment outside any chapter — ignore
+                if this_chapter < prev_chapter:
+                    errors.append(
+                        f"segment[{i}] is from chapter {this_chapter + 1} but "
+                        f"the previous non-hook segment was from chapter "
+                        f"{prev_chapter + 1}. This preset's reorder policy is "
+                        f"PRESERVE_MACRO — chapters must play in source order."
+                    )
+                    break
+                prev_chapter = max(prev_chapter, this_chapter)
 
     return errors
 
@@ -605,6 +648,42 @@ def _pacing_block(preset: PresetBundle | None) -> str:
     )
 
 
+def _reorder_mode_block(preset: PresetBundle | None, chapters: list[dict] | None = None) -> str:
+    """Render REORDER POLICY block matching the preset's reorder_mode."""
+    if preset is None:
+        return ""
+    mode = getattr(preset, "reorder_mode", "free")
+    if mode == "free":
+        return ""
+    if mode == "locked":
+        return (
+            "### REORDER POLICY — LOCKED\n"
+            "Place segments in the SAME source-time order they appear in the "
+            "transcript. The hook is the only exception: you may float it to "
+            "position 0 in the output even if it's not the earliest, but "
+            "every subsequent segment must play in ascending source-time "
+            "order. Do not reorder for pacing or drama."
+        )
+    if mode == "preserve_macro":
+        ch_note = ""
+        if chapters:
+            ch_list = "\n".join(
+                f"  - Chapter {i + 1}: {c['start_s']:.1f}s – {c['end_s']:.1f}s — {c.get('title', '')}"
+                for i, c in enumerate(chapters)
+            )
+            ch_note = f"\nChapter boundaries:\n{ch_list}"
+        return (
+            "### REORDER POLICY — PRESERVE MACRO ORDER\n"
+            "Chapters must play in source-time order (earlier chapters before "
+            "later chapters). Within a chapter you may reorder individual "
+            "segments for pacing. The hook is exempt — it always goes to "
+            "position 0 in the output. Do not move content from a later "
+            "chapter ahead of content from an earlier chapter."
+            f"{ch_note}"
+        )
+    return ""
+
+
 def _take_groups_block(transcript: list[dict]) -> str:
     """Render TAKE GROUPS rule when near-duplicate takes exist."""
     from ..analysis.take_dedup import detect_take_groups
@@ -690,7 +769,11 @@ def _prompt(preset: PresetBundle, transcript: list[dict], user_settings: dict | 
     pacing = _pacing_block(preset)
     coverage = _coverage_block(transcript)
     take_groups = _take_groups_block(transcript)
-    recipe_section = "\n\n".join(b for b in (hook, recipe, pacing, coverage, take_groups) if b)
+    chapters = (user_settings or {}).get("chapters") if user_settings else None
+    reorder = _reorder_mode_block(preset, chapters)
+    recipe_section = "\n\n".join(
+        b for b in (hook, recipe, pacing, coverage, take_groups, reorder) if b
+    )
     recipe_section = f"\n\n{recipe_section}" if recipe_section else ""
     transcript_for_prompt = _shape_for_prompt(transcript, user_settings)
     return f"""You are a {preset.role}.
@@ -726,6 +809,7 @@ def build_cut_plan(
     prompt = _prompt(preset, transcript, user_settings)
     target_length_s: float | None = None
     selected_hook_s: float | None = None
+    chapters = None
     if user_settings:
         raw_t = user_settings.get("target_length_s")
         if raw_t:
@@ -739,12 +823,13 @@ def build_cut_plan(
                 selected_hook_s = float(raw_h)
             except (TypeError, ValueError):
                 selected_hook_s = None
+        chapters = user_settings.get("chapters")
     return llm.call_structured(
         agent="director",
         prompt=prompt,
         response_schema=DirectorPlan,
         validate=lambda plan: validate_plan(
-            plan, transcript, target_length_s, selected_hook_s, preset
+            plan, transcript, target_length_s, selected_hook_s, preset, chapters
         ),
         temperature=0.4,
         max_retries=5,

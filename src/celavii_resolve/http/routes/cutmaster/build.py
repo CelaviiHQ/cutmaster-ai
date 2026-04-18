@@ -623,7 +623,12 @@ async def build_plan(body: BuildPlanRequest) -> dict:
             reasoning=assembled_plan.reasoning,
         )
     else:
-        # v1 raw-dump path — unchanged.
+        # v1 raw-dump path. Batch 7: inject cached chapters so the Director
+        # prompt + reorder-mode validator can honour preserve_macro policies.
+        cached_analysis = run.get("story_analysis") or {}
+        chapters = (cached_analysis.get("analysis") or {}).get("chapters") or []
+        if chapters:
+            settings_dict = {**settings_dict, "chapters": chapters}
         _dump_director_prompt(
             body.run_id,
             director_mod._prompt(preset, scrubbed, settings_dict),

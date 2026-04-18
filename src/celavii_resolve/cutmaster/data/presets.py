@@ -62,6 +62,19 @@ class PresetBundle(BaseModel):
         default=40.0,
         description="Upper bound on individual segment duration (seconds).",
     )
+    # Narrative reorder policy (batch 7):
+    #   - "free": Director picks any order that serves the cut.
+    #   - "preserve_macro": segments stay inside their source chapter; the
+    #     Director can reorder within a chapter but not across chapters.
+    #   - "locked": segments play in source-time order (hook excepted —
+    #     still floated to position 0 in the output).
+    # The validator enforces "locked" strictly and "preserve_macro" when
+    # chapter data is plumbed through; the prompt always surfaces the
+    # stance so the Director writes to it even when enforcement is soft.
+    reorder_mode: Literal["free", "preserve_macro", "locked"] = Field(
+        default="free",
+        description="How much the Director may reorder segments from their source-time sequence.",
+    )
     cue_vocabulary: list[str]
     marker_vocabulary: list[str]
     theme_axes: list[str]
@@ -97,6 +110,7 @@ VLOG = PresetBundle(
     role="YouTube retention expert and documentary editor",
     hook_rule="the single highest-energy summary statement in the first 20% of the runtime",
     pacing="retention curve — front-load the payoff, keep beats tight",
+    reorder_mode="preserve_macro",
     cue_vocabulary=[
         "as you can see",
         "look at this",
@@ -156,6 +170,7 @@ PRODUCT_DEMO = PresetBundle(
     role="senior product marketing editor",
     hook_rule="the problem/benefit framing that earns the viewer's attention in the first 15 seconds",
     pacing="one beat per feature, no rambling, demo-first",
+    reorder_mode="preserve_macro",
     min_segment_s=4.0,
     target_segment_s=12.0,
     max_segment_s=30.0,
@@ -216,6 +231,7 @@ WEDDING = PresetBundle(
     role="wedding cinema editor",
     hook_rule="the emotional peak (first kiss, vows highlight, or key family moment)",
     pacing="breathing room — let ambient silence and music-led beats land",
+    reorder_mode="preserve_macro",
     min_segment_s=5.0,
     target_segment_s=25.0,
     max_segment_s=60.0,
@@ -284,6 +300,7 @@ INTERVIEW = PresetBundle(
     role="documentary interview editor",
     hook_rule="the strongest quote in the transcript, regardless of chronological position",
     pacing="preserve conversational cadence; don't rush the subject's pauses",
+    reorder_mode="locked",
     min_segment_s=6.0,
     target_segment_s=22.0,
     max_segment_s=50.0,
@@ -354,6 +371,7 @@ TUTORIAL = PresetBundle(
     role="educational content editor",
     hook_rule="an outcome or result preview — what the viewer will be able to do by the end",
     pacing="aggressive on intro/preamble; never rush during actual steps or demos",
+    reorder_mode="locked",
     min_segment_s=5.0,
     target_segment_s=20.0,
     max_segment_s=45.0,
@@ -417,6 +435,7 @@ PODCAST = PresetBundle(
     role="podcast-to-video editor",
     hook_rule="the strongest exchange in the first third of the runtime",
     pacing="conversation-paced — do not fragment question/answer pairs",
+    reorder_mode="locked",
     min_segment_s=8.0,
     target_segment_s=35.0,
     max_segment_s=90.0,
@@ -487,6 +506,7 @@ REACTION = PresetBundle(
     role="reaction-content editor",
     hook_rule="the biggest genuine reaction or laugh in the clip",
     pacing="light scrub — let reactions and pauses breathe; don't sterilize",
+    reorder_mode="free",
     min_segment_s=4.0,
     target_segment_s=15.0,
     max_segment_s=35.0,
