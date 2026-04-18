@@ -10,9 +10,9 @@ Timeline items can be backed by:
    find the real source file. Inner timelines can themselves contain
    compounds, so the walk is recursive.
 
-Both paths converge on the same output: a list of :class:`SourceSegment`
-tuples, each pointing at a real file + seconds range. Empty list means the
-item could not be resolved (generator / unmatched compound / broken link).
+All internal math is carried out in **seconds** to avoid confusion between
+outer-timeline fps, inner-timeline fps, and source-media fps. Each level's
+fps is read from Resolve at the appropriate moment and used exactly once.
 
 Used by:
 - ``ffmpeg_audio.extract_timeline_audio`` (whole-timeline concat)
@@ -59,22 +59,36 @@ def resolve_item_to_segments(
 ) -> list[SourceSegment]:
     """Resolve ``item`` to a list of ``SourceSegment`` covering its duration.
 
-    ``outer_fps`` is the fps of the timeline that ``item`` lives on. Needed
-    because ``item.GetDuration()`` is in that timeline's frames, whereas
-    ``GetSourceStartFrame()`` is in the item's own source-media frames.
+    ``outer_fps`` is the fps of the timeline ``item`` sits on. Needed to
+    convert ``item.GetDuration()`` (outer-timeline frames) to seconds.
     """
-    duration_frames = int(item.GetDuration())
+    mp_item = item.GetMediaPoolItem()
+    if mp_item is None:
+        return []
+
+    duration_outer_frames = int(item.GetDuration())
+    duration_s = duration_outer_frames / outer_fps
+
+    # ``src_start_frame`` units depend on what ``mp_item`` is:
+    #   - file-backed media:   source-media frames at source-media fps
+    #   - compound/timeline:   inner-timeline frames at inner-timeline fps
+    # ``_source_fps(mp_item)`` reports the correct fps for either case
+    # (Resolve serves source fps for files, inner-timeline fps for
+    # compounds), so dividing gives the correct seconds-offset regardless.
     try:
         src_start_frame = int(item.GetSourceStartFrame() or 0)
     except Exception:
         src_start_frame = 0
+    src_fps = _source_fps(mp_item, fallback=outer_fps)
+    if src_fps <= 0:
+        src_fps = outer_fps
+    src_start_s = src_start_frame / src_fps
 
     return _resolve(
         project,
-        item_mp=item.GetMediaPoolItem(),
-        src_start_frame=src_start_frame,
-        duration_outer_frames=duration_frames,
-        outer_fps=outer_fps,
+        mp_item=mp_item,
+        src_start_s=src_start_s,
+        duration_s=duration_s,
         depth=0,
     )
 
@@ -82,30 +96,37 @@ def resolve_item_to_segments(
 def _resolve(
     project,
     *,
-    item_mp,
-    src_start_frame: int,
-    duration_outer_frames: int,
-    outer_fps: float,
+    mp_item,
+    src_start_s: float,
+    duration_s: float,
     depth: int,
 ) -> list[SourceSegment]:
-    if item_mp is None or depth > _MAX_DEPTH:
+    """Recursively resolve one (mp_item, [src_start_s, src_start_s+duration_s)) slice.
+
+    ``src_start_s`` is seconds into ``mp_item``'s internal timeline
+    (equivalently seconds into the source file for file-backed items).
+    ``duration_s`` is real-time seconds — timelines conform source media
+    to real time, so this is invariant across fps changes.
+    """
+    if mp_item is None or depth > _MAX_DEPTH:
         return []
 
-    file_path = item_mp.GetClipProperty("File Path") or ""
+    file_path = mp_item.GetClipProperty("File Path") or ""
     if file_path:
         # Leaf: file-backed media pool item.
         src = Path(file_path)
         if not src.exists():
             log.warning("Source file missing on disk: %s", src)
             return []
-        src_fps = _source_fps(item_mp, fallback=outer_fps)
-        in_s = src_start_frame / src_fps
-        # Duration measured on the outer timeline — always real-time.
-        out_s = in_s + duration_outer_frames / outer_fps
-        return [SourceSegment(src, in_s, out_s, src_fps)]
+        src_fps = _source_fps(mp_item, fallback=0.0)
+        if src_fps <= 0:
+            # Shouldn't happen for file-backed media; fall back to 30fps
+            # only to avoid a divide-by-zero in downstream callers.
+            src_fps = 30.0
+        return [SourceSegment(src, src_start_s, src_start_s + duration_s, src_fps)]
 
     # Compound — find the matching project timeline by name.
-    compound_name = item_mp.GetName() or ""
+    compound_name = mp_item.GetName() or ""
     inner_tl = _find_timeline_by_name(project, compound_name)
     if not inner_tl:
         log.warning(
@@ -117,52 +138,55 @@ def _resolve(
     inner_fps = _timeline_fps(inner_tl)
     inner_start_frame = _timeline_start_frame(inner_tl)
 
-    # ``src_start_frame`` on a compound is expressed in the inner timeline's
-    # frames at the *inner* fps. ``duration_outer_frames`` is outer timeline
-    # frames; convert to inner-timeline frames via the fps ratio.
-    inner_duration_frames = int(round(duration_outer_frames * (inner_fps / outer_fps)))
-    seek_start = inner_start_frame + src_start_frame
-    seek_end = seek_start + inner_duration_frames
+    # Convert our [src_start_s, +duration_s) window into inner-timeline frames.
+    seek_start_frame = inner_start_frame + int(round(src_start_s * inner_fps))
+    seek_end_frame = seek_start_frame + int(round(duration_s * inner_fps))
 
-    # Walk inner audio track 1 items — audio and video are typically aligned,
-    # and we only need audio for STT. If the caller wants video we switch to
-    # video track 1 in the walk; for now audio covers both ffmpeg_audio and
-    # per-clip STT use cases.
     inner_items = inner_tl.GetItemListInTrack("audio", 1) or []
     if not inner_items:
         inner_items = inner_tl.GetItemListInTrack("video", 1) or []
 
     out: list[SourceSegment] = []
-    cursor = seek_start
+    cursor_frame = seek_start_frame
     for inner_item in inner_items:
         i_start = int(inner_item.GetStart())
         i_end = int(inner_item.GetEnd())
-        if i_end <= cursor:
+        if i_end <= cursor_frame:
             continue
-        if i_start >= seek_end:
+        if i_start >= seek_end_frame:
             break
-        # Overlap with [cursor, seek_end)
-        slice_start = max(cursor, i_start)
-        slice_end = min(seek_end, i_end)
-        slice_duration_inner = slice_end - slice_start
-        if slice_duration_inner <= 0:
+
+        slice_start_frame = max(cursor_frame, i_start)
+        slice_end_frame = min(seek_end_frame, i_end)
+        slice_duration_s = (slice_end_frame - slice_start_frame) / inner_fps
+        if slice_duration_s <= 0:
             continue
 
-        offset_into_inner = slice_start - i_start
+        # Source-time within the inner item where our slice begins:
+        # inner_item.GetSourceStartFrame() is in the inner item's own source fps
+        # (either source-media fps for a file-backed inner item, or the inner
+        # item's inner-timeline fps for a nested compound). Divide by that fps
+        # to get seconds, then add the offset of our slice inside the inner item
+        # (measured in inner-timeline fps seconds).
+        inner_mp = inner_item.GetMediaPoolItem()
+        if inner_mp is None:
+            return []
         try:
-            inner_src_start = int(inner_item.GetSourceStartFrame() or 0)
+            inner_src_start_frame = int(inner_item.GetSourceStartFrame() or 0)
         except Exception:
-            inner_src_start = 0
+            inner_src_start_frame = 0
+        inner_src_fps = _source_fps(inner_mp, fallback=inner_fps)
+        if inner_src_fps <= 0:
+            inner_src_fps = inner_fps
+        inner_item_src_start_s = inner_src_start_frame / inner_src_fps
+        offset_into_inner_s = (slice_start_frame - i_start) / inner_fps
+        slice_src_start_s = inner_item_src_start_s + offset_into_inner_s
 
-        # Recurse with a synthetic item pointing at the inner MP + adjusted
-        # source offset. Duration is expressed in ``inner_fps`` frames, so
-        # that's the ``outer_fps`` for the recursive call.
         sub = _resolve(
             project,
-            item_mp=inner_item.GetMediaPoolItem(),
-            src_start_frame=inner_src_start + offset_into_inner,
-            duration_outer_frames=slice_duration_inner,
-            outer_fps=inner_fps,
+            mp_item=inner_mp,
+            src_start_s=slice_src_start_s,
+            duration_s=slice_duration_s,
             depth=depth + 1,
         )
         if not sub:
@@ -170,17 +194,15 @@ def _resolve(
             # than silently returning a partial transcript.
             return []
         out.extend(sub)
-        cursor = slice_end
-        if cursor >= seek_end:
+        cursor_frame = slice_end_frame
+        if cursor_frame >= seek_end_frame:
             break
 
-    if cursor < seek_end:
-        # Gap at the tail — compound item extends past its inner timeline's
-        # last clip. Treat as unresolvable so the caller can downgrade cleanly.
+    if cursor_frame < seek_end_frame:
         log.warning(
             "Compound '%s' has a %d-frame gap past the inner timeline's last item.",
             compound_name,
-            seek_end - cursor,
+            seek_end_frame - cursor_frame,
         )
         return []
 
