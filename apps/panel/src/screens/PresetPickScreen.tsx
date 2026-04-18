@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
+import TimelineDropdown from "./TimelineDropdown";
 import type {
     PresetBundle,
     PresetKey,
@@ -223,28 +224,12 @@ export default function PresetPickScreen({
                     )}
 
                     {!fallbackToText && projectInfo ? (
-                        <select
-                            id="tl"
+                        <TimelineDropdown
+                            timelines={projectInfo.timelines}
                             value={timelineName}
-                            onChange={(e) => handleTimelineChange(e.target.value)}
-                        >
-                            {!projectInfo.timelines.some(
-                                (t) => t.name === timelineName,
-                            ) && (
-                                <option value={timelineName}>
-                                    {timelineName || "(pick a timeline)"}
-                                </option>
-                            )}
-                            {projectInfo.timelines.map((t) => (
-                                <option key={t.name} value={t.name}>
-                                    {t.name}
-                                    {t.is_current ? "  · currently open" : ""}
-                                    {t.item_count
-                                        ? `  · ${t.item_count} item${t.item_count === 1 ? "" : "s"}`
-                                        : ""}
-                                </option>
-                            ))}
-                        </select>
+                            onChange={handleTimelineChange}
+                            placeholder="pick a timeline"
+                        />
                     ) : (
                         <input
                             id="tl"
