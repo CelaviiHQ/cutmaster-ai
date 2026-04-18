@@ -31,6 +31,7 @@ export default function ReviewScreen({
     const [buildResult, setBuildResult] = useState<ExecuteResult | null>(null);
     const [buildErr, setBuildErr] = useState<string | null>(null);
     const [deleting, setDeleting] = useState(false);
+    const [selectedCandidate, setSelectedCandidate] = useState(0);
 
     useEffect(() => {
         let cancelled = false;
@@ -90,6 +91,9 @@ export default function ReviewScreen({
 
     const appliedExcludes = plan.user_settings.exclude_categories ?? [];
     const appliedFocus = plan.user_settings.custom_focus ?? null;
+    const clipHunter = plan.clip_hunter;
+    const selectedClip =
+        clipHunter?.candidates?.[selectedCandidate] ?? null;
     const excludeLabels = bundle
         ? appliedExcludes
               .map(
@@ -110,6 +114,18 @@ export default function ReviewScreen({
                 </p>
                 {plan.director.reasoning && (
                     <p className="muted">{plan.director.reasoning}</p>
+                )}
+                {clipHunter && (
+                    <p className="muted">
+                        {clipHunter.candidates.length} clip candidate(s) @ target{" "}
+                        <code>{clipHunter.target_clip_length_s.toFixed(0)}s</code>
+                        &nbsp;from a {(clipHunter.source_duration_s / 60).toFixed(1)}-min source.
+                    </p>
+                )}
+                {clipHunter?.duration_warning && (
+                    <p className="muted" style={{ color: "var(--warn)" }}>
+                        {clipHunter.duration_warning}
+                    </p>
                 )}
                 {plan.tightener && (
                     <p className="muted">
@@ -137,6 +153,42 @@ export default function ReviewScreen({
                     </p>
                 )}
             </div>
+
+            {clipHunter && clipHunter.candidates.length > 0 && (
+                <div className="card">
+                    <h2>Clip candidates — pick one to build</h2>
+                    <div className="row" style={{ flexWrap: "wrap" }}>
+                        {clipHunter.candidates.map((c, i) => (
+                            <button
+                                key={i}
+                                className={i === selectedCandidate ? "" : "secondary"}
+                                onClick={() => setSelectedCandidate(i)}
+                            >
+                                #{i + 1} · {(c.engagement_score * 100).toFixed(0)}%
+                                &nbsp;· {(c.end_s - c.start_s).toFixed(0)}s
+                            </button>
+                        ))}
+                    </div>
+                    {selectedClip && (
+                        <div style={{ marginTop: 10 }}>
+                            <p>
+                                <strong>&ldquo;{selectedClip.quote}&rdquo;</strong>
+                            </p>
+                            <p className="muted">{selectedClip.reasoning}</p>
+                            {selectedClip.suggested_caption && (
+                                <p className="muted">
+                                    <strong>Caption:</strong>{" "}
+                                    {selectedClip.suggested_caption}
+                                </p>
+                            )}
+                            <p className="muted">
+                                Source: <code>{selectedClip.start_s.toFixed(2)}s</code> →{" "}
+                                <code>{selectedClip.end_s.toFixed(2)}s</code>
+                            </p>
+                        </div>
+                    )}
+                </div>
+            )}
 
             <div className="card">
                 <h2>Selected segments</h2>
@@ -312,7 +364,10 @@ export default function ReviewScreen({
                             setBuilding(true);
                             setBuildErr(null);
                             try {
-                                const res = await api.execute(runId);
+                                const res = await api.execute(
+                                    runId,
+                                    clipHunter ? selectedCandidate : undefined,
+                                );
                                 setBuildResult(res);
                             } catch (e) {
                                 setBuildErr(String(e));

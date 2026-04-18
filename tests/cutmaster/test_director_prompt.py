@@ -85,7 +85,7 @@ def test_every_content_type_preset_bundles_exclude_categories_and_placeholder():
 
     content_type_presets = [
         "vlog", "product_demo", "wedding", "interview",
-        "tutorial", "podcast", "reaction",
+        "tutorial", "podcast", "reaction", "clip_hunter",
     ]
     for key in content_type_presets:
         bundle = PRESETS[key]

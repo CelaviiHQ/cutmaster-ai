@@ -9,6 +9,7 @@ export type PresetKey =
   | "podcast"
   | "reaction"
   | "tightener"
+  | "clip_hunter"
   | "auto";
 
 export interface ExcludeCategory {
@@ -118,6 +119,7 @@ export interface BuildPlanResult {
   markers: MarkerPlan;
   resolved_segments: ResolvedCutSegment[];
   tightener?: TightenerSummary;
+  clip_hunter?: ClipHunterSummary;
 }
 
 export type FormatKey = "horizontal" | "vertical_short" | "square";
@@ -153,6 +155,26 @@ export interface UserSettings {
   timeline_mode?: TimelineMode;
   reorder_allowed?: boolean;
   takes_already_scrubbed?: boolean;
+  num_clips?: number;
+}
+
+export interface ClipCandidate {
+  start_s: number;
+  end_s: number;
+  quote: string;
+  engagement_score: number;
+  suggested_caption: string;
+  reasoning: string;
+  resolved_segments: ResolvedCutSegment[];
+}
+
+export interface ClipHunterSummary {
+  candidates: ClipCandidate[];
+  selected_index: number;
+  target_clip_length_s: number;
+  num_clips: number;
+  duration_warning: string | null;
+  source_duration_s: number;
 }
 
 export interface ScrubParams {

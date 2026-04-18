@@ -10,7 +10,7 @@ from celavii_resolve.cutmaster.presets import PRESETS, all_presets, get_preset
 # are exempt from those invariants.
 CONTENT_TYPE_PRESETS = {
     "vlog", "product_demo", "wedding", "interview",
-    "tutorial", "podcast", "reaction",
+    "tutorial", "podcast", "reaction", "clip_hunter",
 }
 WORKFLOW_PRESETS = {"tightener"}
 

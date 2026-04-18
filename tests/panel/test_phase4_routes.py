@@ -298,6 +298,223 @@ def test_build_plan_assembled_uses_raw_transcript_when_takes_already_scrubbed(
     assert "umm" in take_words
 
 
+def test_build_plan_clip_hunter_stores_candidates_and_skips_director(
+    client, monkeypatch, scrubbed_run,
+):
+    """When preset='clip_hunter', /build-plan must call the Clip Hunter
+    Director (NOT the v1 or assembled Director), persist all candidates
+    with their resolved_segments, default selected_index to 0, and skip
+    the Marker LLM entirely."""
+    from celavii_resolve.cutmaster.director import ClipCandidate, ClipHunterPlan
+
+    def fake_hunter(transcript, preset, settings, target, num):
+        return ClipHunterPlan(
+            candidates=[
+                ClipCandidate(
+                    start_s=0.0, end_s=0.95, engagement_score=0.9,
+                    quote="Hello world", suggested_caption="Say hi.",
+                    reasoning="opener",
+                ),
+                ClipCandidate(
+                    start_s=1.2, end_s=2.0, engagement_score=0.7,
+                    quote="Look at this.", suggested_caption="Check it out.",
+                    reasoning="pointer",
+                ),
+            ],
+            reasoning="Two punchy lines",
+        )
+
+    def forbidden_director(*_a, **_k):
+        raise AssertionError("clip_hunter path must NOT call the v1 Director")
+
+    def forbidden_assembled(*_a, **_k):
+        raise AssertionError("clip_hunter path must NOT call the assembled Director")
+
+    def forbidden_marker(*_a, **_k):
+        raise AssertionError("clip_hunter path must NOT call the Marker agent")
+
+    monkeypatch.setattr(routes, "build_clip_hunter_plan", fake_hunter)
+    monkeypatch.setattr(routes, "build_cut_plan", forbidden_director)
+    monkeypatch.setattr(routes, "build_assembled_cut_plan", forbidden_assembled)
+    monkeypatch.setattr(routes, "suggest_markers", forbidden_marker)
+
+    fake_tl = MagicMock()
+    fake_tl.GetSetting.return_value = "24"
+
+    import celavii_resolve.cutmaster.pipeline as pipeline_mod
+    import celavii_resolve.resolve as resolve_mod
+
+    monkeypatch.setattr(resolve_mod, "_boilerplate",
+                        lambda: (MagicMock(), MagicMock(), MagicMock()))
+    monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name",
+                        lambda _p, _n: fake_tl)
+
+    # Distinguish per-candidate resolver output by tagging the source item.
+    def fake_resolver(_tl, segs):
+        # Each call returns a single resolved segment carrying the segment's
+        # start_s so the test can assert the mapping.
+        return [
+            ResolvedCutSegment(
+                start_s=float(s.start_s),
+                end_s=float(s.end_s),
+                reason=s.reason,
+                source_item_id=f"UID_{s.start_s}",
+                source_item_name="take.mov",
+                source_in_frame=0,
+                source_out_frame=10,
+                timeline_start_frame=0,
+                timeline_end_frame=10,
+                speed=1.0,
+                speed_ramped=False,
+                warnings=[],
+            )
+            for s in segs
+        ]
+    monkeypatch.setattr(routes, "resolve_segments", fake_resolver)
+
+    r = client.post(
+        "/cutmaster/build-plan",
+        json={
+            "run_id": scrubbed_run["run_id"],
+            "preset": "clip_hunter",
+            "user_settings": {"target_length_s": 60, "num_clips": 2},
+        },
+    )
+    assert r.status_code == 200, r.text
+
+    persisted = state.load(scrubbed_run["run_id"])
+    ch = persisted["plan"]["clip_hunter"]
+    assert len(ch["candidates"]) == 2
+    assert ch["selected_index"] == 0
+    assert ch["target_clip_length_s"] == 60
+    assert ch["num_clips"] == 2
+    # Each candidate carries its resolved_segments slice (for /execute).
+    assert len(ch["candidates"][0]["resolved_segments"]) == 1
+    assert len(ch["candidates"][1]["resolved_segments"]) == 1
+    # Top-level resolved_segments defaults to candidate 0.
+    assert persisted["plan"]["resolved_segments"][0]["source_item_id"] == "UID_0.0"
+
+
+def test_build_plan_clip_hunter_rejects_sources_past_60min(
+    client, monkeypatch, scrubbed_run,
+):
+    """Proposal §4.7: Clip Hunter hard-caps source duration at 60 min for v2."""
+    run = state.load(scrubbed_run["run_id"])
+    run["scrubbed"] = [{
+        "word": "endless", "start_time": 0.0,
+        "end_time": 60 * 60 + 1.0, "speaker_id": "S1",
+    }]
+    state.save(run)
+
+    r = client.post(
+        "/cutmaster/build-plan",
+        json={
+            "run_id": scrubbed_run["run_id"],
+            "preset": "clip_hunter",
+            "user_settings": {"num_clips": 3},
+        },
+    )
+    assert r.status_code == 400
+    assert "60 min" in r.text
+
+
+def test_execute_clip_hunter_swaps_resolved_segments_to_selected_candidate(
+    client, monkeypatch, scrubbed_run,
+):
+    """POST /execute with candidate_index must swap the plan's
+    resolved_segments to that candidate's slice before execute_plan runs,
+    and name the new timeline ``<source>_AI_Clip_N``."""
+    # Seed a persisted clip_hunter plan by hand (skip the build step).
+    run = state.load(scrubbed_run["run_id"])
+    cand0_segs = [{
+        "start_s": 0.0, "end_s": 10.0, "reason": "hook",
+        "source_item_id": "UID_0", "source_item_name": "t.mov",
+        "source_in_frame": 0, "source_out_frame": 240,
+        "timeline_start_frame": 0, "timeline_end_frame": 240,
+        "speed": 1.0, "speed_ramped": False, "part_index": 0, "part_total": 1,
+        "warnings": [],
+    }]
+    cand1_segs = [{
+        "start_s": 60.0, "end_s": 70.0, "reason": "second",
+        "source_item_id": "UID_1", "source_item_name": "t.mov",
+        "source_in_frame": 1440, "source_out_frame": 1680,
+        "timeline_start_frame": 1440, "timeline_end_frame": 1680,
+        "speed": 1.0, "speed_ramped": False, "part_index": 0, "part_total": 1,
+        "warnings": [],
+    }]
+    run["plan"] = {
+        "preset": "clip_hunter",
+        "user_settings": {"num_clips": 2, "target_length_s": 10},
+        "director": {"hook_index": 0, "selected_clips": [], "reasoning": ""},
+        "markers": {"markers": []},
+        "resolved_segments": cand0_segs,
+        "clip_hunter": {
+            "candidates": [
+                {"start_s": 0.0, "end_s": 10.0, "quote": "a", "engagement_score": 0.9,
+                 "suggested_caption": "", "reasoning": "", "resolved_segments": cand0_segs},
+                {"start_s": 60.0, "end_s": 70.0, "quote": "b", "engagement_score": 0.7,
+                 "suggested_caption": "", "reasoning": "", "resolved_segments": cand1_segs},
+            ],
+            "selected_index": 0,
+            "target_clip_length_s": 10,
+            "num_clips": 2,
+            "duration_warning": None,
+            "source_duration_s": 120.0,
+        },
+    }
+    state.save(run)
+
+    captured: dict = {}
+
+    def fake_execute_plan(run_arg, name_suffix="_AI_Cut"):
+        captured["resolved_segments"] = run_arg["plan"]["resolved_segments"]
+        captured["name_suffix"] = name_suffix
+        return {
+            "new_timeline_name": f"{run_arg['timeline_name']}{name_suffix}",
+            "appended": 1, "append_errors": [],
+            "markers_added": 0, "markers_skipped": [],
+            "snapshot_path": "/tmp/snap.drp", "snapshot_size_kb": 1.0,
+        }
+
+    monkeypatch.setattr(routes, "execute_plan", fake_execute_plan)
+
+    # Pick candidate index 1.
+    r = client.post(
+        "/cutmaster/execute",
+        json={"run_id": scrubbed_run["run_id"], "candidate_index": 1},
+    )
+    assert r.status_code == 200, r.text
+    # Execute saw cand1's segments, not cand0's.
+    assert captured["resolved_segments"][0]["source_item_id"] == "UID_1"
+    assert captured["name_suffix"] == "_AI_Clip_2"
+
+
+def test_execute_clip_hunter_rejects_out_of_range_candidate(
+    client, monkeypatch, scrubbed_run,
+):
+    run = state.load(scrubbed_run["run_id"])
+    run["plan"] = {
+        "preset": "clip_hunter", "user_settings": {},
+        "director": {"hook_index": 0, "selected_clips": [], "reasoning": ""},
+        "markers": {"markers": []}, "resolved_segments": [],
+        "clip_hunter": {
+            "candidates": [{"start_s": 0.0, "end_s": 10.0, "quote": "",
+                            "engagement_score": 0.8, "suggested_caption": "",
+                            "reasoning": "", "resolved_segments": []}],
+            "selected_index": 0, "target_clip_length_s": 10,
+            "num_clips": 1, "duration_warning": None, "source_duration_s": 60.0,
+        },
+    }
+    state.save(run)
+
+    r = client.post(
+        "/cutmaster/execute",
+        json={"run_id": scrubbed_run["run_id"], "candidate_index": 5},
+    )
+    assert r.status_code == 400
+    assert "out of range" in r.text
+
+
 def test_build_plan_tightener_skips_director_and_returns_stats(
     client, monkeypatch, scrubbed_run,
 ):

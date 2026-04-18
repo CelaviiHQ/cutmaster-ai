@@ -31,6 +31,7 @@ Preset = Literal[
     "podcast",
     "reaction",
     "tightener",
+    "clip_hunter",
     "auto",
 ]
 
@@ -453,9 +454,61 @@ TIGHTENER = PresetBundle(
 )
 
 
+CLIP_HUNTER = PresetBundle(
+    key="clip_hunter",
+    label="Clip Hunter (long-form → short-form)",
+    role="viral-moments editor — finds quotable, self-contained exchanges in a long-form recording",
+    hook_rule="the single most quotable, tension-rich, or emotionally clear moment in the window",
+    pacing="each candidate must be self-contained — a viewer with zero prior context should get the moment",
+    cue_vocabulary=[
+        "the thing is", "here's the problem", "what blew my mind",
+        "you won't believe", "nobody talks about", "the truth is",
+        "wait, so", "hold on", "imagine", "picture this",
+    ],
+    marker_vocabulary=["Clip: {topic}", "Hook: {line}"],
+    theme_axes=["punchlines", "revelations", "disagreements", "emotional peaks", "quotable lines"],
+    scrub_defaults={
+        "remove_fillers": True,
+        "remove_dead_air": True,
+        "collapse_restarts": True,
+        "dead_air_threshold_s": 0.8,
+    },
+    exclude_categories=[
+        ExcludeCategory(
+            key="ad_reads",
+            label="Ad / sponsor reads",
+            description="Paid promotional segments; almost never survive as viral clips.",
+            checked_by_default=True,
+        ),
+        ExcludeCategory(
+            key="housekeeping_plugs",
+            label="Housekeeping / channel plugs",
+            description="'Rate us five stars', Patreon pushes, subscribe boilerplate.",
+            checked_by_default=True,
+        ),
+        ExcludeCategory(
+            key="intro_outro_templates",
+            label="Intro / outro templates",
+            description="Generic show openers / closers with no episode-specific content.",
+            checked_by_default=True,
+        ),
+        ExcludeCategory(
+            key="off_topic_chat",
+            label="Extended off-topic chat",
+            description="Tangents unrelated to the episode's core subject.",
+            checked_by_default=False,
+        ),
+    ],
+    default_custom_focus_placeholder="e.g. emphasise the debate about AI",
+)
+
+
 PRESETS: dict[str, PresetBundle] = {
     p.key: p
-    for p in (VLOG, PRODUCT_DEMO, WEDDING, INTERVIEW, TUTORIAL, PODCAST, REACTION, TIGHTENER)
+    for p in (
+        VLOG, PRODUCT_DEMO, WEDDING, INTERVIEW, TUTORIAL, PODCAST, REACTION,
+        TIGHTENER, CLIP_HUNTER,
+    )
 }
 
 

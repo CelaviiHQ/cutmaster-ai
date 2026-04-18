@@ -161,8 +161,12 @@ def _drop_safe_zones(new_tl, spec: FormatSpec) -> dict[str, Any]:
     }
 
 
-def execute_plan(run: dict) -> dict:
+def execute_plan(run: dict, name_suffix: str = "_AI_Cut") -> dict:
     """Build the cut timeline in Resolve. Returns a summary dict.
+
+    ``name_suffix`` drives the new timeline's name (``<source><suffix>``).
+    v2-4 Clip Hunter passes ``_AI_Clip_N`` so each candidate lands on a
+    distinct timeline instead of colliding with the v1 default.
 
     Raises :class:`ExecuteError` on any pre-flight or build failure.
     """
@@ -203,7 +207,7 @@ def execute_plan(run: dict) -> dict:
     )
 
     # 3. Create new timeline
-    new_name = _unique_timeline_name(project, f"{run['timeline_name']}_AI_Cut")
+    new_name = _unique_timeline_name(project, f"{run['timeline_name']}{name_suffix}")
     new_tl = media_pool.CreateEmptyTimeline(new_name)
     if not new_tl:
         raise ExecuteError(f"CreateEmptyTimeline('{new_name}') returned None")

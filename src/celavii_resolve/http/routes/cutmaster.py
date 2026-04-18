@@ -25,9 +25,12 @@ from ...cutmaster.assembled import (
     split_transcript_per_item,
 )
 from ...cutmaster.director import (
+    CutSegment,
     DirectorPlan,
     build_assembled_cut_plan,
+    build_clip_hunter_plan,
     build_cut_plan,
+    candidate_to_segments,
     expand_assembled_plan,
 )
 from ...cutmaster.execute import ExecuteError, execute_plan
@@ -325,6 +328,14 @@ class UserSettings(BaseModel):
             "each take. Default false — editor picked takes but hasn't scrubbed."
         ),
     )
+    # v2-4: Clip Hunter — number of candidate clips to surface. target_length_s
+    # is reused as the per-clip target duration when preset=clip_hunter.
+    num_clips: int = Field(
+        default=3,
+        ge=1,
+        le=5,
+        description="Clip Hunter only. How many candidate clips to return (1–5).",
+    )
 
 
 class BuildPlanRequest(BaseModel):
@@ -346,6 +357,118 @@ async def build_plan(body: BuildPlanRequest) -> dict:
     preset = get_preset(body.preset)
     settings_dict = body.user_settings.model_dump()
     mode = body.user_settings.timeline_mode
+
+    # v2-4: Clip Hunter — different optimisation target (N candidate clips
+    # ranked by engagement, not one narrative cut). Each candidate is stored
+    # on the plan so the Review UI can let the user pick; /execute reads the
+    # chosen candidate_index to build exactly that clip's timeline.
+    if body.preset == "clip_hunter":
+        # Long-source gate (proposal §4.7). Hard-block beyond v2's 60-min
+        # ceiling; warn the user in the plan output between 15 min and the
+        # ceiling so they can downsize if Director quality dips.
+        last_word_end = (
+            float(scrubbed[-1].get("end_time", 0.0)) if scrubbed else 0.0
+        )
+        if last_word_end > 60 * 60:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"source is {last_word_end / 60:.1f} min; Clip Hunter "
+                    f"v2 ceiling is 60 min. Chunk + summarise pipeline is "
+                    f"deferred to v3 per proposal §4.7."
+                ),
+            )
+        duration_warning: str | None = None
+        if last_word_end > 15 * 60:
+            duration_warning = (
+                f"source is {last_word_end / 60:.1f} min — Clip Hunter was "
+                "validated on ≤8 min audio. Expect some timestamp drift and "
+                "run the v2-4 spike before trusting results (proposal §4.7)."
+            )
+
+        target_clip_length_s = float(body.user_settings.target_length_s or 60)
+        num_clips = body.user_settings.num_clips
+
+        try:
+            hunter_plan = await asyncio.to_thread(
+                build_clip_hunter_plan,
+                scrubbed, preset, settings_dict,
+                target_clip_length_s, num_clips,
+            )
+        except Exception as exc:
+            log.exception("Clip Hunter Director failed for run %s", body.run_id)
+            raise HTTPException(
+                status_code=500, detail=f"Clip Hunter Director failed: {exc}"
+            )
+
+        from ...cutmaster.pipeline import _find_timeline_by_name
+        from ...resolve import _boilerplate  # lazy
+
+        try:
+            _, project, _ = _boilerplate()
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"Resolve unreachable: {exc}")
+
+        tl = _find_timeline_by_name(project, run["timeline_name"])
+        if tl is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"timeline '{run['timeline_name']}' not found (was it renamed?)",
+            )
+
+        # Resolve per-candidate segments. Auto-split handles candidates that
+        # happen to cross timeline-item boundaries in raw-dump sources.
+        candidates_payload: list[dict] = []
+        for cand in hunter_plan.candidates:
+            segs = candidate_to_segments(cand)
+            try:
+                resolved = await asyncio.to_thread(resolve_segments, tl, segs)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"clip [{cand.start_s:.2f},{cand.end_s:.2f}]: {exc}",
+                )
+            candidates_payload.append({
+                **cand.model_dump(),
+                "resolved_segments": [r.model_dump() for r in resolved],
+            })
+
+        # Default selection: top-ranked candidate (index 0). User overrides
+        # via /execute's candidate_index.
+        top_segments = candidates_payload[0]["resolved_segments"] if candidates_payload else []
+        plan = DirectorPlan(
+            hook_index=0,
+            selected_clips=[
+                CutSegment(
+                    start_s=float(s["start_s"]),
+                    end_s=float(s["end_s"]),
+                    reason=s.get("reason", ""),
+                )
+                for s in top_segments
+            ],
+            reasoning=hunter_plan.reasoning,
+        )
+        # Skip the Marker LLM — Clip Hunter candidates are self-contained,
+        # B-roll cue markers don't add value at this granularity.
+        markers = MarkerPlan(markers=[])
+
+        run["plan"] = {
+            "preset": body.preset,
+            "user_settings": settings_dict,
+            "director": plan.model_dump(),
+            "markers": markers.model_dump(),
+            "resolved_segments": top_segments,
+            "clip_hunter": {
+                "candidates": candidates_payload,
+                "selected_index": 0,
+                "target_clip_length_s": target_clip_length_s,
+                "num_clips": num_clips,
+                "duration_warning": duration_warning,
+                "source_duration_s": last_word_end,
+            },
+        }
+        state.save(run)
+        return run["plan"]
 
     # v2-3: Tightener preset forces assembled + reorder_off, re-scrubs the
     # raw transcript with aggressive defaults, skips the Director entirely,
@@ -539,6 +662,14 @@ async def build_plan(body: BuildPlanRequest) -> dict:
 
 class ExecuteRequest(BaseModel):
     run_id: str
+    candidate_index: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Clip Hunter only: index of the candidate to build. Defaults to "
+            "the top-ranked candidate (index 0) when omitted."
+        ),
+    )
 
 
 @router.post("/execute")
@@ -557,8 +688,46 @@ async def execute(body: ExecuteRequest) -> dict:
             detail=f"run {body.run_id} has no plan — call /cutmaster/build-plan first",
         )
 
+    # Clip Hunter: swap resolved_segments to the selected candidate before
+    # execute runs. execute_plan reads run["plan"]["resolved_segments"] as
+    # its work queue, so this is the single surface that matters.
+    clip_hunter = run["plan"].get("clip_hunter")
+    if clip_hunter:
+        idx = (
+            body.candidate_index
+            if body.candidate_index is not None
+            else clip_hunter.get("selected_index", 0)
+        )
+        cands = clip_hunter.get("candidates") or []
+        if idx < 0 or idx >= len(cands):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"candidate_index {idx} out of range for "
+                    f"{len(cands)} candidate(s)"
+                ),
+            )
+        chosen = cands[idx]
+        run["plan"]["resolved_segments"] = chosen["resolved_segments"]
+        run["plan"]["director"]["selected_clips"] = [
+            {
+                "start_s": float(s["start_s"]),
+                "end_s": float(s["end_s"]),
+                "reason": s.get("reason", ""),
+            }
+            for s in chosen["resolved_segments"]
+        ]
+        clip_hunter["selected_index"] = idx
+
+    # Clip Hunter timelines get a per-candidate suffix so they don't
+    # overwrite each other if the user executes multiple candidates.
+    name_suffix = "_AI_Cut"
+    if clip_hunter:
+        sel_idx = clip_hunter.get("selected_index", 0)
+        name_suffix = f"_AI_Clip_{sel_idx + 1}"
+
     try:
-        result = await asyncio.to_thread(execute_plan, run)
+        result = await asyncio.to_thread(execute_plan, run, name_suffix)
     except ExecuteError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:

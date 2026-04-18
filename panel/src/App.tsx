@@ -44,6 +44,7 @@ export default function App() {
         timeline_mode: "raw_dump",
         reorder_allowed: true,
         takes_already_scrubbed: false,
+        num_clips: 3,
     });
     const [backendOk, setBackendOk] = useState<boolean | null>(null);
     const [resume, setResume] = useState<ResumeInfo | null>(null);
@@ -106,6 +107,7 @@ export default function App() {
             timeline_mode: "raw_dump",
             reorder_allowed: true,
             takes_already_scrubbed: false,
+            num_clips: 3,
         });
     };
 

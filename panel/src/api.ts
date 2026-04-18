@@ -79,10 +79,13 @@ export const api = {
       }),
     }),
 
-  execute: (runId: string) =>
+  execute: (runId: string, candidateIndex?: number) =>
     http<ExecuteResult>("/cutmaster/execute", {
       method: "POST",
-      body: JSON.stringify({ run_id: runId }),
+      body: JSON.stringify({
+        run_id: runId,
+        ...(candidateIndex != null ? { candidate_index: candidateIndex } : {}),
+      }),
     }),
 
   deleteCut: (runId: string) =>

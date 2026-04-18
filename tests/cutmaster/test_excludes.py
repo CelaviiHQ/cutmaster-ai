@@ -46,10 +46,10 @@ def test_every_content_type_preset_has_exclude_categories_populated():
     from celavii_resolve.cutmaster.presets import PRESETS as _P  # local alias
 
     content_type_presets = {k for k, p in _P.items() if p.exclude_categories}
-    # At minimum the 7 content-type presets must populate excludes.
+    # At minimum the 8 content-type presets must populate excludes.
     assert content_type_presets >= {
         "vlog", "product_demo", "wedding", "interview",
-        "tutorial", "podcast", "reaction",
+        "tutorial", "podcast", "reaction", "clip_hunter",
     }
     for key in content_type_presets:
         bundle = _P[key]

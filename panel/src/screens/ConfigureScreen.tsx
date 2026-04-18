@@ -189,8 +189,11 @@ export default function ConfigureScreen({
         source && source.recommended_format === currentFormat;
 
     const isTightener = preset === "tightener";
+    const isClipHunter = preset === "clip_hunter";
     const assembledMode =
-        !isTightener && (settings.timeline_mode ?? "raw_dump") === "assembled";
+        !isTightener &&
+        !isClipHunter &&
+        (settings.timeline_mode ?? "raw_dump") === "assembled";
 
     const scrubParams = (settings.scrub_params ?? {}) as Record<string, unknown>;
     const updateScrub = (patch: Record<string, unknown>) => {
@@ -232,6 +235,7 @@ export default function ConfigureScreen({
                         "podcast",
                         "reaction",
                         "tightener",
+                        "clip_hunter",
                     ].map((p) => (
                         <option key={p} value={p}>
                             {p}
@@ -240,7 +244,38 @@ export default function ConfigureScreen({
                 </select>
             </div>
 
-            {analysis && !isTightener && (
+            {isClipHunter && (
+                <div className="card">
+                    <h2>Clip Hunter</h2>
+                    <p className="muted">
+                        Surfaces {settings.num_clips ?? 3} short, self-contained
+                        moments ranked by engagement. Pick one on the Review
+                        screen to build its timeline; each candidate is
+                        independent, so executing several gives you{" "}
+                        <code>_AI_Clip_1</code>, <code>_AI_Clip_2</code>, etc.
+                    </p>
+                    <label style={{ display: "block", marginTop: 8 }}>
+                        Number of clips:{" "}
+                        <code>{settings.num_clips ?? 3}</code>
+                    </label>
+                    <input
+                        type="range"
+                        min={1}
+                        max={5}
+                        step={1}
+                        style={{ width: "100%" }}
+                        value={settings.num_clips ?? 3}
+                        onChange={(e) =>
+                            onSettingsChange({
+                                ...settings,
+                                num_clips: Number(e.target.value),
+                            })
+                        }
+                    />
+                </div>
+            )}
+
+            {analysis && !isTightener && !isClipHunter && (
                 <>
                     <div className="card">
                         <h2>Chapters detected</h2>
@@ -586,7 +621,11 @@ export default function ConfigureScreen({
 
             {!isTightener && (
                 <div className="card">
-                    <h2>Target length (optional)</h2>
+                    <h2>
+                        {isClipHunter
+                            ? "Target clip length"
+                            : "Target length (optional)"}
+                    </h2>
                 <input
                     type="number"
                     min={15}

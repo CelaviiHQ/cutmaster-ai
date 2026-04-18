@@ -444,6 +444,211 @@ def build_assembled_cut_plan(
     )
 
 
+# ---------------------------------------------------------------------------
+# Clip Hunter Director (v2-4)
+# ---------------------------------------------------------------------------
+#
+# Different optimisation target: the Director returns N candidate clips,
+# not one narrative cut. Each candidate is a self-contained, engagement-
+# dense moment — a viewer with zero context should grasp it. The user
+# then picks one (or, eventually, all) to execute into separate cut
+# timelines.
+#
+# Verbatim timestamps still apply — candidates cite real word start/end
+# times. The validator additionally enforces non-overlap, per-candidate
+# duration bounds, and rank-order (highest engagement first).
+
+
+class ClipCandidate(BaseModel):
+    start_s: float = Field(..., description="Start of the candidate on the source timeline, in seconds.")
+    end_s: float = Field(..., description="End of the candidate on the source timeline, in seconds.")
+    quote: str = Field(
+        default="",
+        description="The key line that anchors the clip — used in the Review tabs.",
+    )
+    engagement_score: float = Field(
+        ..., ge=0.0, le=1.0,
+        description="Director's confidence this clip is viral-worthy (0–1, higher is better).",
+    )
+    suggested_caption: str = Field(
+        default="",
+        description="Short social caption (≤120 chars) the user can copy to their upload.",
+    )
+    reasoning: str = Field(
+        default="",
+        description="One sentence on why this moment was picked.",
+    )
+
+
+class ClipHunterPlan(BaseModel):
+    candidates: list[ClipCandidate] = Field(
+        ...,
+        description="Clip candidates in descending engagement order. First entry is the top pick.",
+    )
+    reasoning: str = Field(
+        default="",
+        description="Brief overall note on how candidates were chosen.",
+    )
+
+
+def _clip_hunter_prompt(
+    preset: PresetBundle,
+    transcript: list[dict],
+    user_settings: dict | None,
+    target_clip_length_s: float,
+    num_clips: int,
+) -> str:
+    exclude = _exclude_block(preset, user_settings)
+    focus = _focus_block(user_settings)
+    optional_blocks = "\n\n".join(b for b in (exclude, focus) if b)
+    optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
+    low = target_clip_length_s * 0.6
+    high = target_clip_length_s * 1.4
+    return f"""You are a {preset.role}.
+
+You will receive a transcript array. Your job is to surface the {num_clips} most viral-worthy, self-contained moments as a ranked list of clip candidates.
+
+RULES — follow exactly:
+1. Each candidate must be {low:.0f}–{high:.0f} seconds long (target {target_clip_length_s:.0f} s).
+2. Each candidate must be self-contained: a viewer with zero context must grasp the moment without the rest of the recording.
+3. Candidates must NOT overlap each other — cover different regions of the transcript.
+4. Return candidates in descending engagement order (the strongest pick at index 0).
+5. For each candidate, `start_s` MUST equal the `start_time` of the first word in the clip, and `end_s` MUST equal the `end_time` of the last word. Do not round, truncate, or invent timestamps.
+6. {preset.hook_rule} — use that heuristic to rank engagement.
+7. Pacing note: {preset.pacing}.
+8. `quote` should be 4–10 words drawn from the clip — use it to identify the moment.
+9. `suggested_caption` ≤ 120 characters, ready to paste on TikTok / Shorts / Reels.
+
+USER SETTINGS
+{_user_settings_block(user_settings)}
+- Target clip length: {target_clip_length_s:.0f} s
+- Number of candidates: {num_clips}{optional_section}
+
+TRANSCRIPT (JSON array):
+{json.dumps(transcript, separators=(",", ":"))}
+
+Return a `ClipHunterPlan` with:
+- `candidates`: list of {num_clips} entries, ranked by engagement (descending).
+- `reasoning`: 1-2 sentences on how you chose.
+"""
+
+
+def validate_clip_hunter_plan(
+    plan: ClipHunterPlan,
+    transcript: list[dict],
+    target_clip_length_s: float,
+    num_clips: int,
+    duration_tolerance: float = 0.4,
+) -> list[str]:
+    """Validate a ClipHunterPlan against the transcript.
+
+    Checks:
+      1. ``candidates`` has exactly ``num_clips`` entries (accept N-1 to N+1
+         to tolerate Gemini off-by-ones; reject anything further off).
+      2. Each ``start_s`` / ``end_s`` matches a word boundary (verbatim).
+      3. Positive duration within ``(1 - tol)``…``(1 + tol)`` of target.
+      4. Candidates are non-overlapping on the source timeline.
+      5. Engagement scores are in [0, 1] (Pydantic enforces; we also check
+         monotone non-increase so "rank-order" is real).
+    """
+    starts, ends = _build_timestamp_sets(transcript)
+    errors: list[str] = []
+
+    if not plan.candidates:
+        return ["candidates is empty — the Director must produce at least one clip"]
+
+    # 1. count leniency
+    if abs(len(plan.candidates) - num_clips) > 1:
+        errors.append(
+            f"expected {num_clips} candidates (±1), got {len(plan.candidates)}"
+        )
+
+    low = target_clip_length_s * (1.0 - duration_tolerance)
+    high = target_clip_length_s * (1.0 + duration_tolerance)
+
+    sorted_by_start = sorted(plan.candidates, key=lambda c: c.start_s)
+    for i, cand in enumerate(plan.candidates):
+        if cand.end_s <= cand.start_s:
+            errors.append(
+                f"candidate[{i}]: end_s {cand.end_s} must be > start_s {cand.start_s}"
+            )
+            continue
+        duration = cand.end_s - cand.start_s
+        if not (low <= duration <= high):
+            errors.append(
+                f"candidate[{i}]: duration {duration:.1f}s outside target "
+                f"range [{low:.1f}, {high:.1f}]s"
+            )
+        if not _close_to_any(cand.start_s, starts):
+            errors.append(
+                f"candidate[{i}]: start_s {cand.start_s} does not match any "
+                f"word start_time (verbatim required)"
+            )
+        if not _close_to_any(cand.end_s, ends):
+            errors.append(
+                f"candidate[{i}]: end_s {cand.end_s} does not match any "
+                f"word end_time (verbatim required)"
+            )
+
+    # Non-overlap check (on a copy sorted by start_s).
+    for j in range(1, len(sorted_by_start)):
+        prev = sorted_by_start[j - 1]
+        curr = sorted_by_start[j]
+        if curr.start_s < prev.end_s:
+            errors.append(
+                f"candidates overlap: [{prev.start_s:.1f}, {prev.end_s:.1f}] and "
+                f"[{curr.start_s:.1f}, {curr.end_s:.1f}] — pick distinct regions"
+            )
+
+    # Rank-order check: engagement must be non-increasing across the list.
+    for j in range(1, len(plan.candidates)):
+        if plan.candidates[j].engagement_score > plan.candidates[j - 1].engagement_score:
+            errors.append(
+                f"candidate[{j}] engagement {plan.candidates[j].engagement_score} > "
+                f"candidate[{j - 1}] {plan.candidates[j - 1].engagement_score} — "
+                "candidates must be ranked descending"
+            )
+
+    return errors
+
+
+def build_clip_hunter_plan(
+    transcript: list[dict],
+    preset: PresetBundle,
+    user_settings: dict | None = None,
+    target_clip_length_s: float = 60.0,
+    num_clips: int = 3,
+) -> ClipHunterPlan:
+    """Run the Clip Hunter Director. Retries on structural violations."""
+    prompt = _clip_hunter_prompt(
+        preset, transcript, user_settings, target_clip_length_s, num_clips,
+    )
+    return llm.call_structured(
+        agent="director",
+        prompt=prompt,
+        response_schema=ClipHunterPlan,
+        validate=lambda plan: validate_clip_hunter_plan(
+            plan, transcript, target_clip_length_s, num_clips,
+        ),
+        temperature=0.5,
+    )
+
+
+def candidate_to_segments(cand: ClipCandidate) -> list[CutSegment]:
+    """Convert a ClipCandidate into a one-element CutSegment list.
+
+    A candidate is a single contiguous range on the source timeline; the
+    existing :func:`resolve_segments.resolve_segments` auto-splits across
+    timeline-item boundaries if the candidate spans multiple takes, so
+    the caller gets multiple ResolvedCutSegments for free.
+    """
+    return [CutSegment(
+        start_s=cand.start_s,
+        end_s=cand.end_s,
+        reason=cand.quote or cand.reasoning,
+    )]
+
+
 def expand_assembled_plan(
     plan: AssembledDirectorPlan,
     takes: list[dict],
