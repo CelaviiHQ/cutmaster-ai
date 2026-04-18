@@ -15,9 +15,9 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
-from . import llm
-from .per_clip_stt import clip_metadata_table
-from .speakers import apply_speaker_labels, detect_speakers, speaker_stats
+from ...intelligence import llm
+from ..stt.per_clip import clip_metadata_table
+from ..stt.speakers import apply_speaker_labels, detect_speakers, speaker_stats
 
 if TYPE_CHECKING:
     from .presets import PresetBundle

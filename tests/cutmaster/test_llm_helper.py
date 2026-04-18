@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import BaseModel
 
-from celavii_resolve.cutmaster import llm
+from celavii_resolve.intelligence import llm
 
 
 class DummyPlan(BaseModel):

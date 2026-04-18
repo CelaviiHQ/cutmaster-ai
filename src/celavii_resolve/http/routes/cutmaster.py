@@ -16,16 +16,18 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
-from ...cutmaster import auto_detect as auto_detect_mod
-from ...cutmaster import director as director_mod
-from ...cutmaster import state
-from ...cutmaster import themes as themes_mod
-from ...cutmaster.assembled import (
-    build_take_entries,
-    read_items_on_track,
-    split_transcript_per_item,
+from ...cutmaster.analysis import auto_detect as auto_detect_mod
+from ...cutmaster.analysis import themes as themes_mod
+from ...cutmaster.analysis.marker_agent import MarkerPlan, suggest_markers
+from ...cutmaster.analysis.scrubber import ScrubParams, scrub
+from ...cutmaster.analysis.tightener import (
+    DEFAULT_BLOCK_GAP_S,
+    build_tightener_segments,
+    tightener_stats,
 )
-from ...cutmaster.director import (
+from ...cutmaster.core import director as director_mod
+from ...cutmaster.core import state
+from ...cutmaster.core.director import (
     CutSegment,
     DirectorPlan,
     build_assembled_cut_plan,
@@ -34,18 +36,16 @@ from ...cutmaster.director import (
     candidate_to_segments,
     expand_assembled_plan,
 )
-from ...cutmaster.execute import ExecuteError, execute_plan
-from ...cutmaster.formats import all_formats
-from ...cutmaster.marker_agent import MarkerPlan, suggest_markers
-from ...cutmaster.pipeline import run_analyze
-from ...cutmaster.presets import PRESETS, all_presets, get_preset
-from ...cutmaster.resolve_segments import resolve_segments
-from ...cutmaster.scrubber import ScrubParams, scrub
-from ...cutmaster.tightener import (
-    DEFAULT_BLOCK_GAP_S,
-    build_tightener_segments,
-    tightener_stats,
+from ...cutmaster.core.execute import ExecuteError, execute_plan
+from ...cutmaster.core.pipeline import run_analyze
+from ...cutmaster.data.presets import PRESETS, all_presets, get_preset
+from ...cutmaster.media.formats import all_formats
+from ...cutmaster.resolve_ops.assembled import (
+    build_take_entries,
+    read_items_on_track,
+    split_transcript_per_item,
 )
+from ...cutmaster.resolve_ops.segments import resolve_segments
 
 log = logging.getLogger("celavii-resolve.http.cutmaster")
 
@@ -254,8 +254,8 @@ async def source_aspect(run_id: str) -> SourceAspectResponse:
     if run is None:
         raise HTTPException(status_code=404, detail=f"run {run_id} not found")
 
-    from ...cutmaster.formats import recommend_format
-    from ...cutmaster.pipeline import _find_timeline_by_name
+    from ...cutmaster.core.pipeline import _find_timeline_by_name
+    from ...cutmaster.media.formats import recommend_format
     from ...resolve import _boilerplate  # lazy — avoids import-time Resolve dependency
 
     try:
@@ -421,7 +421,7 @@ async def speakers(run_id: str) -> SpeakerRosterResponse:
     if run is None:
         raise HTTPException(status_code=404, detail=f"run {run_id} not found")
 
-    from ...cutmaster.speakers import detect_speakers, speaker_stats
+    from ...cutmaster.stt.speakers import detect_speakers, speaker_stats
 
     transcript = run.get("scrubbed") or run.get("transcript") or []
     ids = detect_speakers(transcript)
@@ -624,7 +624,7 @@ async def build_plan(body: BuildPlanRequest) -> dict:
             log.exception("Clip Hunter Director failed for run %s", body.run_id)
             raise HTTPException(status_code=500, detail=f"Clip Hunter Director failed: {exc}")
 
-        from ...cutmaster.pipeline import _find_timeline_by_name
+        from ...cutmaster.core.pipeline import _find_timeline_by_name
         from ...resolve import _boilerplate  # lazy
 
         try:
@@ -718,7 +718,7 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         tight_scrub = scrub(raw_transcript, tight_params)
         tight_scrubbed = tight_scrub.kept
 
-        from ...cutmaster.pipeline import _find_timeline_by_name
+        from ...cutmaster.core.pipeline import _find_timeline_by_name
         from ...resolve import _boilerplate  # lazy
 
         try:
@@ -793,7 +793,7 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         else:
             transcript_for_takes = scrubbed
 
-        from ...cutmaster.pipeline import _find_timeline_by_name
+        from ...cutmaster.core.pipeline import _find_timeline_by_name
         from ...resolve import _boilerplate  # lazy
 
         try:
@@ -848,7 +848,7 @@ async def build_plan(body: BuildPlanRequest) -> dict:
             log.exception("Director failed for run %s", body.run_id)
             raise HTTPException(status_code=500, detail=f"Director agent failed: {exc}")
 
-        from ...cutmaster.pipeline import _find_timeline_by_name
+        from ...cutmaster.core.pipeline import _find_timeline_by_name
         from ...resolve import _boilerplate  # lazy
 
         try:

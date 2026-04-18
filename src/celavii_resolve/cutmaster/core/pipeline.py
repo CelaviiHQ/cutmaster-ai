@@ -12,8 +12,8 @@ import asyncio
 import logging
 from pathlib import Path
 
+from ..analysis.scrubber import ScrubParams, scrub
 from . import state
-from .scrubber import ScrubParams, scrub
 
 log = logging.getLogger("celavii-resolve.cutmaster.pipeline")
 

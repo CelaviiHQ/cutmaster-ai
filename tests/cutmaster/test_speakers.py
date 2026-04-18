@@ -1,6 +1,6 @@
 """Tests for `cutmaster.speakers` — detection, stats, label application."""
 
-from celavii_resolve.cutmaster.speakers import (
+from celavii_resolve.cutmaster.stt.speakers import (
     apply_speaker_labels,
     detect_speakers,
     speaker_stats,

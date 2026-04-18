@@ -2,7 +2,7 @@
 
 import pytest
 
-from celavii_resolve.cutmaster.tightener import (
+from celavii_resolve.cutmaster.analysis.tightener import (
     build_tightener_segments,
     tightener_stats,
 )

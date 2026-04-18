@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-from celavii_resolve.cutmaster import captions
-from celavii_resolve.cutmaster.captions import CaptionLine
+from celavii_resolve.cutmaster.analysis import captions
+from celavii_resolve.cutmaster.analysis.captions import CaptionLine
 
 
 def _w(word: str, start: float, end: float, speaker: str = "S1") -> dict:

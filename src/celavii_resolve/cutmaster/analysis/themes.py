@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
-from . import llm
+from ...intelligence import llm
 
 if TYPE_CHECKING:
     from .presets import PresetBundle

@@ -4,8 +4,8 @@ Covers the EXCLUDE CATEGORIES and USER FOCUS blocks. We don't call the
 LLM — we just inspect the prompt string the Director would send.
 """
 
-from celavii_resolve.cutmaster import director
-from celavii_resolve.cutmaster.presets import get_preset
+from celavii_resolve.cutmaster.core import director
+from celavii_resolve.cutmaster.data.presets import get_preset
 
 TRANSCRIPT = [
     {"word": "Hello", "start_time": 0.0, "end_time": 0.5, "speaker_id": "S1"},
@@ -81,7 +81,7 @@ def test_every_content_type_preset_bundles_exclude_categories_and_placeholder():
     """v2-1 exit criterion: every Director-driven preset ships exclusion
     options + a focus placeholder hint. Workflow presets like Tightener
     (v2-3) skip the Director and don't need them."""
-    from celavii_resolve.cutmaster.presets import PRESETS
+    from celavii_resolve.cutmaster.data.presets import PRESETS
 
     content_type_presets = [
         "vlog",
@@ -295,7 +295,7 @@ def test_prompt_no_clip_metadata_block_when_absent():
 def test_every_preset_has_speaker_awareness_field():
     """Schema-level invariant: after v2-5 every preset carries the field,
     even if empty. Guards against someone adding a preset without it."""
-    from celavii_resolve.cutmaster.presets import PRESETS
+    from celavii_resolve.cutmaster.data.presets import PRESETS
 
     for bundle in PRESETS.values():
         assert hasattr(bundle, "speaker_awareness")
@@ -304,14 +304,14 @@ def test_every_preset_has_speaker_awareness_field():
 def test_interview_and_podcast_are_the_only_speaker_aware_presets():
     """Ship list guard: future presets that want speaker awareness should
     update this test consciously, not drift in."""
-    from celavii_resolve.cutmaster.presets import PRESETS
+    from celavii_resolve.cutmaster.data.presets import PRESETS
 
     speaker_aware = {k for k, b in PRESETS.items() if (b.speaker_awareness or "").strip()}
     assert speaker_aware == {"interview", "podcast"}
 
 
 def test_exclude_category_keys_are_unique_per_preset():
-    from celavii_resolve.cutmaster.presets import PRESETS
+    from celavii_resolve.cutmaster.data.presets import PRESETS
 
     for bundle in PRESETS.values():
         keys = [c.key for c in bundle.exclude_categories]

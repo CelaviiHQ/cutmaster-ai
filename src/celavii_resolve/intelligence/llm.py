@@ -1,10 +1,10 @@
-"""Single chokepoint for all cutmaster LLM calls.
+"""Single chokepoint for all LLM calls across intelligence tools and AI products.
 
-v1 targets Gemini via google-genai + ``response_schema`` (Phase 0 validated
-this path). Every agent goes through ``call_structured`` so:
+v1 targets Gemini via google-genai + ``response_schema``. Every agent goes
+through ``call_structured`` so:
   - model selection is env-var tunable per agent
   - retry + validation logic lives in one place
-  - swapping in a second provider (Anthropic for v2) is a dispatcher change,
+  - swapping in a second provider (e.g. Anthropic) is a dispatcher change,
     not a rewrite of every agent.
 """
 
@@ -20,7 +20,7 @@ from pydantic import BaseModel
 
 from ..config import get_gemini_client
 
-log = logging.getLogger("celavii-resolve.cutmaster.llm")
+log = logging.getLogger("celavii-resolve.intelligence.llm")
 
 T = TypeVar("T", bound=BaseModel)
 

@@ -33,7 +33,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from . import llm
+from ...intelligence import llm
 
 log = logging.getLogger("celavii-resolve.cutmaster.speaker_reconcile")
 

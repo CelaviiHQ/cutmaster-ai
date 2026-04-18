@@ -97,11 +97,11 @@ def transcribe_audio(
 
     chosen = (provider or DEFAULT_PROVIDER).lower()
     if chosen == "gemini":
-        from .stt_gemini import transcribe as _gemini_transcribe
+        from .gemini import transcribe as _gemini_transcribe
 
         return _gemini_transcribe(audio_path, model)
     if chosen == "deepgram":
-        from .stt_deepgram import transcribe as _deepgram_transcribe
+        from .deepgram import transcribe as _deepgram_transcribe
 
         return _deepgram_transcribe(audio_path, model)
     raise ValueError(f"unknown STT provider '{chosen}'. Valid: 'gemini', 'deepgram'.")
@@ -115,13 +115,13 @@ def available_providers() -> dict[str, bool]:
     """
     status: dict[str, bool] = {}
     try:
-        from .stt_gemini import is_configured as _gemini_ok
+        from .gemini import is_configured as _gemini_ok
 
         status["gemini"] = _gemini_ok()
     except Exception:
         status["gemini"] = False
     try:
-        from .stt_deepgram import is_configured as _deepgram_ok
+        from .deepgram import is_configured as _deepgram_ok
 
         status["deepgram"] = _deepgram_ok()
     except Exception:

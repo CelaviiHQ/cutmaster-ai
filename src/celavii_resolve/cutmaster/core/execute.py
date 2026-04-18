@@ -24,13 +24,13 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ..resolve import _boilerplate
-from . import captions
-from .formats import FormatSpec, get_format
+from ...resolve import _boilerplate
+from ..analysis import captions
+from ..media.formats import FormatSpec, get_format
+from ..media.time_mapping import map_source_to_new_timeline, remap_words_to_new_timeline
+from ..resolve_ops.subclips import append_subclips_with_ranges
 from .pipeline import _find_timeline_by_name
 from .snapshot import snapshot_project
-from .subclips import append_subclips_with_ranges
-from .time_mapping import map_source_to_new_timeline, remap_words_to_new_timeline
 
 log = logging.getLogger("celavii-resolve.cutmaster.execute")
 

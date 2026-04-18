@@ -1,6 +1,6 @@
 """Tests for Director verbatim-timestamp validation. No LLM calls."""
 
-from celavii_resolve.cutmaster.director import (
+from celavii_resolve.cutmaster.core.director import (
     CutSegment,
     DirectorPlan,
     validate_plan,

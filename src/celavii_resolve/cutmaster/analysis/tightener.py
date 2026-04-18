@@ -15,7 +15,7 @@ Pure — no Resolve, no LLM. Testable with plain word dicts.
 
 from __future__ import annotations
 
-from .director import CutSegment
+from ..core.director import CutSegment
 
 DEFAULT_BLOCK_GAP_S = 0.3
 

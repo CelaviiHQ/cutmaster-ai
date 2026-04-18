@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
-from . import llm
-from .speakers import apply_speaker_labels, detect_speakers
+from ...intelligence import llm
+from ..stt.speakers import apply_speaker_labels, detect_speakers
 
 if TYPE_CHECKING:
     from .director import DirectorPlan

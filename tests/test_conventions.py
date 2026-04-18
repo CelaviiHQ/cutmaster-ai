@@ -13,7 +13,7 @@ import pytest
 PACKAGE_DIR = Path(__file__).resolve().parent.parent / "src" / "celavii_resolve"
 TOOLS_DIR = PACKAGE_DIR / "tools"
 WORKFLOWS_DIR = PACKAGE_DIR / "workflows"
-AI_DIR = PACKAGE_DIR / "ai"
+INTEL_DIR = PACKAGE_DIR / "intelligence"
 CUTMASTER_DIR = PACKAGE_DIR / "cutmaster"
 TOOL_MODULES = [
     "celavii_resolve.tools.project",
@@ -39,38 +39,39 @@ TOOL_MODULES = [
     "celavii_resolve.workflows.conform",
     "celavii_resolve.workflows.grade",
     "celavii_resolve.workflows.chroma_key",
-    "celavii_resolve.ai.vision",
-    "celavii_resolve.ai.color_assist",
-    "celavii_resolve.ai.timeline_critique",
-    "celavii_resolve.cutmaster.frame_math",
-    "celavii_resolve.cutmaster.source_mapper",
-    "celavii_resolve.cutmaster.subclips",
-    "celavii_resolve.cutmaster.ffmpeg_audio",
-    "celavii_resolve.cutmaster.vfr",
-    "celavii_resolve.cutmaster.snapshot",
-    "celavii_resolve.cutmaster.state",
+    "celavii_resolve.intelligence.vision",
+    "celavii_resolve.intelligence.color_assist",
+    "celavii_resolve.intelligence.timeline_critique",
+    "celavii_resolve.intelligence.llm",
+    "celavii_resolve.cutmaster.media.frame_math",
+    "celavii_resolve.cutmaster.resolve_ops.source_mapper",
+    "celavii_resolve.cutmaster.resolve_ops.subclips",
+    "celavii_resolve.cutmaster.media.ffmpeg_audio",
+    "celavii_resolve.cutmaster.media.vfr",
+    "celavii_resolve.cutmaster.core.snapshot",
+    "celavii_resolve.cutmaster.core.state",
     "celavii_resolve.cutmaster.stt",
-    "celavii_resolve.cutmaster.stt_gemini",
-    "celavii_resolve.cutmaster.stt_deepgram",
-    "celavii_resolve.cutmaster.scrubber",
-    "celavii_resolve.cutmaster.pipeline",
-    "celavii_resolve.cutmaster.llm",
-    "celavii_resolve.cutmaster.presets",
-    "celavii_resolve.cutmaster.excludes",
-    "celavii_resolve.cutmaster.formats",
-    "celavii_resolve.cutmaster.captions",
-    "celavii_resolve.cutmaster.time_mapping",
-    "celavii_resolve.cutmaster.assembled",
-    "celavii_resolve.cutmaster.tightener",
-    "celavii_resolve.cutmaster.director",
-    "celavii_resolve.cutmaster.marker_agent",
-    "celavii_resolve.cutmaster.speakers",
-    "celavii_resolve.cutmaster.per_clip_stt",
-    "celavii_resolve.cutmaster.speaker_reconcile",
-    "celavii_resolve.cutmaster.auto_detect",
-    "celavii_resolve.cutmaster.themes",
-    "celavii_resolve.cutmaster.resolve_segments",
-    "celavii_resolve.cutmaster.execute",
+    "celavii_resolve.cutmaster.stt.base",
+    "celavii_resolve.cutmaster.stt.gemini",
+    "celavii_resolve.cutmaster.stt.deepgram",
+    "celavii_resolve.cutmaster.analysis.scrubber",
+    "celavii_resolve.cutmaster.core.pipeline",
+    "celavii_resolve.cutmaster.data.presets",
+    "celavii_resolve.cutmaster.data.excludes",
+    "celavii_resolve.cutmaster.media.formats",
+    "celavii_resolve.cutmaster.analysis.captions",
+    "celavii_resolve.cutmaster.media.time_mapping",
+    "celavii_resolve.cutmaster.resolve_ops.assembled",
+    "celavii_resolve.cutmaster.analysis.tightener",
+    "celavii_resolve.cutmaster.core.director",
+    "celavii_resolve.cutmaster.analysis.marker_agent",
+    "celavii_resolve.cutmaster.stt.speakers",
+    "celavii_resolve.cutmaster.stt.per_clip",
+    "celavii_resolve.cutmaster.stt.reconcile",
+    "celavii_resolve.cutmaster.analysis.auto_detect",
+    "celavii_resolve.cutmaster.analysis.themes",
+    "celavii_resolve.cutmaster.resolve_ops.segments",
+    "celavii_resolve.cutmaster.core.execute",
 ]
 
 
@@ -81,14 +82,15 @@ def _collect_tool_functions() -> list[tuple[str, str]]:
     scan_dirs = [
         (TOOLS_DIR, "celavii_resolve.tools"),
         (WORKFLOWS_DIR, "celavii_resolve.workflows"),
-        (AI_DIR, "celavii_resolve.ai"),
+        (INTEL_DIR, "celavii_resolve.intelligence"),
         (CUTMASTER_DIR, "celavii_resolve.cutmaster"),
     ]
     for scan_dir, module_prefix in scan_dirs:
-        for py_file in scan_dir.glob("*.py"):
+        for py_file in scan_dir.rglob("*.py"):
             if py_file.name == "__init__.py":
                 continue
-            module_name = f"{module_prefix}.{py_file.stem}"
+            rel = py_file.relative_to(scan_dir).with_suffix("")
+            module_name = f"{module_prefix}." + ".".join(rel.parts)
             tree = ast.parse(py_file.read_text())
             for node in ast.walk(tree):
                 if not isinstance(node, ast.FunctionDef):
@@ -185,15 +187,18 @@ class TestModuleCoverage:
             for f in WORKFLOWS_DIR.glob("*.py")
             if f.name != "__init__.py"
         }
-        ai_files = {
-            f"celavii_resolve.ai.{f.stem}" for f in AI_DIR.glob("*.py") if f.name != "__init__.py"
-        }
-        cutmaster_files = {
-            f"celavii_resolve.cutmaster.{f.stem}"
-            for f in CUTMASTER_DIR.glob("*.py")
+        intel_files = {
+            f"celavii_resolve.intelligence.{f.stem}"
+            for f in INTEL_DIR.glob("*.py")
             if f.name != "__init__.py"
         }
-        all_files = tool_files | workflow_files | ai_files | cutmaster_files
+        cutmaster_files = {
+            "celavii_resolve.cutmaster."
+            + ".".join(f.relative_to(CUTMASTER_DIR).with_suffix("").parts)
+            for f in CUTMASTER_DIR.rglob("*.py")
+            if f.name != "__init__.py"
+        }
+        all_files = tool_files | workflow_files | intel_files | cutmaster_files
         imported = set(TOOL_MODULES)
         missing = all_files - imported
         assert not missing, f"Module files not imported in tests: {missing}"
@@ -206,7 +211,7 @@ class TestModuleCoverage:
         for scan_dir, import_prefix in [
             (TOOLS_DIR, "from .tools import"),
             (WORKFLOWS_DIR, "from .workflows import"),
-            (AI_DIR, "from .ai import"),
+            (INTEL_DIR, "from .intelligence import"),
         ]:
             py_files = {f.stem for f in scan_dir.glob("*.py") if f.name != "__init__.py"}
             missing = {f for f in py_files if f"{import_prefix} {f}" not in init_text}

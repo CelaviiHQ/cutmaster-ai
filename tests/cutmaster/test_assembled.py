@@ -1,6 +1,6 @@
 """Tests for cutmaster.assembled — per-item transcript splitter + take builder."""
 
-from celavii_resolve.cutmaster.assembled import (
+from celavii_resolve.cutmaster.resolve_ops.assembled import (
     ItemSummary,
     build_take_entries,
     split_transcript_per_item,

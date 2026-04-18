@@ -34,26 +34,26 @@ from .workflows import delivery  # noqa: F401, E402
 from .workflows import conform  # noqa: F401, E402
 from .workflows import grade  # noqa: F401, E402
 from .workflows import chroma_key  # noqa: F401, E402
-from .ai import vision  # noqa: F401, E402
-from .ai import color_assist  # noqa: F401, E402
-from .ai import timeline_critique  # noqa: F401, E402
-from .cutmaster import frame_math  # noqa: F401, E402
-from .cutmaster import source_mapper  # noqa: F401, E402
-from .cutmaster import subclips  # noqa: F401, E402
-from .cutmaster import ffmpeg_audio  # noqa: F401, E402
-from .cutmaster import vfr  # noqa: F401, E402
-from .cutmaster import snapshot  # noqa: F401, E402
-from .cutmaster import state as cutmaster_state  # noqa: F401, E402
-from .cutmaster import stt  # noqa: F401, E402
-from .cutmaster import scrubber  # noqa: F401, E402
-from .cutmaster import pipeline  # noqa: F401, E402
-from .cutmaster import llm as cutmaster_llm  # noqa: F401, E402
-from .cutmaster import presets as cutmaster_presets  # noqa: F401, E402
-from .cutmaster import director  # noqa: F401, E402
-from .cutmaster import marker_agent  # noqa: F401, E402
-from .cutmaster import auto_detect  # noqa: F401, E402
-from .cutmaster import themes as cutmaster_themes  # noqa: F401, E402
-from .cutmaster import resolve_segments  # noqa: F401, E402
-from .cutmaster import execute as cutmaster_execute  # noqa: F401, E402
+from .intelligence import vision  # noqa: F401, E402
+from .intelligence import color_assist  # noqa: F401, E402
+from .intelligence import timeline_critique  # noqa: F401, E402
+from .cutmaster.media import frame_math  # noqa: F401, E402
+from .cutmaster.media import ffmpeg_audio  # noqa: F401, E402
+from .cutmaster.media import vfr  # noqa: F401, E402
+from .cutmaster.resolve_ops import source_mapper  # noqa: F401, E402
+from .cutmaster.resolve_ops import subclips  # noqa: F401, E402
+from .cutmaster.resolve_ops import segments as resolve_segments  # noqa: F401, E402
+from .cutmaster.core import snapshot  # noqa: F401, E402
+from .cutmaster.core import state as cutmaster_state  # noqa: F401, E402
+from .cutmaster.core import pipeline  # noqa: F401, E402
+from .cutmaster.core import director  # noqa: F401, E402
+from .cutmaster.core import execute as cutmaster_execute  # noqa: F401, E402
+from .cutmaster import stt  # noqa: F401, E402 — subpackage re-exports base symbols
+from .cutmaster.analysis import scrubber  # noqa: F401, E402
+from .cutmaster.analysis import marker_agent  # noqa: F401, E402
+from .cutmaster.analysis import auto_detect  # noqa: F401, E402
+from .cutmaster.analysis import themes as cutmaster_themes  # noqa: F401, E402
+from .cutmaster.data import presets as cutmaster_presets  # noqa: F401, E402
+from .intelligence import llm as cutmaster_llm  # noqa: F401, E402
 from .tools import lut_registry  # noqa: F401, E402
 from . import resources  # noqa: F401, E402

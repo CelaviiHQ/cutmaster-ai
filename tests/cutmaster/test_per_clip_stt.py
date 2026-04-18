@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 
-from celavii_resolve.cutmaster.per_clip_stt import (
+from celavii_resolve.cutmaster.stt.per_clip import (
     ClipAudioSpec,
     clip_metadata_table,
     load_cached_words,

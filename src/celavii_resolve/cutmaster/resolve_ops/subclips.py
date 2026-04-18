@@ -11,9 +11,9 @@ from __future__ import annotations
 import json
 from typing import TypedDict
 
-from ..config import mcp
-from ..errors import safe_resolve_call
-from ..resolve import _boilerplate, _find_clip
+from ...config import mcp
+from ...errors import safe_resolve_call
+from ...resolve import _boilerplate, _find_clip
 
 MEDIA_TYPE = {"video": 1, "audio": 2}
 

@@ -15,10 +15,10 @@ from __future__ import annotations
 
 import json
 
-from ..config import mcp
-from ..errors import safe_resolve_call
-from ..resolve import _boilerplate
-from .frame_math import _timeline_fps, _timeline_start_frame
+from ...config import mcp
+from ...errors import safe_resolve_call
+from ...resolve import _boilerplate
+from ..media.frame_math import _timeline_fps, _timeline_start_frame
 
 
 class TimelineMappingError(ValueError):

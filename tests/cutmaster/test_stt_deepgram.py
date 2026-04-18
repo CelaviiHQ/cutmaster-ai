@@ -9,7 +9,7 @@ import pytest
 
 from celavii_resolve.cutmaster import stt as stt_module
 from celavii_resolve.cutmaster.stt import TranscriptResponse, available_providers
-from celavii_resolve.cutmaster.stt_deepgram import _map_deepgram_words, is_configured
+from celavii_resolve.cutmaster.stt.deepgram import _map_deepgram_words, is_configured
 
 # ------------------------- mapper ----------------------------------------
 
@@ -148,7 +148,7 @@ def test_available_providers_reports_both(monkeypatch):
     # Gemini's is_configured reaches into the real client; patch to
     # a deterministic True.
     with patch(
-        "celavii_resolve.cutmaster.stt_gemini.is_configured",
+        "celavii_resolve.cutmaster.stt.gemini.is_configured",
         return_value=True,
     ):
         status = available_providers()
@@ -186,11 +186,11 @@ def test_dispatch_routes_to_deepgram_when_selected(tmp_path, monkeypatch):
         raise AssertionError("gemini path must not run when provider=deepgram")
 
     monkeypatch.setattr(
-        "celavii_resolve.cutmaster.stt_deepgram.transcribe",
+        "celavii_resolve.cutmaster.stt.deepgram.transcribe",
         fake_deepgram,
     )
     monkeypatch.setattr(
-        "celavii_resolve.cutmaster.stt_gemini.transcribe",
+        "celavii_resolve.cutmaster.stt.gemini.transcribe",
         forbidden,
     )
 
@@ -214,7 +214,7 @@ def test_dispatch_falls_back_to_env_var(tmp_path, monkeypatch):
         return TranscriptResponse(words=[])
 
     monkeypatch.setattr(
-        "celavii_resolve.cutmaster.stt_deepgram.transcribe",
+        "celavii_resolve.cutmaster.stt.deepgram.transcribe",
         fake_deepgram,
     )
     stt_module.transcribe_audio(audio)
@@ -225,7 +225,7 @@ def test_dispatch_falls_back_to_env_var(tmp_path, monkeypatch):
 
 
 def test_transcribe_raises_when_api_key_missing(tmp_path, monkeypatch):
-    from celavii_resolve.cutmaster import stt_deepgram
+    from celavii_resolve.cutmaster.stt import deepgram as stt_deepgram
 
     monkeypatch.delenv("DEEPGRAM_API_KEY", raising=False)
     audio = tmp_path / "a.wav"
@@ -238,7 +238,7 @@ def test_transcribe_parses_good_response(tmp_path, monkeypatch):
     """Happy path through the real :func:`transcribe` — mock ``httpx.post``
     to return a well-formed Deepgram payload and ensure we get a clean
     ``TranscriptResponse`` out the other side."""
-    from celavii_resolve.cutmaster import stt_deepgram
+    from celavii_resolve.cutmaster.stt import deepgram as stt_deepgram
 
     monkeypatch.setenv("DEEPGRAM_API_KEY", "dg_xxx")
     audio = tmp_path / "a.wav"
@@ -295,7 +295,7 @@ def test_transcribe_parses_good_response(tmp_path, monkeypatch):
 
 
 def test_transcribe_surfaces_http_errors(tmp_path, monkeypatch):
-    from celavii_resolve.cutmaster import stt_deepgram
+    from celavii_resolve.cutmaster.stt import deepgram as stt_deepgram
 
     monkeypatch.setenv("DEEPGRAM_API_KEY", "dg_xxx")
     audio = tmp_path / "a.wav"
@@ -313,7 +313,7 @@ def test_transcribe_surfaces_http_errors(tmp_path, monkeypatch):
 
 
 def test_transcribe_rejects_empty_word_list(tmp_path, monkeypatch):
-    from celavii_resolve.cutmaster import stt_deepgram
+    from celavii_resolve.cutmaster.stt import deepgram as stt_deepgram
 
     monkeypatch.setenv("DEEPGRAM_API_KEY", "dg_xxx")
     audio = tmp_path / "a.wav"

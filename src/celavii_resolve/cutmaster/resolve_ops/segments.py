@@ -18,8 +18,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from .director import CutSegment
-from .frame_math import _source_fps, _timeline_fps, _timeline_start_frame
+from ..core.director import CutSegment
+from ..media.frame_math import _source_fps, _timeline_fps, _timeline_start_frame
 from .source_mapper import _item_clip_speed
 
 

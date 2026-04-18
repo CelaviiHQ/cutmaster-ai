@@ -1,6 +1,6 @@
 """Unit tests for cutmaster.scrubber — deterministic, no network, no Resolve."""
 
-from celavii_resolve.cutmaster.scrubber import ScrubParams, scrub
+from celavii_resolve.cutmaster.analysis.scrubber import ScrubParams, scrub
 
 
 def _w(word: str, start: float, end: float) -> dict:

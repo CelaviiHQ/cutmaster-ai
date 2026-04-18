@@ -13,8 +13,8 @@ import logging
 import os
 from pathlib import Path
 
-from ..config import get_gemini_client
-from .stt import TranscriptResponse
+from ...config import get_gemini_client
+from .base import TranscriptResponse
 
 log = logging.getLogger("celavii-resolve.cutmaster.stt_gemini")
 

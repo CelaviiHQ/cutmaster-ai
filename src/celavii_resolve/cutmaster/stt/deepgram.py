@@ -25,7 +25,7 @@ import logging
 import os
 from pathlib import Path
 
-from .stt import TranscriptResponse, TranscriptWord
+from .base import TranscriptResponse, TranscriptWord
 
 log = logging.getLogger("celavii-resolve.cutmaster.stt_deepgram")
 

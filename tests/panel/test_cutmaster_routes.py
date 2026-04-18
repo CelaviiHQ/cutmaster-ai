@@ -10,7 +10,7 @@ pytest.importorskip("httpx")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from celavii_resolve.cutmaster import state  # noqa: E402
+from celavii_resolve.cutmaster.core import state  # noqa: E402
 from celavii_resolve.http.app import create_app  # noqa: E402
 from celavii_resolve.http.routes import cutmaster as routes  # noqa: E402
 

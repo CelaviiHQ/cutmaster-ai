@@ -13,8 +13,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from ..config import mcp
-from ..errors import safe_resolve_call
+from ...config import mcp
+from ...errors import safe_resolve_call
 
 
 class VFRProbeError(RuntimeError):

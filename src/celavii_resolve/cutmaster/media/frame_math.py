@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import json
 
-from ..config import mcp
-from ..errors import safe_resolve_call
-from ..resolve import _boilerplate
+from ...config import mcp
+from ...errors import safe_resolve_call
+from ...resolve import _boilerplate
 
 # ---------------------------------------------------------------------------
 # Plain functions — called from the HTTP backend and cutmaster pipeline

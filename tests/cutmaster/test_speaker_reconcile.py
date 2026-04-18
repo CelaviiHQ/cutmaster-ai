@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from celavii_resolve.cutmaster.speaker_reconcile import (
+from celavii_resolve.cutmaster.stt.reconcile import (
     SpeakerReconciliation,
     _apply_mapping,
     _collect_local_samples,

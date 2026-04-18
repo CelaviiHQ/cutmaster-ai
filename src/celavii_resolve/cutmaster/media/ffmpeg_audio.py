@@ -17,9 +17,9 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from ..config import mcp
-from ..errors import safe_resolve_call
-from ..resolve import _boilerplate
+from ...config import mcp
+from ...errors import safe_resolve_call
+from ...resolve import _boilerplate
 from .frame_math import _source_fps, _timeline_fps
 
 
