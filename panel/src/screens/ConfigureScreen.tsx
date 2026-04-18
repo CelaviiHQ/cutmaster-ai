@@ -188,7 +188,17 @@ export default function ConfigureScreen({
     const sourceMatchesTarget =
         source && source.recommended_format === currentFormat;
 
-    const assembledMode = (settings.timeline_mode ?? "raw_dump") === "assembled";
+    const isTightener = preset === "tightener";
+    const assembledMode =
+        !isTightener && (settings.timeline_mode ?? "raw_dump") === "assembled";
+
+    const scrubParams = (settings.scrub_params ?? {}) as Record<string, unknown>;
+    const updateScrub = (patch: Record<string, unknown>) => {
+        onSettingsChange({
+            ...settings,
+            scrub_params: { ...scrubParams, ...patch },
+        });
+    };
 
     return (
         <div>
@@ -221,6 +231,7 @@ export default function ConfigureScreen({
                         "tutorial",
                         "podcast",
                         "reaction",
+                        "tightener",
                     ].map((p) => (
                         <option key={p} value={p}>
                             {p}
@@ -229,7 +240,7 @@ export default function ConfigureScreen({
                 </select>
             </div>
 
-            {analysis && (
+            {analysis && !isTightener && (
                 <>
                     <div className="card">
                         <h2>Chapters detected</h2>
@@ -333,7 +344,105 @@ export default function ConfigureScreen({
                 </div>
             )}
 
-            {excludeCats.length > 0 && (
+            {isTightener && (
+                <div className="card">
+                    <h2>Tightener cleanup</h2>
+                    <p className="muted">
+                        Tightener drops filler words and dead-air gaps inside
+                        each take, then plays the takes in their original
+                        order. No Director LLM runs — this is a deterministic
+                        pass. Adjust the thresholds below if the default cut
+                        is too loose or too aggressive.
+                    </p>
+                    <div style={{ marginTop: 10 }}>
+                        <label
+                            style={{
+                                display: "flex",
+                                gap: 6,
+                                alignItems: "center",
+                                margin: 0,
+                                marginBottom: 8,
+                            }}
+                        >
+                            <input
+                                type="checkbox"
+                                checked={scrubParams.remove_fillers !== false}
+                                onChange={(e) =>
+                                    updateScrub({ remove_fillers: e.target.checked })
+                                }
+                            />
+                            Remove filler words (um, uh, ah…)
+                        </label>
+                        <label
+                            style={{
+                                display: "flex",
+                                gap: 6,
+                                alignItems: "center",
+                                margin: 0,
+                                marginBottom: 8,
+                            }}
+                        >
+                            <input
+                                type="checkbox"
+                                checked={scrubParams.remove_dead_air !== false}
+                                onChange={(e) =>
+                                    updateScrub({ remove_dead_air: e.target.checked })
+                                }
+                            />
+                            Remove dead-air words (fillers inside long gaps)
+                        </label>
+                        <label
+                            style={{
+                                display: "flex",
+                                gap: 6,
+                                alignItems: "center",
+                                margin: 0,
+                                marginBottom: 8,
+                            }}
+                        >
+                            <input
+                                type="checkbox"
+                                checked={scrubParams.collapse_restarts !== false}
+                                onChange={(e) =>
+                                    updateScrub({ collapse_restarts: e.target.checked })
+                                }
+                            />
+                            Collapse restarts (drop the earlier attempt)
+                        </label>
+                        <label
+                            style={{ display: "block", marginTop: 12 }}
+                        >
+                            Dead-air gap threshold:{" "}
+                            <code>
+                                {(
+                                    (scrubParams.dead_air_threshold_s as number | undefined) ??
+                                    0.3
+                                ).toFixed(2)}
+                                s
+                            </code>
+                        </label>
+                        <input
+                            type="range"
+                            min={0.1}
+                            max={1.5}
+                            step={0.05}
+                            style={{ width: "100%" }}
+                            value={
+                                (scrubParams.dead_air_threshold_s as
+                                    | number
+                                    | undefined) ?? 0.3
+                            }
+                            onChange={(e) =>
+                                updateScrub({
+                                    dead_air_threshold_s: Number(e.target.value),
+                                })
+                            }
+                        />
+                    </div>
+                </div>
+            )}
+
+            {excludeCats.length > 0 && !isTightener && (
                 <div className="card">
                     <h2>Content to exclude</h2>
                     <p className="muted">
@@ -362,24 +471,26 @@ export default function ConfigureScreen({
                 </div>
             )}
 
-            <div className="card">
-                <h2>Custom focus (optional)</h2>
-                <p className="muted">
-                    One short instruction the Director treats as a soft
-                    priority. Kept across preset changes.
-                </p>
-                <input
-                    type="text"
-                    placeholder={focusPlaceholder}
-                    value={settings.custom_focus ?? ""}
-                    onChange={(e) =>
-                        onSettingsChange({
-                            ...settings,
-                            custom_focus: e.target.value || null,
-                        })
-                    }
-                />
-            </div>
+            {!isTightener && (
+                <div className="card">
+                    <h2>Custom focus (optional)</h2>
+                    <p className="muted">
+                        One short instruction the Director treats as a soft
+                        priority. Kept across preset changes.
+                    </p>
+                    <input
+                        type="text"
+                        placeholder={focusPlaceholder}
+                        value={settings.custom_focus ?? ""}
+                        onChange={(e) =>
+                            onSettingsChange({
+                                ...settings,
+                                custom_focus: e.target.value || null,
+                            })
+                        }
+                    />
+                </div>
+            )}
 
             {formats && formats.length > 0 && (
                 <div className="card">
@@ -473,8 +584,9 @@ export default function ConfigureScreen({
                 </div>
             )}
 
-            <div className="card">
-                <h2>Target length (optional)</h2>
+            {!isTightener && (
+                <div className="card">
+                    <h2>Target length (optional)</h2>
                 <input
                     type="number"
                     min={15}
@@ -503,7 +615,8 @@ export default function ConfigureScreen({
                         Capped at {Math.round(lengthCap)} s for the selected format.
                     </p>
                 )}
-            </div>
+                </div>
+            )}
 
             {err && <div className="error-box">{err}</div>}
 

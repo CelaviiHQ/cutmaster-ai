@@ -111,6 +111,17 @@ export default function ReviewScreen({
                 {plan.director.reasoning && (
                     <p className="muted">{plan.director.reasoning}</p>
                 )}
+                {plan.tightener && (
+                    <p className="muted">
+                        <strong>
+                            {(plan.tightener.percent_tighter * 100).toFixed(1)}% tighter
+                        </strong>
+                        &nbsp;— kept <code>{plan.tightener.kept_words}</code> of{" "}
+                        <code>{plan.tightener.original_words}</code> words&nbsp;
+                        (<code>{plan.tightener.segment_total_s.toFixed(1)}s</code> out of{" "}
+                        <code>{plan.tightener.take_total_s.toFixed(1)}s</code> take time).
+                    </p>
+                )}
                 {(excludeLabels.length > 0 || appliedFocus) && (
                     <p className="muted" style={{ marginTop: 8 }}>
                         {excludeLabels.length > 0 && (

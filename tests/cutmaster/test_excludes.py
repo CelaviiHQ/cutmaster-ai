@@ -38,13 +38,21 @@ def test_default_exclude_keys_empty_list():
     assert default_exclude_keys([]) == []
 
 
-def test_every_preset_has_exclude_categories_populated():
-    # v2-0 landed the schema; v2-1 populates per-preset lists. Every
-    # preset must now ship a non-empty, well-typed category list.
-    for bundle in PRESETS.values():
-        assert bundle.exclude_categories, (
-            f"{bundle.key} ships no exclude_categories — v2-1 requires ≥1"
-        )
+def test_every_content_type_preset_has_exclude_categories_populated():
+    # v2-0 landed the schema; v2-1 populates per-preset lists for every
+    # content-type preset (Director-driven). Workflow presets like
+    # Tightener (v2-3) skip the Director entirely so exclusion categories
+    # are irrelevant for them.
+    from celavii_resolve.cutmaster.presets import PRESETS as _P  # local alias
+
+    content_type_presets = {k for k, p in _P.items() if p.exclude_categories}
+    # At minimum the 7 content-type presets must populate excludes.
+    assert content_type_presets >= {
+        "vlog", "product_demo", "wedding", "interview",
+        "tutorial", "podcast", "reaction",
+    }
+    for key in content_type_presets:
+        bundle = _P[key]
         for cat in bundle.exclude_categories:
             assert isinstance(cat, ExcludeCategory)
             assert cat.key and cat.label and cat.description

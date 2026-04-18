@@ -30,6 +30,7 @@ Preset = Literal[
     "tutorial",
     "podcast",
     "reaction",
+    "tightener",
     "auto",
 ]
 
@@ -432,9 +433,29 @@ REACTION = PresetBundle(
 )
 
 
+TIGHTENER = PresetBundle(
+    key="tightener",
+    label="Tightener (surgical)",
+    role="no-LLM tightener — skips the Director and relies on per-take word-block segmentation",
+    hook_rule="preserve the original opening of each take; no narrative reordering",
+    pacing="surgical — drop filler + dead air inside each take; keep the story order",
+    cue_vocabulary=[],           # no Marker LLM runs for tightener
+    marker_vocabulary=[],        # keep empty — tightener output is take-level only
+    theme_axes=[],               # no theme selection in the UI
+    scrub_defaults={
+        "remove_fillers": True,
+        "remove_dead_air": True,
+        "collapse_restarts": True,
+        "dead_air_threshold_s": 0.3,   # more aggressive than vlog's 0.6
+    },
+    exclude_categories=[],       # category exclusion is a Director concept
+    default_custom_focus_placeholder="",  # no Director to read focus
+)
+
+
 PRESETS: dict[str, PresetBundle] = {
     p.key: p
-    for p in (VLOG, PRODUCT_DEMO, WEDDING, INTERVIEW, TUTORIAL, PODCAST, REACTION)
+    for p in (VLOG, PRODUCT_DEMO, WEDDING, INTERVIEW, TUTORIAL, PODCAST, REACTION, TIGHTENER)
 }
 
 

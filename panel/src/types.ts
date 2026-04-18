@@ -8,6 +8,7 @@ export type PresetKey =
   | "tutorial"
   | "podcast"
   | "reaction"
+  | "tightener"
   | "auto";
 
 export interface ExcludeCategory {
@@ -102,12 +103,21 @@ export interface ResolvedCutSegment {
   warnings: string[];
 }
 
+export interface TightenerSummary {
+  kept_words: number;
+  original_words: number;
+  percent_tighter: number;
+  take_total_s: number;
+  segment_total_s: number;
+}
+
 export interface BuildPlanResult {
   preset: PresetKey;
   user_settings: UserSettings;
   director: DirectorPlan;
   markers: MarkerPlan;
   resolved_segments: ResolvedCutSegment[];
+  tightener?: TightenerSummary;
 }
 
 export type FormatKey = "horizontal" | "vertical_short" | "square";

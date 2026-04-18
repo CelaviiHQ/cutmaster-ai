@@ -298,6 +298,99 @@ def test_build_plan_assembled_uses_raw_transcript_when_takes_already_scrubbed(
     assert "umm" in take_words
 
 
+def test_build_plan_tightener_skips_director_and_returns_stats(
+    client, monkeypatch, scrubbed_run,
+):
+    """When preset='tightener', /build-plan must NOT call the Director or
+    Marker LLMs and must return a `tightener` summary block with
+    kept/original/percent-tighter counts."""
+    run = state.load(scrubbed_run["run_id"])
+    # Raw transcript with a scrubbable filler and a gap.
+    run["transcript"] = [
+        {"word": "Hello", "start_time": 0.0, "end_time": 0.4, "speaker_id": "S1"},
+        {"word": "um", "start_time": 0.4, "end_time": 0.6, "speaker_id": "S1"},
+        {"word": "world.", "start_time": 0.6, "end_time": 1.0, "speaker_id": "S1"},
+        {"word": "Second", "start_time": 3.0, "end_time": 3.4, "speaker_id": "S1"},
+        {"word": "take.", "start_time": 3.4, "end_time": 3.8, "speaker_id": "S1"},
+    ]
+    state.save(run)
+
+    def forbidden_director(*_a, **_k):
+        raise AssertionError("tightener path must NOT call the Director")
+
+    def forbidden_assembled(*_a, **_k):
+        raise AssertionError("tightener path must NOT call the assembled Director")
+
+    def forbidden_marker(*_a, **_k):
+        raise AssertionError("tightener path must NOT call the Marker agent")
+
+    monkeypatch.setattr(routes, "build_cut_plan", forbidden_director)
+    monkeypatch.setattr(routes, "build_assembled_cut_plan", forbidden_assembled)
+    monkeypatch.setattr(routes, "suggest_markers", forbidden_marker)
+
+    fake_items = [{
+        "item_index": 0, "source_name": "take1.mov",
+        "start_s": 0.0, "end_s": 4.0,
+    }]
+    monkeypatch.setattr(routes, "read_items_on_track",
+                        lambda _tl, track_index=1: fake_items)
+
+    fake_tl = MagicMock()
+    fake_tl.GetSetting.return_value = "24"
+
+    import celavii_resolve.cutmaster.pipeline as pipeline_mod
+    import celavii_resolve.resolve as resolve_mod
+
+    monkeypatch.setattr(resolve_mod, "_boilerplate",
+                        lambda: (MagicMock(), MagicMock(), MagicMock()))
+    monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name",
+                        lambda _p, _n: fake_tl)
+    monkeypatch.setattr(routes, "resolve_segments", lambda _tl, _segs: [])
+
+    r = client.post(
+        "/cutmaster/build-plan",
+        json={
+            "run_id": scrubbed_run["run_id"],
+            "preset": "tightener",
+            "user_settings": {},
+        },
+    )
+    assert r.status_code == 200, r.text
+
+    persisted = state.load(scrubbed_run["run_id"])
+    saved = persisted["plan"]["user_settings"]
+    # Route must normalise these even if caller omitted them.
+    assert saved["timeline_mode"] == "assembled"
+    assert saved["reorder_allowed"] is False
+    # Tightener stats must land on the plan.
+    tight = persisted["plan"]["tightener"]
+    assert tight["original_words"] == 5
+    # Filler 'um' dropped → kept 4.
+    assert tight["kept_words"] == 4
+
+
+def test_build_plan_tightener_errors_when_raw_transcript_missing(
+    client, monkeypatch, scrubbed_run,
+):
+    """Tightener reads run['transcript']. If analyze somehow finished
+    without populating it (unlikely but possible on legacy runs), the
+    route must surface a clean 400 instead of silently falling back."""
+    run = state.load(scrubbed_run["run_id"])
+    run["transcript"] = []  # wipe it
+    state.save(run)
+
+    r = client.post(
+        "/cutmaster/build-plan",
+        json={
+            "run_id": scrubbed_run["run_id"],
+            "preset": "tightener",
+            "user_settings": {},
+        },
+    )
+    assert r.status_code == 400
+    assert "raw transcript" in r.text
+
+
 def test_build_plan_rejects_unknown_format(client, monkeypatch, scrubbed_run):
     """Pydantic's Literal guard should 422 on an invalid format key."""
     r = client.post(

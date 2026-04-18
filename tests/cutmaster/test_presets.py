@@ -4,20 +4,37 @@ import pytest
 
 from celavii_resolve.cutmaster.presets import PRESETS, all_presets, get_preset
 
-EXPECTED = {"vlog", "product_demo", "wedding", "interview", "tutorial", "podcast", "reaction"}
+# Content-type presets run the Director + Marker pipeline and must carry
+# cue / marker / theme vocabulary so the agents have something to reason
+# about. Workflow presets (v2-3's tightener) skip the LLMs entirely and
+# are exempt from those invariants.
+CONTENT_TYPE_PRESETS = {
+    "vlog", "product_demo", "wedding", "interview",
+    "tutorial", "podcast", "reaction",
+}
+WORKFLOW_PRESETS = {"tightener"}
 
 
-def test_all_seven_presets_registered():
-    assert set(PRESETS) == EXPECTED
+def test_all_expected_presets_registered():
+    assert set(PRESETS) == CONTENT_TYPE_PRESETS | WORKFLOW_PRESETS
 
 
-def test_each_preset_has_required_fields():
-    for bundle in PRESETS.values():
+def test_each_content_type_preset_has_required_fields():
+    for key in CONTENT_TYPE_PRESETS:
+        bundle = PRESETS[key]
         assert bundle.role, f"{bundle.key} missing role"
         assert bundle.hook_rule, f"{bundle.key} missing hook_rule"
         assert bundle.cue_vocabulary, f"{bundle.key} missing cue_vocabulary"
         assert bundle.marker_vocabulary, f"{bundle.key} missing marker_vocabulary"
         assert bundle.theme_axes, f"{bundle.key} missing theme_axes"
+
+
+def test_every_preset_has_role_and_hook_rule():
+    # Universal even for workflow presets — the UI uses these to describe
+    # the preset in the picker.
+    for bundle in PRESETS.values():
+        assert bundle.role
+        assert bundle.hook_rule
 
 
 def test_get_preset_returns_bundle():

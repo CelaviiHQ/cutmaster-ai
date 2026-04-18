@@ -77,12 +77,18 @@ def test_prompt_with_both_excludes_and_focus():
     assert "keep the debate about remote work" in prompt
 
 
-def test_every_preset_bundles_exclude_categories_and_placeholder():
-    """v2-1 exit criterion: every preset ships exclusion options + a
-    focus placeholder hint."""
+def test_every_content_type_preset_bundles_exclude_categories_and_placeholder():
+    """v2-1 exit criterion: every Director-driven preset ships exclusion
+    options + a focus placeholder hint. Workflow presets like Tightener
+    (v2-3) skip the Director and don't need them."""
     from celavii_resolve.cutmaster.presets import PRESETS
 
-    for bundle in PRESETS.values():
+    content_type_presets = [
+        "vlog", "product_demo", "wedding", "interview",
+        "tutorial", "podcast", "reaction",
+    ]
+    for key in content_type_presets:
+        bundle = PRESETS[key]
         assert bundle.exclude_categories, (
             f"{bundle.key} has no exclude_categories — v2-1 expected ≥4 per preset"
         )

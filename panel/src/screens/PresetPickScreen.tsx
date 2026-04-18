@@ -67,16 +67,23 @@ export default function PresetPickScreen({
                     <button
                         className={timelineMode === "raw_dump" ? "" : "secondary"}
                         onClick={() => onTimelineModeChange("raw_dump")}
+                        disabled={preset === "tightener"}
                     >
                         Raw dump (v1 default)
                     </button>
                     <button
                         className={timelineMode === "assembled" ? "" : "secondary"}
                         onClick={() => onTimelineModeChange("assembled")}
+                        disabled={preset === "tightener"}
                     >
                         Assembled — takes picked
                     </button>
                 </div>
+                {preset === "tightener" && (
+                    <p className="muted" style={{ marginTop: 8 }}>
+                        Tightener always runs in assembled mode.
+                    </p>
+                )}
             </div>
 
             <div className="card">

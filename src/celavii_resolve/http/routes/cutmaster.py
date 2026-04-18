@@ -36,7 +36,12 @@ from ...cutmaster.marker_agent import MarkerPlan, suggest_markers
 from ...cutmaster.pipeline import run_analyze
 from ...cutmaster.presets import PRESETS, all_presets, get_preset
 from ...cutmaster.resolve_segments import resolve_segments
-from ...cutmaster.scrubber import ScrubParams
+from ...cutmaster.scrubber import ScrubParams, scrub
+from ...cutmaster.tightener import (
+    DEFAULT_BLOCK_GAP_S,
+    build_tightener_segments,
+    tightener_stats,
+)
 
 log = logging.getLogger("celavii-resolve.http.cutmaster")
 
@@ -341,6 +346,91 @@ async def build_plan(body: BuildPlanRequest) -> dict:
     preset = get_preset(body.preset)
     settings_dict = body.user_settings.model_dump()
     mode = body.user_settings.timeline_mode
+
+    # v2-3: Tightener preset forces assembled + reorder_off, re-scrubs the
+    # raw transcript with aggressive defaults, skips the Director entirely,
+    # and emits one CutSegment per contiguous kept-word block per take.
+    # Settings get normalised so /state reflects what actually ran.
+    if body.preset == "tightener":
+        settings_dict["timeline_mode"] = "assembled"
+        settings_dict["reorder_allowed"] = False
+
+        raw_transcript = run.get("transcript") or []
+        if not raw_transcript:
+            raise HTTPException(
+                status_code=400,
+                detail="run has no raw transcript — re-analyze before running Tightener",
+            )
+
+        # Aggressive scrub: user-provided params win; otherwise preset defaults.
+        if body.user_settings.scrub_params:
+            tight_params = body.user_settings.scrub_params
+        else:
+            tight_params = ScrubParams(**preset.scrub_defaults)
+        tight_scrub = scrub(raw_transcript, tight_params)
+        tight_scrubbed = tight_scrub.kept
+
+        from ...cutmaster.pipeline import _find_timeline_by_name
+        from ...resolve import _boilerplate  # lazy
+
+        try:
+            _, project, _ = _boilerplate()
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"Resolve unreachable: {exc}")
+
+        tl = _find_timeline_by_name(project, run["timeline_name"])
+        if tl is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"timeline '{run['timeline_name']}' not found (was it renamed?)",
+            )
+
+        items = read_items_on_track(tl, track_index=1)
+        if not items:
+            raise HTTPException(
+                status_code=400,
+                detail="timeline has no items on video track 1 — Tightener needs takes",
+            )
+        per_item = split_transcript_per_item(tight_scrubbed, items)
+        takes = build_take_entries(items, per_item)
+
+        segments = build_tightener_segments(takes, gap_threshold_s=DEFAULT_BLOCK_GAP_S)
+        if not segments:
+            raise HTTPException(
+                status_code=400,
+                detail="Tightener produced no segments — every take was fully scrubbed out",
+            )
+
+        plan = DirectorPlan(
+            hook_index=0,
+            selected_clips=segments,
+            reasoning=(
+                f"Tightener: {len(segments)} block(s) across {len(takes)} take(s), "
+                f"filler={tight_scrub.counts.get('filler', 0)}, "
+                f"dead_air={tight_scrub.counts.get('dead_air', 0)}"
+            ),
+        )
+        # Marker agent is deliberately skipped — Tightener is a no-Director
+        # workflow and marker cues depend on narrative context the editor
+        # is already managing by hand.
+        markers = MarkerPlan(markers=[])
+        tighten_summary = tightener_stats(raw_transcript, takes, segments)
+
+        try:
+            resolved = await asyncio.to_thread(resolve_segments, tl, segments)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"source-frame mapping failed: {exc}")
+
+        run["plan"] = {
+            "preset": body.preset,
+            "user_settings": settings_dict,
+            "director": plan.model_dump(),
+            "markers": markers.model_dump(),
+            "resolved_segments": [r.model_dump() for r in resolved],
+            "tightener": tighten_summary,
+        }
+        state.save(run)
+        return run["plan"]
 
     # v2-2: assembled mode uses a different Director. Both paths converge on
     # the same CutSegment + resolver pipeline from step 2 onward.
