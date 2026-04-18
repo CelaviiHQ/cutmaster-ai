@@ -60,6 +60,15 @@ class PresetBundle(BaseModel):
             "input. Wired into the Director prompt in v2-1."
         ),
     )
+    speaker_awareness: str = Field(
+        default="",
+        description=(
+            "v2-5: per-preset instruction fragment rendered as the SPEAKER "
+            "GUIDANCE block in the Director prompt. Empty = preset is not "
+            "speaker-aware and the block is omitted. Populated for Interview "
+            "and Podcast."
+        ),
+    )
 
 
 VLOG = PresetBundle(
@@ -278,6 +287,17 @@ INTERVIEW = PresetBundle(
         ),
     ],
     default_custom_focus_placeholder="e.g. keep the story about their first job",
+    speaker_awareness=(
+        "This is a two-speaker interview. Preserve the informative side of "
+        "each exchange — keep the guest's full answers verbatim, and keep "
+        "only the crisp core of each interviewer question (the 1–2 sentences "
+        "that actually set up the answer). Drop the interviewer's verbose "
+        "multi-sentence setups, re-framings, and agreement noises (\"right\", "
+        "\"yeah, that makes sense\") unless they're the hook. If the "
+        "interviewer paraphrases the guest's answer back, drop the paraphrase "
+        "and keep the original answer. Never drop a guest answer to tighten "
+        "length — tighten interviewer material instead."
+    ),
 )
 
 TUTORIAL = PresetBundle(
@@ -384,6 +404,17 @@ PODCAST = PresetBundle(
         ),
     ],
     default_custom_focus_placeholder="e.g. keep the debate about remote work",
+    speaker_awareness=(
+        "This is a multi-speaker podcast conversation. Protect question → "
+        "answer turns as a unit — never split a speaker's answer across a "
+        "cut. When two hosts riff with each other, keep both sides; when a "
+        "host asks a guest a question, keep the question crisp and keep the "
+        "guest's full answer. Drop host agreement interjections (\"totally\", "
+        "\"for sure\", \"right\") that interrupt a guest's answer. The "
+        "speaker with the most words across the transcript is usually the "
+        "primary host — treat their housekeeping / show-wrap material as "
+        "lower priority than guest content."
+    ),
 )
 
 REACTION = PresetBundle(

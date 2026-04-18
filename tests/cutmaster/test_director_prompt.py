@@ -101,6 +101,129 @@ def test_every_content_type_preset_bundles_exclude_categories_and_placeholder():
         )
 
 
+# ---------------------------------------------------------------------------
+# v2-5 speaker-aware blocks
+# ---------------------------------------------------------------------------
+
+
+TWO_SPEAKER_TRANSCRIPT = [
+    {"word": "Tell", "start_time": 0.0, "end_time": 0.3, "speaker_id": "S1"},
+    {"word": "me", "start_time": 0.3, "end_time": 0.5, "speaker_id": "S1"},
+    {"word": "about", "start_time": 0.5, "end_time": 0.8, "speaker_id": "S1"},
+    {"word": "it.", "start_time": 0.8, "end_time": 1.0, "speaker_id": "S1"},
+    {"word": "Well,", "start_time": 1.1, "end_time": 1.4, "speaker_id": "S2"},
+    {"word": "it", "start_time": 1.4, "end_time": 1.6, "speaker_id": "S2"},
+    {"word": "was", "start_time": 1.6, "end_time": 1.8, "speaker_id": "S2"},
+    {"word": "great.", "start_time": 1.8, "end_time": 2.2, "speaker_id": "S2"},
+]
+
+
+def test_interview_preset_renders_speaker_block_on_two_speaker_transcript():
+    preset = get_preset("interview")
+    prompt = director._prompt(preset, TWO_SPEAKER_TRANSCRIPT, user_settings={})
+    assert "SPEAKER GUIDANCE" in prompt
+    # Roster shown with counts so the model knows who speaks more.
+    assert "S1" in prompt and "S2" in prompt
+    # Preset guidance verbiage bleeds through.
+    assert "interviewer" in prompt.lower()
+
+
+def test_single_speaker_transcript_suppresses_speaker_block():
+    """Speaker-aware presets still skip the block when only one speaker
+    exists — e.g. a solo interviewer-only practice run."""
+    preset = get_preset("interview")
+    solo = [
+        {"word": "yes", "start_time": 0.0, "end_time": 0.3, "speaker_id": "S1"},
+        {"word": "right", "start_time": 0.3, "end_time": 0.6, "speaker_id": "S1"},
+    ]
+    prompt = director._prompt(preset, solo, user_settings={})
+    assert "SPEAKER GUIDANCE" not in prompt
+
+
+def test_non_speaker_aware_preset_never_renders_speaker_block():
+    """Vlog + Tutorial + Wedding leave speaker_awareness empty on purpose;
+    the Director would ignore speaker context on monologue content."""
+    preset = get_preset("vlog")
+    prompt = director._prompt(preset, TWO_SPEAKER_TRANSCRIPT, user_settings={})
+    assert "SPEAKER GUIDANCE" not in prompt
+
+
+def test_speaker_labels_are_applied_to_block_and_transcript():
+    preset = get_preset("podcast")
+    settings = {"speaker_labels": {"S1": "Host", "S2": "Guest"}}
+    prompt = director._prompt(preset, TWO_SPEAKER_TRANSCRIPT, settings)
+    # Block roster uses the labels, not raw STT ids.
+    assert "Host" in prompt and "Guest" in prompt
+    # Serialised transcript JSON also carries the labels so the model sees
+    # the same names in both places.
+    assert '"speaker_id":"Host"' in prompt
+    assert '"speaker_id":"Guest"' in prompt
+
+
+def test_clip_hunter_prompt_shows_speaker_block_when_awareness_set():
+    """Clip Hunter uses the content-type preset Podcast has an awareness
+    fragment; when Clip Hunter IS the preset, its own awareness setting
+    governs. The default Clip Hunter bundle is speaker-neutral, so the
+    block should be absent even with 2 speakers."""
+    preset = get_preset("clip_hunter")
+    dense = [
+        {"word": f"w{i}", "start_time": i * 1.0, "end_time": i * 1.0 + 0.9,
+         "speaker_id": "S1" if i % 2 == 0 else "S2"}
+        for i in range(60)
+    ]
+    prompt = director._clip_hunter_prompt(
+        preset, dense, user_settings={}, target_clip_length_s=30.0, num_clips=2,
+    )
+    assert "SPEAKER GUIDANCE" not in prompt
+
+
+def test_assembled_prompt_speaker_block_reflects_flattened_takes():
+    """Assembled prompt must flatten across takes so speakers detected in
+    *any* take show up in the roster."""
+    preset = get_preset("interview")
+    takes = [
+        {
+            "item_index": 0, "source_name": "take_a.mov",
+            "start_s": 0.0, "end_s": 5.0,
+            "transcript": [
+                {"i": 0, "word": "hi", "start_time": 0.0, "end_time": 0.3,
+                 "speaker_id": "S1"},
+            ],
+        },
+        {
+            "item_index": 1, "source_name": "take_b.mov",
+            "start_s": 5.0, "end_s": 10.0,
+            "transcript": [
+                {"i": 0, "word": "thanks", "start_time": 5.0, "end_time": 5.4,
+                 "speaker_id": "S2"},
+            ],
+        },
+    ]
+    prompt = director._assembled_prompt(preset, takes, user_settings={})
+    assert "SPEAKER GUIDANCE" in prompt
+    assert "S1" in prompt and "S2" in prompt
+
+
+def test_every_preset_has_speaker_awareness_field():
+    """Schema-level invariant: after v2-5 every preset carries the field,
+    even if empty. Guards against someone adding a preset without it."""
+    from celavii_resolve.cutmaster.presets import PRESETS
+
+    for bundle in PRESETS.values():
+        assert hasattr(bundle, "speaker_awareness")
+
+
+def test_interview_and_podcast_are_the_only_speaker_aware_presets():
+    """Ship list guard: future presets that want speaker awareness should
+    update this test consciously, not drift in."""
+    from celavii_resolve.cutmaster.presets import PRESETS
+
+    speaker_aware = {
+        k for k, b in PRESETS.items() if (b.speaker_awareness or "").strip()
+    }
+    assert speaker_aware == {"interview", "podcast"}
+
+
 def test_exclude_category_keys_are_unique_per_preset():
     from celavii_resolve.cutmaster.presets import PRESETS
 

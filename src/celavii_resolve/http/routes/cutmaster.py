@@ -229,6 +229,42 @@ async def source_aspect(run_id: str) -> SourceAspectResponse:
     )
 
 
+class SpeakerRosterEntry(BaseModel):
+    speaker_id: str
+    word_count: int
+
+
+class SpeakerRosterResponse(BaseModel):
+    speakers: list[SpeakerRosterEntry]
+
+
+@router.get("/speakers/{run_id}", response_model=SpeakerRosterResponse)
+async def speakers(run_id: str) -> SpeakerRosterResponse:
+    """Return the speaker roster detected in this run's scrubbed transcript.
+
+    Drives the Configure screen's speaker-rename form (v2-5): entries are
+    in first-appearance order, annotated with word-count so the editor can
+    guess which one is host vs guest. Falls back to the raw transcript if
+    scrubbing hasn't happened yet — single-speaker runs return an empty
+    roster the UI can hide.
+    """
+    run = state.load(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"run {run_id} not found")
+
+    from ...cutmaster.speakers import detect_speakers, speaker_stats
+
+    transcript = run.get("scrubbed") or run.get("transcript") or []
+    ids = detect_speakers(transcript)
+    counts = speaker_stats(transcript)
+    return SpeakerRosterResponse(
+        speakers=[
+            SpeakerRosterEntry(speaker_id=sid, word_count=counts.get(sid, 0))
+            for sid in ids
+        ],
+    )
+
+
 def _require_scrubbed(run_id: str) -> tuple[dict, list[dict]]:
     """Load a run and return ``(state_dict, scrubbed_words)`` or HTTP 400."""
     run = state.load(run_id)
@@ -335,6 +371,17 @@ class UserSettings(BaseModel):
         ge=1,
         le=5,
         description="Clip Hunter only. How many candidate clips to return (1–5).",
+    )
+    # v2-5: speaker labels. Map of STT speaker_id → human label
+    # ({"S1": "Host", "S2": "Guest"}). Director + Marker prompts read these
+    # so the agents can reason about roles directly. Empty / None leaves
+    # the raw STT ids in place (v1 behaviour).
+    speaker_labels: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "Optional {speaker_id: label} rename map. When set, Director + "
+            "Marker prompts show the human labels instead of the raw STT ids."
+        ),
     )
 
 
@@ -636,7 +683,7 @@ async def build_plan(body: BuildPlanRequest) -> dict:
     # Marker agent runs against the flat CutSegment list in both modes.
     try:
         markers: MarkerPlan = await asyncio.to_thread(
-            suggest_markers, plan, scrubbed, preset
+            suggest_markers, plan, scrubbed, preset, settings_dict
         )
     except Exception as exc:
         log.exception("Marker agent failed for run %s", body.run_id)

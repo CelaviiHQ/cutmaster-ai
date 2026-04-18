@@ -7,9 +7,15 @@ import type {
     PresetBundle,
     PresetKey,
     PresetRecommendation,
+    SpeakerRosterEntry,
     StoryAnalysis,
     UserSettings,
 } from "../types";
+
+const SPEAKER_AWARE_PRESETS: ReadonlySet<PresetKey> = new Set([
+    "interview",
+    "podcast",
+]);
 
 interface Props {
     runId: string;
@@ -42,6 +48,7 @@ export default function ConfigureScreen({
     const [bundles, setBundles] = useState<PresetBundle[] | null>(null);
     const [formats, setFormats] = useState<FormatSpec[] | null>(null);
     const [source, setSource] = useState<SourceAspectInfo | null>(null);
+    const [speakerRoster, setSpeakerRoster] = useState<SpeakerRosterEntry[] | null>(null);
     const [formatAutoSelected, setFormatAutoSelected] = useState(false);
     const [loading, setLoading] = useState(true);
     const [err, setErr] = useState<string | null>(null);
@@ -60,6 +67,9 @@ export default function ConfigureScreen({
         api.listFormats()
             .then((r) => !cancelled && setFormats(r.formats))
             .catch(() => !cancelled && setFormats([]));
+        api.speakers(runId)
+            .then((r) => !cancelled && setSpeakerRoster(r.speakers))
+            .catch(() => !cancelled && setSpeakerRoster([]));
         api.sourceAspect(runId)
             .then((info) => {
                 if (cancelled) return;
@@ -190,6 +200,21 @@ export default function ConfigureScreen({
 
     const isTightener = preset === "tightener";
     const isClipHunter = preset === "clip_hunter";
+    const showSpeakerCard =
+        SPEAKER_AWARE_PRESETS.has(preset) &&
+        speakerRoster != null &&
+        speakerRoster.length >= 2;
+    const speakerLabels = settings.speaker_labels ?? {};
+    const updateSpeakerLabel = (speakerId: string, label: string) => {
+        const next = { ...speakerLabels };
+        const trimmed = label.trim();
+        if (trimmed) next[speakerId] = trimmed;
+        else delete next[speakerId];
+        onSettingsChange({
+            ...settings,
+            speaker_labels: Object.keys(next).length > 0 ? next : null,
+        });
+    };
     const assembledMode =
         !isTightener &&
         !isClipHunter &&
@@ -503,6 +528,43 @@ export default function ConfigureScreen({
                             );
                         })}
                     </div>
+                </div>
+            )}
+
+            {showSpeakerCard && (
+                <div className="card">
+                    <h2>Speaker labels</h2>
+                    <p className="muted">
+                        Rename speakers so the Director reasons about roles,
+                        not raw STT ids. The higher word count is usually the
+                        host.
+                    </p>
+                    {speakerRoster?.map((s) => (
+                        <div
+                            key={s.speaker_id}
+                            className="row"
+                            style={{ alignItems: "center", marginTop: 6 }}
+                        >
+                            <code style={{ minWidth: 48 }}>{s.speaker_id}</code>
+                            <span className="muted" style={{ minWidth: 90 }}>
+                                {s.word_count} words
+                            </span>
+                            <input
+                                type="text"
+                                placeholder={
+                                    s.speaker_id === "S1" ? "Host" : "Guest"
+                                }
+                                value={speakerLabels[s.speaker_id] ?? ""}
+                                onChange={(e) =>
+                                    updateSpeakerLabel(
+                                        s.speaker_id,
+                                        e.target.value,
+                                    )
+                                }
+                                style={{ flex: 1 }}
+                            />
+                        </div>
+                    ))}
                 </div>
             )}
 

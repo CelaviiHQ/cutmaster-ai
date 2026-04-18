@@ -156,6 +156,12 @@ export interface UserSettings {
   reorder_allowed?: boolean;
   takes_already_scrubbed?: boolean;
   num_clips?: number;
+  speaker_labels?: Record<string, string> | null;
+}
+
+export interface SpeakerRosterEntry {
+  speaker_id: string;
+  word_count: number;
 }
 
 export interface ClipCandidate {

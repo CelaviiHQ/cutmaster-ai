@@ -625,6 +625,80 @@ def test_build_plan_rejects_unknown_format(client, monkeypatch, scrubbed_run):
     assert r.status_code == 422
 
 
+def test_speakers_endpoint_returns_roster_from_scrubbed(
+    client: TestClient, scrubbed_run,
+):
+    """v2-5: /cutmaster/speakers/{run_id} must return unique speaker ids in
+    first-appearance order, annotated with per-speaker word counts."""
+    # Seed a two-speaker scrubbed transcript.
+    run = state.load(scrubbed_run["run_id"])
+    run["scrubbed"] = [
+        {"word": "hi", "start_time": 0.0, "end_time": 0.2, "speaker_id": "S1"},
+        {"word": "yo", "start_time": 0.3, "end_time": 0.5, "speaker_id": "S2"},
+        {"word": "again", "start_time": 0.6, "end_time": 0.9, "speaker_id": "S1"},
+    ]
+    state.save(run)
+
+    r = client.get(f"/cutmaster/speakers/{scrubbed_run['run_id']}")
+    assert r.status_code == 200
+    body = r.json()
+    assert [s["speaker_id"] for s in body["speakers"]] == ["S1", "S2"]
+    counts = {s["speaker_id"]: s["word_count"] for s in body["speakers"]}
+    assert counts == {"S1": 2, "S2": 1}
+
+
+def test_speakers_endpoint_404_on_unknown_run(client: TestClient):
+    r = client.get("/cutmaster/speakers/does-not-exist")
+    assert r.status_code == 404
+
+
+def test_build_plan_round_trips_speaker_labels(
+    client, monkeypatch, scrubbed_run,
+):
+    """v2-5: UserSettings.speaker_labels must persist through /build-plan
+    and be reachable on the saved plan's user_settings."""
+    plan = DirectorPlan(
+        hook_index=0,
+        selected_clips=[CutSegment(start_s=0.0, end_s=0.95, reason="hook")],
+        reasoning="",
+    )
+    monkeypatch.setattr(routes, "build_cut_plan", lambda *_a, **_k: plan)
+    monkeypatch.setattr(
+        routes, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[])
+    )
+
+    fake_tl = MagicMock()
+    fake_tl.GetSetting.return_value = "24"
+
+    import celavii_resolve.cutmaster.pipeline as pipeline_mod
+    import celavii_resolve.resolve as resolve_mod
+
+    monkeypatch.setattr(
+        resolve_mod, "_boilerplate",
+        lambda: (MagicMock(), MagicMock(), MagicMock()),
+    )
+    monkeypatch.setattr(
+        pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl,
+    )
+    monkeypatch.setattr(routes, "resolve_segments", lambda _tl, _segs: [])
+
+    r = client.post(
+        "/cutmaster/build-plan",
+        json={
+            "run_id": scrubbed_run["run_id"],
+            "preset": "interview",
+            "user_settings": {
+                "speaker_labels": {"S1": "Host", "S2": "Guest"},
+            },
+        },
+    )
+    assert r.status_code == 200, r.text
+
+    persisted = state.load(scrubbed_run["run_id"])
+    saved = persisted["plan"]["user_settings"]
+    assert saved["speaker_labels"] == {"S1": "Host", "S2": "Guest"}
+
+
 def test_detect_preset(client: TestClient, scrubbed_run, monkeypatch):
     recommendation = PresetRecommendation(
         preset="vlog", confidence=0.85, reasoning="energy + first-person"

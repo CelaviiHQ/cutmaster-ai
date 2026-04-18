@@ -6,6 +6,7 @@ import type {
   PresetBundle,
   PresetRecommendation,
   RunState,
+  SpeakerRosterEntry,
   StoryAnalysis,
   UserSettings,
 } from "./types";
@@ -47,6 +48,9 @@ export const api = {
 
   sourceAspect: (runId: string) =>
     http<SourceAspectInfo>(`/cutmaster/source-aspect/${runId}`),
+
+  speakers: (runId: string) =>
+    http<{ speakers: SpeakerRosterEntry[] }>(`/cutmaster/speakers/${runId}`),
 
   analyze: (timelineName: string, preset: string) =>
     http<{ run_id: string; status: string }>("/cutmaster/analyze", {

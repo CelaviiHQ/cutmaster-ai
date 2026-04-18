@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from . import llm
+from .speakers import apply_speaker_labels, detect_speakers, speaker_stats
 
 if TYPE_CHECKING:
     from .presets import PresetBundle
@@ -166,6 +167,85 @@ def _exclude_block(
     return f"{header}\n" + "\n".join(rendered)
 
 
+def _speaker_block(
+    preset: PresetBundle,
+    transcript: list[dict],
+    user_settings: dict | None,
+) -> str:
+    """Render SPEAKER GUIDANCE as a markdown block, or empty string.
+
+    Only emits when the preset carries a non-empty ``speaker_awareness``
+    fragment AND the transcript actually contains at least two distinct
+    speakers. Single-speaker content (vlog-to-camera, tutorial voiceover)
+    skips the block even on the Interview preset, because the guidance
+    talks about "the interviewer" vs "the guest" and would be noise.
+
+    The speaker list shown to the model reflects any user-supplied labels
+    (e.g. ``S1 → Host``) so the prompt reads in human terms.
+    """
+    awareness = (preset.speaker_awareness or "").strip()
+    if not awareness:
+        return ""
+
+    # Build the roster from whatever labels the user applied — the caller
+    # will have relabelled the transcript before serialising it, so the
+    # block must agree with the serialised form.
+    labels = (user_settings or {}).get("speaker_labels") or None
+    relabeled = apply_speaker_labels(transcript, labels)
+    speakers = detect_speakers(relabeled)
+    if len(speakers) < 2:
+        return ""
+
+    counts = speaker_stats(relabeled)
+    roster = "\n".join(
+        f"- **{sid}** — {counts.get(sid, 0)} words" for sid in speakers
+    )
+    header = (
+        "SPEAKER GUIDANCE — each word in the transcript carries a "
+        "`speaker_id`. Use it to make better keep/drop choices per the "
+        "rules below."
+    )
+    return f"{header}\n{roster}\n\n{awareness}"
+
+
+def _maybe_relabel_transcript(
+    transcript: list[dict],
+    user_settings: dict | None,
+) -> list[dict]:
+    """Return the transcript with user-supplied speaker labels applied.
+
+    Thin wrapper so every Director-facing serialisation path flows through
+    the same helper — the SPEAKER GUIDANCE block and the JSON transcript
+    must both show the same labels or the model gets confused.
+    """
+    labels = (user_settings or {}).get("speaker_labels") or None
+    return apply_speaker_labels(transcript, labels)
+
+
+def _relabel_takes(
+    takes: list[dict],
+    user_settings: dict | None,
+) -> list[dict]:
+    """Assembled-mode counterpart to ``_maybe_relabel_transcript``.
+
+    Rewrites each take's embedded transcript's ``speaker_id`` per the user
+    labels so the serialised JSON shown to the Director agrees with the
+    SPEAKER GUIDANCE block's roster. Shallow-copies each take; leaves the
+    caller's input untouched.
+    """
+    labels = (user_settings or {}).get("speaker_labels") or None
+    if not labels:
+        return takes
+    out: list[dict] = []
+    for take in takes:
+        new_take = dict(take)
+        new_take["transcript"] = apply_speaker_labels(
+            take.get("transcript") or [], labels,
+        )
+        out.append(new_take)
+    return out
+
+
 def _focus_block(user_settings: dict | None) -> str:
     """Render USER FOCUS as a markdown block, or empty string."""
     if not user_settings:
@@ -184,8 +264,10 @@ def _focus_block(user_settings: dict | None) -> str:
 def _prompt(preset: PresetBundle, transcript: list[dict], user_settings: dict | None) -> str:
     exclude = _exclude_block(preset, user_settings)
     focus = _focus_block(user_settings)
-    optional_blocks = "\n\n".join(b for b in (exclude, focus) if b)
+    speakers = _speaker_block(preset, transcript, user_settings)
+    optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers) if b)
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
+    transcript_for_prompt = _maybe_relabel_transcript(transcript, user_settings)
     return f"""You are a {preset.role}.
 
 You will receive a transcript array where each item has a `word`, `start_time`, and `end_time` in seconds. Your job is to select contiguous blocks of words that, when stitched together, form a compelling cut.
@@ -201,7 +283,7 @@ USER SETTINGS
 {_user_settings_block(user_settings)}{optional_section}
 
 TRANSCRIPT (JSON array):
-{json.dumps(transcript, separators=(",", ":"))}
+{json.dumps(transcript_for_prompt, separators=(",", ":"))}
 
 Return a `DirectorPlan` with:
 - `selected_clips`: the blocks in narrative order (hook first).
@@ -310,8 +392,16 @@ def _assembled_prompt(
     reorder_allowed = bool((user_settings or {}).get("reorder_allowed", True))
     exclude = _exclude_block(preset, user_settings)
     focus = _focus_block(user_settings)
-    optional_blocks = "\n\n".join(b for b in (exclude, focus) if b)
+    # Flatten all takes' transcripts for speaker detection — speakers span
+    # takes, not just one item. Detection reads the same relabelled view the
+    # JSON below will show the model, so the roster and the words agree.
+    flat_words: list[dict] = []
+    for t in takes:
+        flat_words.extend(t.get("transcript") or [])
+    speakers = _speaker_block(preset, flat_words, user_settings)
+    optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers) if b)
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
+    takes_for_prompt = _relabel_takes(takes, user_settings)
 
     return f"""You are a {preset.role}.
 
@@ -330,7 +420,7 @@ USER SETTINGS
 {_user_settings_block(user_settings)}{optional_section}
 
 TAKES (JSON array):
-{json.dumps(takes, separators=(",", ":"))}
+{json.dumps(takes_for_prompt, separators=(",", ":"))}
 
 Return an `AssembledDirectorPlan` with:
 - `selections`: list of {{item_index, kept_word_spans}} entries in play order (hook's take at position `hook_index`).
@@ -500,8 +590,10 @@ def _clip_hunter_prompt(
 ) -> str:
     exclude = _exclude_block(preset, user_settings)
     focus = _focus_block(user_settings)
-    optional_blocks = "\n\n".join(b for b in (exclude, focus) if b)
+    speakers = _speaker_block(preset, transcript, user_settings)
+    optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers) if b)
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
+    transcript_for_prompt = _maybe_relabel_transcript(transcript, user_settings)
     low = target_clip_length_s * 0.6
     high = target_clip_length_s * 1.4
     return f"""You are a {preset.role}.
@@ -525,7 +617,7 @@ USER SETTINGS
 - Number of candidates: {num_clips}{optional_section}
 
 TRANSCRIPT (JSON array):
-{json.dumps(transcript, separators=(",", ":"))}
+{json.dumps(transcript_for_prompt, separators=(",", ":"))}
 
 Return a `ClipHunterPlan` with:
 - `candidates`: list of {num_clips} entries, ranked by engagement (descending).
