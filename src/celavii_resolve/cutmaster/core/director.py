@@ -217,28 +217,72 @@ def validate_plan(
                     f"for this {preset.label} preset — split or tighten the block."
                 )
 
+    # Take-group dedup: each group is one line performed multiple times.
+    # The prompt asks the Director to pick one per group; the validator
+    # enforces it and also collapses duplicates into "virtual" units
+    # before the coverage calculation runs (otherwise a 3-take group
+    # inflates the eligible denominator).
+    from ..analysis.take_dedup import detect_take_groups
+
+    take_groups = detect_take_groups(transcript)
+    clip_to_group: dict[int, int] = {}
+    for gi, grp in enumerate(take_groups):
+        for ci in grp:
+            clip_to_group[ci] = gi
+
     if preset is not None:
+        covered = _covered_clip_indexes(plan, transcript)
+        # Reject when >1 clip from the same take-group is used.
+        group_hits: dict[int, list[int]] = {}
+        for ci in covered:
+            gi = clip_to_group.get(ci)
+            if gi is None:
+                continue
+            group_hits.setdefault(gi, []).append(ci)
+        for gi, hits in group_hits.items():
+            if len(hits) > 1:
+                errors.append(
+                    f"take-group {gi + 1}: plan uses clip_index {sorted(hits)} "
+                    f"from the same duplicate-take group. Pick ONE clip from "
+                    f"this group and drop spans from the others."
+                )
+
         eligible = _eligible_clip_indexes(transcript)
         if len(eligible) >= 2:
-            covered = _covered_clip_indexes(plan, transcript)
-            touched = len(covered & eligible)
-            ratio = touched / len(eligible)
+            # Collapse take-groups so a 3-take group counts as 1 unit in
+            # both numerator and denominator.
+            def _unit(ci: int) -> tuple[int, int]:
+                return (0, clip_to_group[ci]) if ci in clip_to_group else (1, ci)
+
+            eligible_units = {_unit(ci) for ci in eligible}
+            covered_units = {_unit(ci) for ci in covered & eligible}
+            touched = len(covered_units)
+            ratio = touched / len(eligible_units)
             log.info(
-                "director: per-clip coverage %d/%d (%.0f%%, threshold %.0f%%)",
+                "director: per-clip coverage %d/%d (%.0f%%, threshold %.0f%%, "
+                "%d take-group(s) collapsed)",
                 touched,
-                len(eligible),
+                len(eligible_units),
                 ratio * 100,
                 COVERAGE_THRESHOLD * 100,
+                len(take_groups),
             )
             if ratio < COVERAGE_THRESHOLD:
-                missing = sorted(eligible - covered)
+                missing_units = eligible_units - covered_units
+                missing_clips = sorted(clip_id for kind, clip_id in missing_units if kind == 1)
+                missing_groups = sorted(gi for kind, gi in missing_units if kind == 0)
+                hint_parts = []
+                if missing_clips:
+                    hint_parts.append(f"clip_index {missing_clips[:5]}")
+                if missing_groups:
+                    hint_parts.append(
+                        f"take-group(s) {sorted(missing_groups)} (pick any one clip from each)"
+                    )
                 errors.append(
-                    f"per-clip coverage: touched {touched}/{len(eligible)} eligible "
-                    f"clips ({ratio * 100:.0f}%, threshold {COVERAGE_THRESHOLD * 100:.0f}%). "
-                    f"Add segments from clip_index {missing[:5]}"
-                    + (" …" if len(missing) > 5 else "")
-                    + " so every substantial clip the editor placed appears "
-                    "in the cut at least once."
+                    f"per-clip coverage: touched {touched}/{len(eligible_units)} units "
+                    f"({ratio * 100:.0f}%, threshold {COVERAGE_THRESHOLD * 100:.0f}%). "
+                    f"Add segments from {' / '.join(hint_parts)} "
+                    "so every substantial clip the editor placed appears at least once."
                 )
 
     if target_length_s and target_length_s > 0:
@@ -561,6 +605,27 @@ def _pacing_block(preset: PresetBundle | None) -> str:
     )
 
 
+def _take_groups_block(transcript: list[dict]) -> str:
+    """Render TAKE GROUPS rule when near-duplicate takes exist."""
+    from ..analysis.take_dedup import detect_take_groups
+
+    groups = detect_take_groups(transcript)
+    if not groups:
+        return ""
+    lines = []
+    for i, g in enumerate(groups, start=1):
+        lines.append(f"  - Group {i}: clip_index {g} — duplicate takes of the same line")
+    joined = "\n".join(lines)
+    return (
+        "### TAKE GROUPS — NON-NEGOTIABLE\n"
+        "The editor put multiple takes of the same content on the timeline. "
+        "Each group below is one line, performed more than once — you MUST "
+        "use only ONE clip from each group (your pick). Using two or three "
+        "clips from the same group produces a stuttering cut.\n"
+        f"{joined}"
+    )
+
+
 def _coverage_block(transcript: list[dict]) -> str:
     """Render PER-CLIP COVERAGE rule when the transcript carries clip_index."""
     eligible = _eligible_clip_indexes(transcript)
@@ -624,7 +689,8 @@ def _prompt(preset: PresetBundle, transcript: list[dict], user_settings: dict | 
     hook = _selected_hook_block(user_settings)
     pacing = _pacing_block(preset)
     coverage = _coverage_block(transcript)
-    recipe_section = "\n\n".join(b for b in (hook, recipe, pacing, coverage) if b)
+    take_groups = _take_groups_block(transcript)
+    recipe_section = "\n\n".join(b for b in (hook, recipe, pacing, coverage, take_groups) if b)
     recipe_section = f"\n\n{recipe_section}" if recipe_section else ""
     transcript_for_prompt = _shape_for_prompt(transcript, user_settings)
     return f"""You are a {preset.role}.
