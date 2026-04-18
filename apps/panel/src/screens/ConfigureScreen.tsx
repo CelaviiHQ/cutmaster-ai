@@ -200,6 +200,10 @@ export default function ConfigureScreen({
 
     const isTightener = preset === "tightener";
     const isClipHunter = preset === "clip_hunter";
+    const isShortGenerator = preset === "short_generator";
+    // Short Generator + Clip Hunter share the "N candidates + target length"
+    // shape, so UI rules that hide sequencing-preset cards apply to both.
+    const isMultiCandidate = isClipHunter || isShortGenerator;
     const showSpeakerCard =
         SPEAKER_AWARE_PRESETS.has(preset) &&
         speakerRoster != null &&
@@ -215,10 +219,14 @@ export default function ConfigureScreen({
             speaker_labels: Object.keys(next).length > 0 ? next : null,
         });
     };
+    const timelineMode = settings.timeline_mode ?? "raw_dump";
     const assembledMode =
-        !isTightener &&
-        !isClipHunter &&
-        (settings.timeline_mode ?? "raw_dump") === "assembled";
+        !isTightener && !isMultiCandidate && timelineMode === "assembled";
+    const curatedMode =
+        !isTightener && !isMultiCandidate && timelineMode === "curated";
+    const roughCutMode =
+        !isTightener && !isMultiCandidate && timelineMode === "rough_cut";
+    const takeAwareMode = assembledMode || curatedMode || roughCutMode;
 
     const scrubParams = (settings.scrub_params ?? {}) as Record<string, unknown>;
     const updateScrub = (patch: Record<string, unknown>) => {
@@ -261,6 +269,7 @@ export default function ConfigureScreen({
                         "reaction",
                         "tightener",
                         "clip_hunter",
+                        "short_generator",
                     ].map((p) => (
                         <option key={p} value={p}>
                             {p}
@@ -269,18 +278,36 @@ export default function ConfigureScreen({
                 </select>
             </div>
 
-            {isClipHunter && (
+            {isMultiCandidate && (
                 <div className="card">
-                    <h2>Clip Hunter</h2>
+                    <h2>
+                        {isClipHunter ? "Clip Hunter" : "Short Generator"}
+                    </h2>
                     <p className="muted">
-                        Surfaces {settings.num_clips ?? 3} short, self-contained
-                        moments ranked by engagement. Pick one on the Review
-                        screen to build its timeline; each candidate is
-                        independent, so executing several gives you{" "}
-                        <code>_AI_Clip_1</code>, <code>_AI_Clip_2</code>, etc.
+                        {isClipHunter ? (
+                            <>
+                                Surfaces {settings.num_clips ?? 3} short,
+                                self-contained moments ranked by engagement.
+                                Each candidate is a single contiguous span —
+                                picked whole, no reassembly. Build one or all
+                                from the Review screen; multiple builds land
+                                on <code>_AI_Clip_1</code>,{" "}
+                                <code>_AI_Clip_2</code>, etc.
+                            </>
+                        ) : (
+                            <>
+                                Composes {settings.num_clips ?? 3} assembled
+                                shorts — each one is 3–8 jump-cut spans
+                                stitched around a single through-line. More
+                                editorial work than Clip Hunter, more
+                                TikTok-coded output. Builds land on{" "}
+                                <code>_AI_Short_1</code>,{" "}
+                                <code>_AI_Short_2</code>, etc.
+                            </>
+                        )}
                     </p>
                     <label style={{ display: "block", marginTop: 8 }}>
-                        Number of clips:{" "}
+                        {isClipHunter ? "Number of clips:" : "Number of shorts:"}{" "}
                         <code>{settings.num_clips ?? 3}</code>
                     </label>
                     <input
@@ -300,7 +327,33 @@ export default function ConfigureScreen({
                 </div>
             )}
 
-            {analysis && !isTightener && !isClipHunter && (
+            {isMultiCandidate &&
+                analysis &&
+                analysis.theme_candidates.length > 0 && (
+                    <div className="card">
+                        <h2>Detected topics</h2>
+                        <p className="muted">
+                            Themes the analyser surfaced from the episode.
+                            {isClipHunter
+                                ? " Clip Hunter prefers candidates that touch the selected themes."
+                                : " Short Generator builds shorts anchored to the selected themes."}{" "}
+                            Untick anything you consider noise.
+                        </p>
+                        <div style={{ marginTop: 6 }}>
+                            {analysis.theme_candidates.map((t) => (
+                                <span
+                                    key={t}
+                                    className={`chip ${settings.themes.includes(t) ? "on" : ""}`}
+                                    onClick={() => toggleTheme(t)}
+                                >
+                                    {t}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+            {analysis && !isTightener && !isMultiCandidate && (
                 <>
                     <div className="card">
                         <h2>Chapters detected</h2>
@@ -349,36 +402,45 @@ export default function ConfigureScreen({
                 </>
             )}
 
-            {assembledMode && (
+            {takeAwareMode && (
                 <div className="card">
-                    <h2>Assembled mode</h2>
+                    <h2>
+                        {assembledMode && "Assembled mode"}
+                        {curatedMode && "Curated mode"}
+                        {roughCutMode && "Rough cut mode"}
+                    </h2>
                     <p className="muted">
-                        Director will never cross take boundaries. Scrubbing
-                        happens inside each take; reordering whole takes is a
-                        separate switch.
+                        {assembledMode &&
+                            "Director will never cross take boundaries. Scrubbing happens inside each take; reordering whole takes is a separate switch."}
+                        {curatedMode &&
+                            "Every take you selected will appear in the output. The Director arranges them into the strongest narrative and may split takes into multiple spans for callbacks."}
+                        {roughCutMode &&
+                            "Adjacent takes are clustered into groups (by clip color, flags, or transcript similarity). The Director picks one winner per group — alternates that don't win get dropped."}
                     </p>
-                    <div className="row" style={{ marginTop: 6 }}>
-                        <label
-                            style={{
-                                display: "flex",
-                                gap: 6,
-                                alignItems: "center",
-                                margin: 0,
-                            }}
-                        >
-                            <input
-                                type="checkbox"
-                                checked={settings.reorder_allowed ?? true}
-                                onChange={(e) =>
-                                    onSettingsChange({
-                                        ...settings,
-                                        reorder_allowed: e.target.checked,
-                                    })
-                                }
-                            />
-                            Let the AI reorder takes for narrative flow
-                        </label>
-                    </div>
+                    {assembledMode && (
+                        <div className="row" style={{ marginTop: 6 }}>
+                            <label
+                                style={{
+                                    display: "flex",
+                                    gap: 6,
+                                    alignItems: "center",
+                                    margin: 0,
+                                }}
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={settings.reorder_allowed ?? true}
+                                    onChange={(e) =>
+                                        onSettingsChange({
+                                            ...settings,
+                                            reorder_allowed: e.target.checked,
+                                        })
+                                    }
+                                />
+                                Let the AI reorder takes for narrative flow
+                            </label>
+                        </div>
+                    )}
                     <div className="row" style={{ marginTop: 6 }}>
                         <label
                             style={{
@@ -686,7 +748,9 @@ export default function ConfigureScreen({
                     <h2>
                         {isClipHunter
                             ? "Target clip length"
-                            : "Target length (optional)"}
+                            : isShortGenerator
+                              ? "Target short length"
+                              : "Target length (optional)"}
                     </h2>
                 <input
                     type="number"

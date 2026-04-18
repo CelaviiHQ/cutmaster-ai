@@ -32,6 +32,7 @@ Preset = Literal[
     "reaction",
     "tightener",
     "clip_hunter",
+    "short_generator",
     "auto",
 ]
 
@@ -575,6 +576,65 @@ CLIP_HUNTER = PresetBundle(
 )
 
 
+SHORT_GENERATOR = PresetBundle(
+    key="short_generator",
+    label="Short Generator (assembled reels)",
+    role="TikTok / Reels editor specialising in punchy, jump-cut shorts assembled from scattered moments",
+    hook_rule="the strongest opening statement that earns the next five seconds of attention",
+    pacing="3–8 spans assembled into one 45–90 s short; jump cuts welcome; no dead air over 0.5 s; each cut should feel like it adds, not interrupts",
+    cue_vocabulary=[
+        "the thing is",
+        "here's the problem",
+        "what blew my mind",
+        "you won't believe",
+        "the truth is",
+        "hold on",
+        "imagine",
+    ],
+    marker_vocabulary=["Hook: {line}", "Beat: {topic}"],
+    theme_axes=[
+        "central claims",
+        "callbacks",
+        "setup-and-punchline pairs",
+        "contrasting opinions",
+        "escalating arguments",
+    ],
+    scrub_defaults={
+        "remove_fillers": True,
+        "remove_dead_air": True,
+        "collapse_restarts": True,
+        "dead_air_threshold_s": 0.5,
+    },
+    exclude_categories=[
+        ExcludeCategory(
+            key="ad_reads",
+            label="Ad / sponsor reads",
+            description="Paid promotional segments; almost never survive as viral reels.",
+            checked_by_default=True,
+        ),
+        ExcludeCategory(
+            key="housekeeping_plugs",
+            label="Housekeeping / channel plugs",
+            description="'Rate us five stars', Patreon pushes, subscribe boilerplate.",
+            checked_by_default=True,
+        ),
+        ExcludeCategory(
+            key="intro_outro_templates",
+            label="Intro / outro templates",
+            description="Generic show openers / closers with no episode-specific content.",
+            checked_by_default=True,
+        ),
+        ExcludeCategory(
+            key="off_topic_chat",
+            label="Extended off-topic chat",
+            description="Tangents unrelated to the episode's core subject.",
+            checked_by_default=False,
+        ),
+    ],
+    default_custom_focus_placeholder="e.g. build a reel around the loneliness debate",
+)
+
+
 PRESETS: dict[str, PresetBundle] = {
     p.key: p
     for p in (
@@ -587,6 +647,7 @@ PRESETS: dict[str, PresetBundle] = {
         REACTION,
         TIGHTENER,
         CLIP_HUNTER,
+        SHORT_GENERATOR,
     )
 }
 
@@ -601,3 +662,41 @@ def get_preset(key: str) -> PresetBundle:
 def all_presets() -> list[PresetBundle]:
     """Return the preset list in UI-display order."""
     return list(PRESETS.values())
+
+
+# ---------------------------------------------------------------------------
+# v2-11: Preset × Mode compatibility matrix
+# ---------------------------------------------------------------------------
+#
+# Only Tightener has mode restrictions — it encodes a state-level contract
+# ("preserve order, just tighten") disguised as a content preset, so it only
+# makes sense paired with Assembled. Every other preset (including Clip
+# Hunter) is orthogonal to mode; the snapshot/copy guarantee means the
+# source timeline is never modified regardless of combo.
+
+TimelineMode = Literal["raw_dump", "rough_cut", "curated", "assembled"]
+
+_INCOMPATIBLE: dict[tuple[str, str], str] = {
+    ("tightener", "raw_dump"): (
+        "Tightener preserves take order — the source timeline must already "
+        "be assembled. Pick Assembled instead."
+    ),
+    ("tightener", "rough_cut"): (
+        "Tightener preserves take order — it can't pick between A/B "
+        "alternates. Pick Assembled instead."
+    ),
+    ("tightener", "curated"): (
+        "Tightener preserves take order — Curated hasn't committed to one "
+        "yet. Pick Assembled instead."
+    ),
+}
+
+
+def preset_mode_compatible(preset: str, mode: str) -> bool:
+    """True when the preset × mode combination is supported."""
+    return (preset, mode) not in _INCOMPATIBLE
+
+
+def preset_mode_incompatibility_reason(preset: str, mode: str) -> str | None:
+    """Return a human-readable reason when a combo is blocked, else ``None``."""
+    return _INCOMPATIBLE.get((preset, mode))

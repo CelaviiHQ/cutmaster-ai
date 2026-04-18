@@ -17,6 +17,7 @@ CONTENT_TYPE_PRESETS = {
     "podcast",
     "reaction",
     "clip_hunter",
+    "short_generator",
 }
 WORKFLOW_PRESETS = {"tightener"}
 

@@ -10,6 +10,7 @@ export type PresetKey =
   | "reaction"
   | "tightener"
   | "clip_hunter"
+  | "short_generator"
   | "auto";
 
 export interface ExcludeCategory {
@@ -112,6 +113,20 @@ export interface TightenerSummary {
   segment_total_s: number;
 }
 
+export interface GroupInfo {
+  group_id: number;
+  item_indexes: number[];
+  signal: "color" | "flag" | "similarity" | "singleton";
+}
+
+export interface TimelineStateMeta {
+  mode: "curated" | "rough_cut";
+  takes_used: number[];
+  total_takes: number;
+  groups?: GroupInfo[];
+  all_singletons?: boolean;
+}
+
 export interface BuildPlanResult {
   preset: PresetKey;
   user_settings: UserSettings;
@@ -120,6 +135,7 @@ export interface BuildPlanResult {
   resolved_segments: ResolvedCutSegment[];
   tightener?: TightenerSummary;
   clip_hunter?: ClipHunterSummary;
+  timeline_state?: TimelineStateMeta;
 }
 
 export type FormatKey = "horizontal" | "vertical_short" | "square";
@@ -141,7 +157,7 @@ export interface FormatSpec {
   reframe_default: "center_crop" | "smart_reframe" | "none";
 }
 
-export type TimelineMode = "raw_dump" | "assembled";
+export type TimelineMode = "raw_dump" | "rough_cut" | "curated" | "assembled";
 
 export interface UserSettings {
   target_length_s: number | null;
@@ -189,9 +205,15 @@ export interface SttProviderList {
 }
 
 export interface ClipCandidate {
-  start_s: number;
-  end_s: number;
-  quote: string;
+  // Clip Hunter shape: one contiguous span.
+  start_s?: number;
+  end_s?: number;
+  quote?: string;
+  // Short Generator shape: multiple spans around a theme.
+  theme?: string;
+  spans?: { start_s: number; end_s: number; role?: string }[];
+  total_s?: number;
+  // Shared fields.
   engagement_score: number;
   suggested_caption: string;
   reasoning: string;
@@ -205,6 +227,7 @@ export interface ClipHunterSummary {
   num_clips: number;
   duration_warning: string | null;
   source_duration_s: number;
+  mode?: "clip_hunter" | "short_generator";
 }
 
 export interface ScrubParams {

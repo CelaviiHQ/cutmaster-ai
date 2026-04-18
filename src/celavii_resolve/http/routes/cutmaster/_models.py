@@ -123,14 +123,17 @@ class UserSettings(BaseModel):
         default=False,
         description="When true and format is non-horizontal, execute drops platform-UI safe-zone guides on V2.",
     )
-    # v2-2: assembled-mode controls. Defaults preserve v1 behaviour.
-    timeline_mode: Literal["raw_dump", "assembled"] = Field(
+    # v2-2 + v2-11: timeline-state ladder. Defaults preserve v1 behaviour.
+    timeline_mode: Literal["raw_dump", "rough_cut", "curated", "assembled"] = Field(
         default="raw_dump",
         description=(
-            "'raw_dump' (v1 default) — Director picks word-level ranges anywhere, "
-            "auto-splits across item boundaries. 'assembled' — Director never "
-            "crosses take boundaries; within-take scrubbing and optional reordering "
-            "remain user-controllable via reorder_allowed and takes_already_scrubbed."
+            "Decision-delegation ladder describing the editor's handoff state. "
+            "'raw_dump' (v1 default) — pile of content; agent picks keepers + "
+            "sequences + tightens. 'rough_cut' (v2-11) — candidates with "
+            "alternates (A/B selects); agent picks winners per group + "
+            "sequences + tightens. 'curated' (v2-11) — final selects, no "
+            "duplicates, no order; agent keeps all + sequences + tightens. "
+            "'assembled' (v2-2) — cut is locked; agent tightens only."
         ),
     )
     reorder_allowed: bool = Field(

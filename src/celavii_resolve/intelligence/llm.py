@@ -31,8 +31,11 @@ T = TypeVar("T", bound=BaseModel)
 
 
 DEFAULTS: dict[str, str] = {
-    "director": "gemini-3-flash-preview",
-    "marker": "gemini-3-flash-preview",
+    # gemini-3-flash-preview was observed running 3:40 per call in
+    # preview-channel queues — moving Director + Marker to the lite-preview
+    # (same model the other agents use) brings calls back to 2–10 s.
+    "director": "gemini-3.1-flash-lite-preview",
+    "marker": "gemini-3.1-flash-lite-preview",
     "autodetect": "gemini-3.1-flash-lite-preview",
     "theme": "gemini-3.1-flash-lite-preview",
     "reconcile": "gemini-3.1-flash-lite-preview",

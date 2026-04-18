@@ -180,31 +180,56 @@ export default function PresetPickScreen({
             </div>
 
             <div className="card">
-                <h2>Is this timeline already edited?</h2>
+                <h2>What state is this timeline in?</h2>
                 <p className="muted">
-                    Raw dump = one or more source clips, no cuts yet. Assembled =
-                    you've already picked takes / laid them out; CutMaster should
-                    respect those boundaries.
+                    Tell CutMaster how much editorial work you've already done —
+                    that decides which decisions it's allowed to make.
                 </p>
                 <div className="row">
                     <button
                         className={timelineMode === "raw_dump" ? "" : "secondary"}
                         onClick={() => onTimelineModeChange("raw_dump")}
                         disabled={preset === "tightener"}
+                        title="Pile of content — help me formalize it."
                     >
-                        Raw dump (v1 default)
+                        Raw dump
+                    </button>
+                    <button
+                        className={timelineMode === "rough_cut" ? "" : "secondary"}
+                        onClick={() => onTimelineModeChange("rough_cut")}
+                        disabled={preset === "tightener"}
+                        title="Candidates with A/B alternates — pick winners and arrange."
+                    >
+                        Rough cut
+                    </button>
+                    <button
+                        className={timelineMode === "curated" ? "" : "secondary"}
+                        onClick={() => onTimelineModeChange("curated")}
+                        disabled={preset === "tightener"}
+                        title="Final selects, no duplicates — arrange them."
+                    >
+                        Curated
                     </button>
                     <button
                         className={timelineMode === "assembled" ? "" : "secondary"}
                         onClick={() => onTimelineModeChange("assembled")}
-                        disabled={preset === "tightener"}
                     >
-                        Assembled — takes picked
+                        Assembled
                     </button>
                 </div>
+                <p className="muted" style={{ marginTop: 8, fontSize: "0.85em" }}>
+                    {timelineMode === "raw_dump" &&
+                        "Pile of content. Agent picks keepers, sequences, and tightens."}
+                    {timelineMode === "rough_cut" &&
+                        "Candidate takes with alternates (A/B). Agent picks winners per group, sequences them, and tightens. Group by clip color, flags, or transcript similarity."}
+                    {timelineMode === "curated" &&
+                        "Final selects with no duplicates. Agent keeps every take and sequences them."}
+                    {timelineMode === "assembled" &&
+                        "Cut is locked. Agent only tightens within takes — no reordering, no dropping."}
+                </p>
                 {preset === "tightener" && (
                     <p className="muted" style={{ marginTop: 8 }}>
-                        Tightener always runs in assembled mode.
+                        Tightener always runs in Assembled mode.
                     </p>
                 )}
             </div>

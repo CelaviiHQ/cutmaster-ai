@@ -7,8 +7,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "postbuild": "rm -rf ../../src/celavii_resolve/http/static && cp -r dist ../../src/celavii_resolve/http/static",
     "preview": "vite preview",
-    "build:install": "npm run build && rm -rf ../../src/celavii_resolve/http/static && cp -r dist ../../src/celavii_resolve/http/static"
+    "build:install": "npm run build"
   },
   "dependencies": {
     "react": "^18.3.1",

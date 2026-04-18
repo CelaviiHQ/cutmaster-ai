@@ -180,7 +180,15 @@ export default function App() {
                     timelineName={timelineName}
                     onTimelineChange={setTimelineName}
                     preset={preset}
-                    onPresetChange={setPreset}
+                    onPresetChange={(p) => {
+                        setPreset(p);
+                        // Tightener is Assembled-only (see preset_mode_compatible).
+                        // Force the mode when the user picks it so the Build
+                        // button doesn't trip the backend compat guard.
+                        if (p === "tightener" && userSettings.timeline_mode !== "assembled") {
+                            setUserSettings({ ...userSettings, timeline_mode: "assembled" });
+                        }
+                    }}
                     timelineMode={userSettings.timeline_mode ?? "raw_dump"}
                     onTimelineModeChange={(m) =>
                         setUserSettings({ ...userSettings, timeline_mode: m })

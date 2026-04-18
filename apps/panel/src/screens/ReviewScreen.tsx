@@ -28,7 +28,9 @@ export default function ReviewScreen({
     const [loading, setLoading] = useState(true);
     const [err, setErr] = useState<string | null>(null);
     const [building, setBuilding] = useState(false);
+    const [buildProgress, setBuildProgress] = useState<string | null>(null);
     const [buildResult, setBuildResult] = useState<ExecuteResult | null>(null);
+    const [buildAllResults, setBuildAllResults] = useState<ExecuteResult[]>([]);
     const [buildErr, setBuildErr] = useState<string | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [selectedCandidate, setSelectedCandidate] = useState(0);
@@ -127,6 +129,35 @@ export default function ReviewScreen({
                         {clipHunter.duration_warning}
                     </p>
                 )}
+                {plan.timeline_state && (
+                    <p className="muted">
+                        {plan.timeline_state.mode === "curated" && (
+                            <>
+                                <strong>Curated</strong> — used all{" "}
+                                <code>{plan.timeline_state.total_takes}</code> takes,
+                                arranged in order{" "}
+                                <code>[{plan.timeline_state.takes_used.join(", ")}]</code>.
+                            </>
+                        )}
+                        {plan.timeline_state.mode === "rough_cut" && (
+                            <>
+                                <strong>Rough cut</strong> — detected{" "}
+                                <code>{plan.timeline_state.groups?.length ?? 0}</code>{" "}
+                                group(s); kept{" "}
+                                <code>{plan.timeline_state.takes_used.length}</code>{" "}
+                                winner(s) from{" "}
+                                <code>{plan.timeline_state.total_takes}</code> candidate
+                                take(s).
+                                {plan.timeline_state.all_singletons && (
+                                    <>
+                                        {" "}No alternates detected — treated as
+                                        Curated.
+                                    </>
+                                )}
+                            </>
+                        )}
+                    </p>
+                )}
                 {plan.tightener && (
                     <p className="muted">
                         <strong>
@@ -156,35 +187,106 @@ export default function ReviewScreen({
 
             {clipHunter && clipHunter.candidates.length > 0 && (
                 <div className="card">
-                    <h2>Clip candidates — pick one to build</h2>
+                    <h2>
+                        {clipHunter.mode === "short_generator"
+                            ? "Short candidates — pick one to build"
+                            : "Clip candidates — pick one to build"}
+                    </h2>
                     <div className="row" style={{ flexWrap: "wrap" }}>
-                        {clipHunter.candidates.map((c, i) => (
-                            <button
-                                key={i}
-                                className={i === selectedCandidate ? "" : "secondary"}
-                                onClick={() => setSelectedCandidate(i)}
-                            >
-                                #{i + 1} · {(c.engagement_score * 100).toFixed(0)}%
-                                &nbsp;· {(c.end_s - c.start_s).toFixed(0)}s
-                            </button>
-                        ))}
+                        {clipHunter.candidates.map((c, i) => {
+                            const duration =
+                                clipHunter.mode === "short_generator"
+                                    ? (c.total_s ?? 0)
+                                    : (c.end_s ?? 0) - (c.start_s ?? 0);
+                            return (
+                                <button
+                                    key={i}
+                                    className={
+                                        i === selectedCandidate ? "" : "secondary"
+                                    }
+                                    onClick={() => setSelectedCandidate(i)}
+                                >
+                                    #{i + 1} ·{" "}
+                                    {(c.engagement_score * 100).toFixed(0)}%
+                                    &nbsp;· {duration.toFixed(0)}s
+                                </button>
+                            );
+                        })}
                     </div>
                     {selectedClip && (
                         <div style={{ marginTop: 10 }}>
-                            <p>
-                                <strong>&ldquo;{selectedClip.quote}&rdquo;</strong>
-                            </p>
-                            <p className="muted">{selectedClip.reasoning}</p>
-                            {selectedClip.suggested_caption && (
-                                <p className="muted">
-                                    <strong>Caption:</strong>{" "}
-                                    {selectedClip.suggested_caption}
-                                </p>
+                            {clipHunter.mode === "short_generator" ? (
+                                <>
+                                    <p>
+                                        <strong>{selectedClip.theme}</strong>
+                                    </p>
+                                    <p className="muted">{selectedClip.reasoning}</p>
+                                    {selectedClip.suggested_caption && (
+                                        <p className="muted">
+                                            <strong>Caption:</strong>{" "}
+                                            {selectedClip.suggested_caption}
+                                        </p>
+                                    )}
+                                    <p className="muted">
+                                        {selectedClip.spans?.length ?? 0} spans ·{" "}
+                                        total{" "}
+                                        <code>
+                                            {(selectedClip.total_s ?? 0).toFixed(1)}
+                                            s
+                                        </code>
+                                    </p>
+                                    {selectedClip.spans && (
+                                        <div
+                                            className="seg-list"
+                                            style={{ marginTop: 6 }}
+                                        >
+                                            {selectedClip.spans.map((s, j) => (
+                                                <div key={j} className="seg">
+                                                    <span className="seg-time">
+                                                        {s.start_s.toFixed(2)}s
+                                                    </span>
+                                                    <span className="seg-time">
+                                                        {(
+                                                            s.end_s - s.start_s
+                                                        ).toFixed(1)}
+                                                        s
+                                                    </span>
+                                                    <span className="seg-reason">
+                                                        {s.role || "span"}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <>
+                                    <p>
+                                        <strong>
+                                            &ldquo;{selectedClip.quote}&rdquo;
+                                        </strong>
+                                    </p>
+                                    <p className="muted">{selectedClip.reasoning}</p>
+                                    {selectedClip.suggested_caption && (
+                                        <p className="muted">
+                                            <strong>Caption:</strong>{" "}
+                                            {selectedClip.suggested_caption}
+                                        </p>
+                                    )}
+                                    <p className="muted">
+                                        Source:{" "}
+                                        <code>
+                                            {(selectedClip.start_s ?? 0).toFixed(2)}
+                                            s
+                                        </code>{" "}
+                                        →{" "}
+                                        <code>
+                                            {(selectedClip.end_s ?? 0).toFixed(2)}
+                                            s
+                                        </code>
+                                    </p>
+                                </>
                             )}
-                            <p className="muted">
-                                Source: <code>{selectedClip.start_s.toFixed(2)}s</code> →{" "}
-                                <code>{selectedClip.end_s.toFixed(2)}s</code>
-                            </p>
                         </div>
                     )}
                 </div>
@@ -193,15 +295,26 @@ export default function ReviewScreen({
             <div className="card">
                 <h2>Selected segments</h2>
                 <div className="seg-list">
-                    {plan.director.selected_clips.map((c, i) => {
-                        const isHook = i === plan.director.hook_index;
+                    {(clipHunter
+                        ? (clipHunter.candidates[selectedCandidate]
+                              ?.resolved_segments ?? []
+                          ).map((s) => ({
+                              start_s: s.start_s,
+                              end_s: s.end_s,
+                              reason: s.reason,
+                          }))
+                        : plan.director.selected_clips
+                    ).map((c, i) => {
+                        const isHook = !clipHunter && i === plan.director.hook_index;
                         return (
                             <div key={i} className={`seg ${isHook ? "hook" : ""}`}>
                                 <span className="seg-time">
                                     {c.start_s.toFixed(2)}s
                                 </span>
                                 <span className={isHook ? "seg-hook" : "seg-time"}>
-                                    {isHook ? "HOOK" : `${(c.end_s - c.start_s).toFixed(1)}s`}
+                                    {isHook
+                                        ? "HOOK"
+                                        : `${(c.end_s - c.start_s).toFixed(1)}s`}
                                 </span>
                                 <span className="seg-reason" title={c.reason}>
                                     {c.reason}
@@ -231,7 +344,13 @@ export default function ReviewScreen({
             <div className="card">
                 <h2>Resolved source frames</h2>
                 <div className="seg-list">
-                    {plan.resolved_segments.slice(0, 10).map((r, i) => (
+                    {(clipHunter
+                        ? clipHunter.candidates[selectedCandidate]
+                              ?.resolved_segments ?? []
+                        : plan.resolved_segments
+                    )
+                        .slice(0, 10)
+                        .map((r, i) => (
                         <div key={i} className="seg">
                             <span className="seg-time">
                                 tl {r.timeline_start_frame}
@@ -250,11 +369,17 @@ export default function ReviewScreen({
                             </span>
                         </div>
                     ))}
-                    {plan.resolved_segments.length > 10 && (
-                        <div className="muted" style={{ padding: 8 }}>
-                            …and {plan.resolved_segments.length - 10} more
-                        </div>
-                    )}
+                    {(() => {
+                        const list = clipHunter
+                            ? clipHunter.candidates[selectedCandidate]
+                                  ?.resolved_segments ?? []
+                            : plan.resolved_segments;
+                        return list.length > 10 ? (
+                            <div className="muted" style={{ padding: 8 }}>
+                                …and {list.length - 10} more
+                            </div>
+                        ) : null;
+                    })()}
                 </div>
             </div>
 
@@ -353,31 +478,95 @@ export default function ReviewScreen({
 
             {buildErr && <div className="error-box">{buildErr}</div>}
 
-            {!buildResult && (
+            {buildAllResults.length > 0 && (
+                <div className="card" style={{ borderColor: "var(--ok)" }}>
+                    <h2>✓ Built {buildAllResults.length} timeline(s)</h2>
+                    {buildAllResults.map((r, i) => (
+                        <p key={i}>
+                            <code>{r.new_timeline_name}</code>
+                            <span className="muted">
+                                {" "}— {r.appended} segment(s) appended
+                                {r.captions?.enabled && r.captions.lines
+                                    ? ` · ${r.captions.lines} captions`
+                                    : ""}
+                            </span>
+                        </p>
+                    ))}
+                    <div className="row" style={{ marginTop: 8 }}>
+                        <button onClick={onReset}>Start a new run →</button>
+                    </div>
+                </div>
+            )}
+
+            {!buildResult && buildAllResults.length === 0 && (
                 <div className="row between">
                     <button className="secondary" onClick={onBack} disabled={building}>
                         ← Back
                     </button>
-                    <button
-                        disabled={building}
-                        onClick={async () => {
-                            setBuilding(true);
-                            setBuildErr(null);
-                            try {
-                                const res = await api.execute(
-                                    runId,
-                                    clipHunter ? selectedCandidate : undefined,
-                                );
-                                setBuildResult(res);
-                            } catch (e) {
-                                setBuildErr(String(e));
-                            } finally {
-                                setBuilding(false);
-                            }
-                        }}
-                    >
-                        {building ? "Building…" : "Build Timeline →"}
-                    </button>
+                    <div className="row">
+                        {clipHunter && clipHunter.candidates.length > 1 && (
+                            <button
+                                className="secondary"
+                                disabled={building}
+                                onClick={async () => {
+                                    setBuilding(true);
+                                    setBuildErr(null);
+                                    const results: ExecuteResult[] = [];
+                                    try {
+                                        for (
+                                            let i = 0;
+                                            i < clipHunter.candidates.length;
+                                            i++
+                                        ) {
+                                            setBuildProgress(
+                                                `Building clip ${i + 1} of ${clipHunter.candidates.length}…`,
+                                            );
+                                            const res = await api.execute(runId, i);
+                                            results.push(res);
+                                        }
+                                        setBuildAllResults(results);
+                                    } catch (e) {
+                                        setBuildErr(String(e));
+                                        if (results.length > 0) {
+                                            setBuildAllResults(results);
+                                        }
+                                    } finally {
+                                        setBuilding(false);
+                                        setBuildProgress(null);
+                                    }
+                                }}
+                                title="Build every candidate into its own timeline"
+                            >
+                                {building && buildProgress
+                                    ? buildProgress
+                                    : `Build all ${clipHunter.candidates.length} ${clipHunter.mode === "short_generator" ? "shorts" : "clips"} →`}
+                            </button>
+                        )}
+                        <button
+                            disabled={building}
+                            onClick={async () => {
+                                setBuilding(true);
+                                setBuildErr(null);
+                                try {
+                                    const res = await api.execute(
+                                        runId,
+                                        clipHunter ? selectedCandidate : undefined,
+                                    );
+                                    setBuildResult(res);
+                                } catch (e) {
+                                    setBuildErr(String(e));
+                                } finally {
+                                    setBuilding(false);
+                                }
+                            }}
+                        >
+                            {building && !buildProgress
+                                ? "Building…"
+                                : clipHunter
+                                  ? `Build ${clipHunter.mode === "short_generator" ? "short" : "clip"} #${selectedCandidate + 1} →`
+                                  : "Build Timeline →"}
+                        </button>
+                    </div>
                 </div>
             )}
         </div>

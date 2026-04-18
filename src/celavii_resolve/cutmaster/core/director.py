@@ -634,6 +634,28 @@ class ClipHunterPlan(BaseModel):
     )
 
 
+def _themes_block(user_settings: dict | None) -> str:
+    """Render DETECTED THEMES as a markdown block, or empty string.
+
+    The theme-analysis stage populates ``user_settings.themes`` with topic
+    tags for the episode. For Clip Hunter in particular, these act as
+    semantic anchors: candidates touching detected themes are more likely
+    to resonate with the episode's audience than random "viral" picks.
+    """
+    if not user_settings:
+        return ""
+    themes = user_settings.get("themes") or []
+    if not themes:
+        return ""
+    header = (
+        "DETECTED THEMES — the theme analyser surfaced these topics from "
+        "the episode. Candidates that touch one or more of these themes "
+        "are preferred over candidates about peripheral topics. Use the "
+        "themes as ranking signal, not as a hard filter."
+    )
+    return header + "\n" + "\n".join(f"- {t}" for t in themes)
+
+
 def _clip_hunter_prompt(
     preset: PresetBundle,
     transcript: list[dict],
@@ -643,9 +665,10 @@ def _clip_hunter_prompt(
 ) -> str:
     exclude = _exclude_block(preset, user_settings)
     focus = _focus_block(user_settings)
+    themes = _themes_block(user_settings)
     speakers = _speaker_block(preset, transcript, user_settings)
     clip_meta = _clip_metadata_block(transcript)
-    optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers, clip_meta) if b)
+    optional_blocks = "\n\n".join(b for b in (exclude, focus, themes, speakers, clip_meta) if b)
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     transcript_for_prompt = _shape_for_prompt(transcript, user_settings)
     low = target_clip_length_s * 0.6
@@ -664,6 +687,7 @@ RULES — follow exactly:
 7. Pacing note: {preset.pacing}.
 8. `quote` should be 4–10 words drawn from the clip — use it to identify the moment.
 9. `suggested_caption` ≤ 120 characters, ready to paste on TikTok / Shorts / Reels.
+10. Prefer candidates that touch the DETECTED THEMES block (when present) — they reflect the episode's real subject matter, not just surface-level drama.
 
 USER SETTINGS
 {_user_settings_block(user_settings)}
@@ -675,7 +699,7 @@ TRANSCRIPT (JSON array):
 
 Return a `ClipHunterPlan` with:
 - `candidates`: list of {num_clips} entries, ranked by engagement (descending).
-- `reasoning`: 1-2 sentences on how you chose.
+- `reasoning`: 1-2 sentences on how you chose, referencing which detected themes each top candidate covers.
 """
 
 
@@ -800,6 +824,247 @@ def candidate_to_segments(cand: ClipCandidate) -> list[CutSegment]:
     ]
 
 
+# ---------------------------------------------------------------------------
+# Short Generator Director — assembled multi-span shorts from scattered moments
+# ---------------------------------------------------------------------------
+#
+# Where Clip Hunter *extracts* a single contiguous moment, Short Generator
+# *composes* a punchy short from multiple scattered spans across the source.
+# Each candidate is an assembled reel: 3–8 spans chosen for a through-line
+# theme, jump-cut together into one 45–90 s output.
+#
+# Output schema deliberately mirrors ClipHunterPlan's tabbed shape so the
+# Review UI can reuse the per-candidate selector. The difference is that a
+# ShortCandidate carries a list of spans instead of one range.
+
+
+class ShortSpan(BaseModel):
+    """One source-timeline range contributing to an assembled short."""
+
+    start_s: float = Field(
+        ...,
+        description="Source-timeline start, seconds. Must equal a word's start_time (verbatim).",
+    )
+    end_s: float = Field(
+        ..., description="Source-timeline end, seconds. Must equal a word's end_time (verbatim)."
+    )
+    role: str = Field(
+        default="",
+        description="One short label per span — 'hook', 'setup', 'payoff', 'callback', 'close'.",
+    )
+
+
+class ShortCandidate(BaseModel):
+    theme: str = Field(
+        ...,
+        description="The through-line of this short — one phrase (4-8 words).",
+    )
+    spans: list[ShortSpan] = Field(
+        ...,
+        description="3–8 source spans in play order. First span is the hook.",
+    )
+    total_s: float = Field(
+        ...,
+        description="Sum of span durations — must be 45–120 s. Used for plan validation.",
+    )
+    engagement_score: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Director's confidence this short will retain (0–1).",
+    )
+    suggested_caption: str = Field(
+        default="",
+        description="Social caption (≤120 chars) ready for TikTok / Shorts / Reels.",
+    )
+    reasoning: str = Field(
+        default="",
+        description="1–2 sentences on why these spans, in this order.",
+    )
+
+
+class ShortGeneratorPlan(BaseModel):
+    candidates: list[ShortCandidate] = Field(
+        ...,
+        description="Short candidates in descending engagement order.",
+    )
+    reasoning: str = Field(
+        default="",
+        description="Brief overall note on how shorts were composed.",
+    )
+
+
+def _short_generator_prompt(
+    preset: PresetBundle,
+    transcript: list[dict],
+    user_settings: dict | None,
+    target_short_length_s: float,
+    num_shorts: int,
+) -> str:
+    exclude = _exclude_block(preset, user_settings)
+    focus = _focus_block(user_settings)
+    themes = _themes_block(user_settings)
+    speakers = _speaker_block(preset, transcript, user_settings)
+    clip_meta = _clip_metadata_block(transcript)
+    optional_blocks = "\n\n".join(b for b in (exclude, focus, themes, speakers, clip_meta) if b)
+    optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
+    transcript_for_prompt = _shape_for_prompt(transcript, user_settings)
+    low = target_short_length_s * 0.75
+    high = target_short_length_s * 1.33
+    return f"""You are a {preset.role}.
+
+You receive a transcript and will **compose {num_shorts} punchy assembled shorts** — each a list of 3–8 source spans jump-cut together around a single through-line theme.
+
+RULES — follow exactly:
+1. Each short is 3–8 spans that play end-to-end; total duration across its spans must be {low:.0f}–{high:.0f} s (target {target_short_length_s:.0f} s).
+2. Each short has a clear THEME — a through-line (e.g. "why AR replaces phones", "the loneliness debate"). Spans are picked because they serve that theme.
+3. The FIRST span of each short is the HOOK — it must earn the next 5 s on its own. Use {preset.hook_rule}.
+4. Subsequent spans advance the short: setup → payoff, claim → callback, question → answer. Mark the role on each span.
+5. Each span's `start_s` MUST equal the `start_time` of its first word; `end_s` MUST equal `end_time` of its last word. Verbatim — no rounding.
+6. Individual spans may be as short as 1 s or as long as 25 s. Favour short punchy spans over long meandering ones.
+7. Within a short, spans MUST NOT overlap each other in source time.
+8. Across different shorts, cross-short overlap is allowed (two shorts can reference the same hook).
+9. Pacing: {preset.pacing}.
+10. Return candidates in descending engagement order.
+11. `total_s` is the sum of span durations — compute it, include it, we'll validate.
+12. `suggested_caption` ≤ 120 chars, social-ready.
+
+USER SETTINGS
+{_user_settings_block(user_settings)}
+- Target short length: {target_short_length_s:.0f} s
+- Number of shorts: {num_shorts}{optional_section}
+
+TRANSCRIPT (JSON array):
+{json.dumps(transcript_for_prompt, separators=(",", ":"))}
+
+Return a `ShortGeneratorPlan` with:
+- `candidates`: {num_shorts} entries, ranked by engagement (descending).
+- `reasoning`: 1-2 sentences on how you composed them.
+"""
+
+
+def validate_short_generator_plan(
+    plan: ShortGeneratorPlan,
+    transcript: list[dict],
+    target_short_length_s: float,
+    num_shorts: int,
+    duration_tolerance: float = 0.33,
+) -> list[str]:
+    """Validate a ShortGeneratorPlan.
+
+    Checks:
+      1. Candidate count is ``num_shorts`` (±1 leniency).
+      2. Each candidate has 3–8 spans.
+      3. Every span's ``start_s`` / ``end_s`` matches a verbatim word boundary.
+      4. Per span: ``end_s > start_s``, span ≤ 25 s.
+      5. Per candidate: spans are non-overlapping in source time, in play order
+         (which need not be source order — intercutting is legal).
+      6. Per candidate: ``total_s`` within ±tolerance of target.
+      7. Engagement scores monotone non-increasing.
+    """
+    starts, ends = _build_timestamp_sets(transcript)
+    errors: list[str] = []
+
+    if not plan.candidates:
+        return ["candidates is empty — at least one short required"]
+
+    if abs(len(plan.candidates) - num_shorts) > 1:
+        errors.append(f"expected {num_shorts} candidates (±1), got {len(plan.candidates)}")
+
+    low = target_short_length_s * (1.0 - duration_tolerance)
+    high = target_short_length_s * (1.0 + duration_tolerance)
+
+    prev_score = 1.01
+    for i, cand in enumerate(plan.candidates):
+        if not (3 <= len(cand.spans) <= 8):
+            errors.append(f"candidate[{i}]: {len(cand.spans)} spans — must be 3–8")
+        # Duration check on computed vs reported.
+        computed = sum(s.end_s - s.start_s for s in cand.spans)
+        if abs(computed - cand.total_s) > 0.5:
+            errors.append(
+                f"candidate[{i}]: total_s={cand.total_s:.1f} disagrees with span-sum {computed:.1f}"
+            )
+        if not (low <= cand.total_s <= high):
+            errors.append(
+                f"candidate[{i}]: total {cand.total_s:.1f}s outside [{low:.1f}, {high:.1f}]s"
+            )
+
+        # Per-span verbatim + duration.
+        for j, span in enumerate(cand.spans):
+            if span.end_s <= span.start_s:
+                errors.append(f"candidate[{i}].spans[{j}]: end_s {span.end_s} must be > start_s")
+                continue
+            if span.end_s - span.start_s > 25.0:
+                errors.append(
+                    f"candidate[{i}].spans[{j}]: {span.end_s - span.start_s:.1f}s — "
+                    "single span over 25 s defeats the jump-cut format"
+                )
+            if not _close_to_any(span.start_s, starts):
+                errors.append(
+                    f"candidate[{i}].spans[{j}]: start_s {span.start_s} not a word boundary"
+                )
+            if not _close_to_any(span.end_s, ends):
+                errors.append(f"candidate[{i}].spans[{j}]: end_s {span.end_s} not a word boundary")
+
+        # Non-overlap in source time (within this candidate).
+        sorted_spans = sorted(cand.spans, key=lambda s: s.start_s)
+        for k in range(1, len(sorted_spans)):
+            if sorted_spans[k].start_s < sorted_spans[k - 1].end_s:
+                errors.append(
+                    f"candidate[{i}]: source-time overlap between spans "
+                    f"[{sorted_spans[k - 1].start_s:.1f}, {sorted_spans[k - 1].end_s:.1f}] "
+                    f"and [{sorted_spans[k].start_s:.1f}, {sorted_spans[k].end_s:.1f}]"
+                )
+
+        if cand.engagement_score > prev_score:
+            errors.append(
+                f"candidate[{i}]: engagement {cand.engagement_score:.2f} > prev "
+                f"{prev_score:.2f} — must rank descending"
+            )
+        prev_score = cand.engagement_score
+
+    return errors
+
+
+def build_short_generator_plan(
+    transcript: list[dict],
+    preset: PresetBundle,
+    user_settings: dict | None,
+    target_short_length_s: float,
+    num_shorts: int,
+) -> ShortGeneratorPlan:
+    """Run the Short Generator Director, retrying on validation errors."""
+    prompt = _short_generator_prompt(
+        preset, transcript, user_settings, target_short_length_s, num_shorts
+    )
+    return llm.call_structured(
+        agent="director",
+        prompt=prompt,
+        response_schema=ShortGeneratorPlan,
+        validate=lambda plan: validate_short_generator_plan(
+            plan, transcript, target_short_length_s, num_shorts
+        ),
+        temperature=0.5,
+    )
+
+
+def short_candidate_to_segments(cand: ShortCandidate) -> list[CutSegment]:
+    """Convert a ShortCandidate into a list of CutSegments in play order.
+
+    Short Generator candidates carry their spans in the order the short
+    should play — the resolver appends them end-to-end, producing the
+    assembled short on the new timeline.
+    """
+    return [
+        CutSegment(
+            start_s=span.start_s,
+            end_s=span.end_s,
+            reason=f"{span.role or 'span'}: {cand.theme}",
+        )
+        for span in cand.spans
+    ]
+
+
 def expand_assembled_plan(
     plan: AssembledDirectorPlan,
     takes: list[dict],
@@ -832,3 +1097,345 @@ def expand_assembled_plan(
                 )
             )
     return segments, hook_cut_index
+
+
+# ---------------------------------------------------------------------------
+# Curated Director (v2-11) — every take must appear at least once
+# ---------------------------------------------------------------------------
+#
+# Curated mode's contract: the editor has finalised their selects (no
+# duplicates) but hasn't committed to narrative order. The agent is free to
+# reorder takes, split them into non-contiguous spans, and interleave across
+# takes — but **every take must contribute at least one span** to the output.
+#
+# Reuses AssembledItemSelection + WordSpan — the schema is identical; the
+# difference is the invariant. We rename the top-level plan so both shapes
+# can coexist in docs / debuggers.
+
+
+class CuratedItemSelection(BaseModel):
+    """Same shape as AssembledItemSelection, but a take may appear multiple
+    times — once per non-contiguous span cluster the Director wants to
+    interleave. ``order`` is the play-order position across all selections."""
+
+    order: int = Field(
+        ...,
+        ge=0,
+        description="0-based play-order position; unique across selections.",
+    )
+    item_index: int = Field(
+        ...,
+        ge=0,
+        description="0-based index into the input TAKES array.",
+    )
+    kept_word_spans: list[WordSpan] = Field(
+        ...,
+        description="Ranges of word indices to keep from this take. Non-overlapping, ascending within the selection.",
+    )
+
+
+class CuratedDirectorPlan(BaseModel):
+    hook_order: int = Field(
+        ...,
+        description="``order`` value identifying the hook selection.",
+    )
+    selections: list[CuratedItemSelection]
+    reasoning: str = Field(default="", description="1-2 sentences on overall structure.")
+
+
+def _curated_prompt(
+    preset: PresetBundle,
+    takes: list[dict],
+    user_settings: dict | None,
+) -> str:
+    exclude = _exclude_block(preset, user_settings)
+    focus = _focus_block(user_settings)
+    flat_words: list[dict] = []
+    for t in takes:
+        flat_words.extend(t.get("transcript") or [])
+    speakers = _speaker_block(preset, flat_words, user_settings)
+    clip_meta = _clip_metadata_block(flat_words)
+    optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers, clip_meta) if b)
+    optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
+    takes_for_prompt = _shape_takes_for_prompt(takes, user_settings)
+
+    return f"""You are a {preset.role}.
+
+The editor has curated their final takes (A-roll picked — no duplicates). Your job is to arrange them into the strongest narrative. You may split a take into multiple non-contiguous spans and interleave those spans with other takes' spans.
+
+HARD RULE — CURATED INVARIANT:
+Every take listed below MUST contribute at least one span to your plan. Dropping a take is not allowed — the editor explicitly promised these are the keepers.
+
+RULES — follow exactly:
+1. Identify the HOOK: {preset.hook_rule}. Set `hook_order` to the ``order`` value of the hook selection.
+2. Pacing: {preset.pacing}.
+3. You MAY reorder takes freely to build the best narrative.
+4. You MAY include the same take more than once at non-overlapping spans, each with its own ``order`` value — use this for callbacks when dramatically stronger.
+5. kept_word_spans reference valid `i` values from that take's transcript. Spans are inclusive on both ends.
+6. Within a single selection, spans are non-overlapping and ascending. Across selections of the same take, the spans must also be pairwise non-overlapping.
+7. ``order`` values are unique, 0-based, and form a contiguous sequence (0, 1, 2, ..., N-1) describing play order.
+
+USER SETTINGS
+{_user_settings_block(user_settings)}{optional_section}
+
+TAKES (JSON array):
+{json.dumps(takes_for_prompt, separators=(",", ":"))}
+
+Return a `CuratedDirectorPlan` with:
+- `selections`: list of {{order, item_index, kept_word_spans}} entries. Every input take's item_index must appear in at least one selection.
+- `hook_order`: the ``order`` value of the hook selection.
+- `reasoning`: 1–2 sentences on the overall structure.
+"""
+
+
+def validate_curated_plan(
+    plan: CuratedDirectorPlan,
+    takes: list[dict],
+) -> list[str]:
+    """Validate a curated plan.
+
+    Curated invariant: every input take.item_index appears in ≥1 selection.
+    All other structural checks are shared with the rough-cut validator.
+    """
+    errors = _curated_span_checks(plan, takes)
+    selected_items = {s.item_index for s in plan.selections}
+    missing = [t["item_index"] for t in takes if t["item_index"] not in selected_items]
+    if missing:
+        errors.append(
+            f"Curated invariant violated: takes {missing} contributed no spans — "
+            "every take must appear at least once"
+        )
+    return errors
+
+
+def build_curated_cut_plan(
+    takes: list[dict],
+    preset: PresetBundle,
+    user_settings: dict | None = None,
+) -> CuratedDirectorPlan:
+    """Run the Curated Director, retrying on invariant violations."""
+    prompt = _curated_prompt(preset, takes, user_settings)
+    return llm.call_structured(
+        agent="director",
+        prompt=prompt,
+        response_schema=CuratedDirectorPlan,
+        validate=lambda plan: validate_curated_plan(plan, takes),
+        temperature=0.4,
+    )
+
+
+def expand_curated_plan(
+    plan: CuratedDirectorPlan,
+    takes: list[dict],
+) -> tuple[list[CutSegment], int]:
+    """Convert a CuratedDirectorPlan into timeline-seconds `CutSegment`s.
+
+    Segments are emitted in ``order`` sequence. Returns
+    ``(segments, hook_cut_segment_index)`` where ``hook_cut_segment_index``
+    is the index of the first segment belonging to the hook selection.
+    """
+    take_by_index = {t["item_index"]: t for t in takes}
+    sorted_sels = sorted(plan.selections, key=lambda s: s.order)
+    segments: list[CutSegment] = []
+    hook_cut_index = 0
+    for sel in sorted_sels:
+        take = take_by_index[sel.item_index]
+        words = take["transcript"]
+        if sel.order == plan.hook_order and sel.kept_word_spans:
+            hook_cut_index = len(segments)
+        for span in sel.kept_word_spans:
+            segments.append(
+                CutSegment(
+                    start_s=float(words[span.a]["start_time"]),
+                    end_s=float(words[span.b]["end_time"]),
+                    reason=f"take {sel.item_index}: '{take.get('source_name', '')}'",
+                )
+            )
+    return segments, hook_cut_index
+
+
+# ---------------------------------------------------------------------------
+# Rough cut Director (v2-11) — every group must appear at least once
+# ---------------------------------------------------------------------------
+#
+# Rough cut's contract: the editor's timeline has A/B alternates grouped
+# (by color, flag, or transcript similarity). The agent picks one winner
+# per group — or intercuts two when dramatically stronger — and sequences
+# the winners.
+#
+# Input: takes + groups (where each group names a set of item_indexes that
+# are alternates of each other). Output: a CuratedDirectorPlan shape, but
+# the validator enforces group coverage instead of take coverage.
+
+
+def _rough_cut_prompt(
+    preset: PresetBundle,
+    takes: list[dict],
+    groups: list[dict],
+    user_settings: dict | None,
+) -> str:
+    exclude = _exclude_block(preset, user_settings)
+    focus = _focus_block(user_settings)
+    flat_words: list[dict] = []
+    for t in takes:
+        flat_words.extend(t.get("transcript") or [])
+    speakers = _speaker_block(preset, flat_words, user_settings)
+    clip_meta = _clip_metadata_block(flat_words)
+    optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers, clip_meta) if b)
+    optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
+    takes_for_prompt = _shape_takes_for_prompt(takes, user_settings)
+    groups_for_prompt = [
+        {
+            "group_id": g["group_id"],
+            "item_indexes": g["item_indexes"],
+            "signal": g.get("signal", "unknown"),
+        }
+        for g in groups
+    ]
+
+    return f"""You are a {preset.role}.
+
+The editor has delivered a rough cut — candidate takes with A/B (or more) alternates for the same moment. Each GROUP below is a set of alternate takes the editor wants considered together. Your job: pick a winner per group (or intercut two when dramatically stronger), then sequence the winners into the strongest narrative.
+
+HARD RULE — ROUGH CUT INVARIANT:
+Every group below MUST contribute at least one span to your plan. Dropping a whole group is not allowed — the editor marked each group as a moment that matters.
+
+RULES — follow exactly:
+1. Identify the HOOK: {preset.hook_rule}. Set `hook_order` to the ``order`` value of the hook selection.
+2. Pacing: {preset.pacing}.
+3. For each group, typically pick ONE winning take. Choose two from the same group only when intercutting them is dramatically stronger than either alone.
+4. Across groups you MAY reorder freely.
+5. kept_word_spans reference valid `i` values from that take's transcript. Spans inclusive on both ends, non-overlapping within a selection.
+6. ``order`` values are unique, 0-based, and form a contiguous sequence describing play order.
+7. You may omit alternate takes within a group — just ensure the group itself is represented.
+
+USER SETTINGS
+{_user_settings_block(user_settings)}{optional_section}
+
+GROUPS (each group is a set of alternates):
+{json.dumps(groups_for_prompt, separators=(",", ":"))}
+
+TAKES (JSON array):
+{json.dumps(takes_for_prompt, separators=(",", ":"))}
+
+Return a `CuratedDirectorPlan` with:
+- `selections`: list of {{order, item_index, kept_word_spans}} entries. Every group's item set must intersect the union of selected item_indexes at least once.
+- `hook_order`: the ``order`` value of the hook selection.
+- `reasoning`: 1–2 sentences on winner choices and narrative structure.
+"""
+
+
+def validate_rough_cut_plan(
+    plan: CuratedDirectorPlan,
+    takes: list[dict],
+    groups: list[dict],
+) -> list[str]:
+    """Validate a rough-cut plan.
+
+    Reuses the curated validator's checks, then swaps the take-coverage
+    invariant for group-coverage: every group must have at least one of
+    its item_indexes present in the selections.
+    """
+    # Reuse curated's span-level checks, but drop its take-coverage
+    # invariant — rough cut *wants* to drop alternate takes within groups.
+    errors = _curated_span_checks(plan, takes)
+
+    selected_items = {s.item_index for s in plan.selections}
+    uncovered_groups = [
+        g["group_id"] for g in groups if not (set(g["item_indexes"]) & selected_items)
+    ]
+    if uncovered_groups:
+        errors.append(
+            f"Rough cut invariant violated: groups {uncovered_groups} contributed no spans — "
+            "every group must have at least one winner"
+        )
+    return errors
+
+
+def _curated_span_checks(
+    plan: CuratedDirectorPlan,
+    takes: list[dict],
+) -> list[str]:
+    """Shared structural checks between curated + rough_cut validators.
+
+    Runs every validation step from :func:`validate_curated_plan` *except*
+    the "every take appears" invariant. Rough cut substitutes its own
+    group-coverage rule.
+    """
+    errors: list[str] = []
+    if not plan.selections:
+        return ["selections is empty"]
+
+    orders = [s.order for s in plan.selections]
+    if sorted(orders) != list(range(len(plan.selections))):
+        errors.append(
+            f"order values {sorted(orders)} are not a contiguous 0..{len(plan.selections) - 1} permutation"
+        )
+    if len(set(orders)) != len(orders):
+        errors.append("duplicate order values — each selection must have a unique order")
+    if plan.hook_order not in {s.order for s in plan.selections}:
+        errors.append(f"hook_order {plan.hook_order} does not match any selection's order value")
+
+    take_by_index = {t["item_index"]: t for t in takes}
+    spans_per_take: dict[int, list[tuple[int, int]]] = {}
+
+    for pos, sel in enumerate(plan.selections):
+        take = take_by_index.get(sel.item_index)
+        if take is None:
+            errors.append(
+                f"selections[{pos}]: item_index {sel.item_index} does not match any input take"
+            )
+            continue
+        if not sel.kept_word_spans:
+            errors.append(
+                f"selections[{pos}]: kept_word_spans is empty — drop the selection entirely instead"
+            )
+            continue
+        transcript_len = len(take.get("transcript") or [])
+        if transcript_len == 0:
+            errors.append(f"selections[{pos}]: take {sel.item_index} has no transcript")
+            continue
+        last_b = -1
+        for j, span in enumerate(sel.kept_word_spans):
+            if span.a > span.b:
+                errors.append(f"selections[{pos}].spans[{j}]: a={span.a} > b={span.b}")
+                continue
+            if span.a >= transcript_len or span.b >= transcript_len:
+                errors.append(
+                    f"selections[{pos}].spans[{j}]: [{span.a},{span.b}] "
+                    f"out of range for take with {transcript_len} words"
+                )
+                continue
+            if span.a <= last_b:
+                errors.append(
+                    f"selections[{pos}].spans[{j}]: start a={span.a} overlaps previous span end {last_b}"
+                )
+            last_b = span.b
+            spans_per_take.setdefault(sel.item_index, []).append((span.a, span.b))
+
+    for item_index, span_list in spans_per_take.items():
+        span_list.sort()
+        for i in range(1, len(span_list)):
+            if span_list[i][0] <= span_list[i - 1][1]:
+                errors.append(
+                    f"take {item_index}: spans {span_list[i - 1]} and {span_list[i]} overlap across selections"
+                )
+
+    return errors
+
+
+def build_rough_cut_plan(
+    takes: list[dict],
+    groups: list[dict],
+    preset: PresetBundle,
+    user_settings: dict | None = None,
+) -> CuratedDirectorPlan:
+    """Run the Rough cut Director, retrying on invariant violations."""
+    prompt = _rough_cut_prompt(preset, takes, groups, user_settings)
+    return llm.call_structured(
+        agent="director",
+        prompt=prompt,
+        response_schema=CuratedDirectorPlan,
+        validate=lambda plan: validate_rough_cut_plan(plan, takes, groups),
+        temperature=0.4,
+    )

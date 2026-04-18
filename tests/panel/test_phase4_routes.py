@@ -418,7 +418,10 @@ def test_build_plan_clip_hunter_stores_candidates_and_skips_director(
         json={
             "run_id": scrubbed_run["run_id"],
             "preset": "clip_hunter",
-            "user_settings": {"target_length_s": 60, "num_clips": 2},
+            # Short-source guard requires source_s >= num * target * 0.6.
+            # Fixture scrubbed_run spans ~2s, so target_length_s=1 with 2
+            # clips fits (needs ≥1.2s).
+            "user_settings": {"target_length_s": 1, "num_clips": 2},
         },
     )
     assert r.status_code == 200, r.text
@@ -427,7 +430,7 @@ def test_build_plan_clip_hunter_stores_candidates_and_skips_director(
     ch = persisted["plan"]["clip_hunter"]
     assert len(ch["candidates"]) == 2
     assert ch["selected_index"] == 0
-    assert ch["target_clip_length_s"] == 60
+    assert ch["target_clip_length_s"] == 1
     assert ch["num_clips"] == 2
     # Each candidate carries its resolved_segments slice (for /execute).
     assert len(ch["candidates"][0]["resolved_segments"]) == 1

@@ -60,12 +60,15 @@ async def execute(body: ExecuteRequest) -> dict:
         ]
         clip_hunter["selected_index"] = idx
 
-    # Clip Hunter timelines get a per-candidate suffix so they don't
-    # overwrite each other if the user executes multiple candidates.
+    # Per-candidate timelines get a distinct suffix so repeat builds don't
+    # clobber each other. Short Generator uses _AI_Short_N; Clip Hunter
+    # keeps _AI_Clip_N for backward compat.
     name_suffix = "_AI_Cut"
     if clip_hunter:
         sel_idx = clip_hunter.get("selected_index", 0)
-        name_suffix = f"_AI_Clip_{sel_idx + 1}"
+        mode = clip_hunter.get("mode", "clip_hunter")
+        prefix = "Short" if mode == "short_generator" else "Clip"
+        name_suffix = f"_AI_{prefix}_{sel_idx + 1}"
 
     try:
         result = await asyncio.to_thread(execute_plan, run, name_suffix)
