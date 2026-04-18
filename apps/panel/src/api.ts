@@ -105,6 +105,11 @@ export const api = {
       body: JSON.stringify({ run_id: runId, preset }),
     }),
 
+  themesCache: (runId: string) =>
+    http<{ preset: string; analysis: StoryAnalysis }>(
+      `/cutmaster/themes-cache/${runId}`,
+    ),
+
   buildPlan: (runId: string, preset: string, userSettings: UserSettings) =>
     http<BuildPlanResult>("/cutmaster/build-plan", {
       method: "POST",

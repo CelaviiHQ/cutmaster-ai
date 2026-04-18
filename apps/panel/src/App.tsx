@@ -406,6 +406,7 @@ export default function App() {
                     runId={runId}
                     preset={preset}
                     settings={userSettings}
+                    onSettingsChange={setUserSettings}
                     onBack={() => setStep("configure")}
                     onReset={reset}
                     onClipCount={setReviewClipCount}

@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException
 
 from ....cutmaster.analysis import auto_detect as auto_detect_mod
 from ....cutmaster.analysis import themes as themes_mod
+from ....cutmaster.core import state
 from ....cutmaster.data.presets import PRESETS, all_presets, get_preset
 from ....cutmaster.media.formats import all_formats
 from ._helpers import _require_scrubbed
@@ -65,10 +66,43 @@ async def detect_preset(body: DetectPresetRequest) -> dict:
 
 @router.post("/analyze-themes")
 async def analyze_themes(body: AnalyzeThemesRequest) -> dict:
-    """Produce chapters + hook candidates + theme axes for the Configure screen."""
-    _, scrubbed = _require_scrubbed(body.run_id)
+    """Produce chapters + hook candidates + theme axes for the Configure screen.
+
+    Caches the analysis on the run's state keyed by preset — re-visiting
+    Configure for the same preset returns the cached result in < 50ms
+    instead of paying ~5–10s of Gemini latency. Swapping preset evicts.
+    """
+    run, scrubbed = _require_scrubbed(body.run_id)
     if body.preset not in PRESETS:
         raise HTTPException(status_code=400, detail=f"unknown preset '{body.preset}'")
+
+    cached = run.get("story_analysis")
+    if cached and cached.get("preset") == body.preset:
+        return cached["analysis"]
+
     preset = get_preset(body.preset)
     analysis = await asyncio.to_thread(themes_mod.analyze_themes, scrubbed, preset)
-    return analysis.model_dump()
+    payload = analysis.model_dump()
+    run["story_analysis"] = {"preset": body.preset, "analysis": payload}
+    state.save(run)
+    return payload
+
+
+@router.get("/themes-cache/{run_id}")
+async def themes_cache(run_id: str) -> dict:
+    """Return the last-cached StoryAnalysis for this run, or 404 if none.
+
+    Used by the Review screen's Regenerate panel to render hook candidates
+    without re-running the theme agent. Payload shape is
+    ``{"preset": "vlog", "analysis": {...}}``.
+    """
+    run = state.load(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"run {run_id} not found")
+    cached = run.get("story_analysis")
+    if not cached:
+        raise HTTPException(
+            status_code=404,
+            detail=f"no cached StoryAnalysis for run {run_id} — visit Configure first",
+        )
+    return cached

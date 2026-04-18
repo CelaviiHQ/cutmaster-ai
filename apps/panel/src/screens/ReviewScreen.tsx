@@ -6,6 +6,7 @@ import type {
     BuildPlanResult,
     PresetBundle,
     PresetKey,
+    StoryAnalysis,
     UserSettings,
 } from "../types";
 
@@ -13,6 +14,7 @@ interface Props {
     runId: string;
     preset: PresetKey;
     settings: UserSettings;
+    onSettingsChange?: (s: UserSettings) => void;
     onBack: () => void;
     onReset: () => void;
     // v3-5.4 — let the app header show the current clip count.
@@ -23,10 +25,13 @@ export default function ReviewScreen({
     runId,
     preset,
     settings,
+    onSettingsChange,
     onBack,
     onReset,
     onClipCount,
 }: Props) {
+    const [analysis, setAnalysis] = useState<StoryAnalysis | null>(null);
+    const [regenerating, setRegenerating] = useState(false);
     const [plan, setPlan] = useState<BuildPlanResult | null>(null);
     const [bundle, setBundle] = useState<PresetBundle | null>(null);
     const [loading, setLoading] = useState(true);
@@ -64,15 +69,19 @@ export default function ReviewScreen({
             setLoading(true);
             setErr(null);
             try {
-                const [p, presetList] = await Promise.all([
+                const [p, presetList, cachedThemes] = await Promise.all([
                     api.buildPlan(runId, preset, settings),
                     api.listPresets().catch(() => ({ presets: [] })),
+                    api.themesCache(runId).catch(() => null),
                 ]);
                 if (cancelled) return;
                 setPlan(p);
                 setBundle(
                     presetList.presets.find((b) => b.key === preset) ?? null,
                 );
+                if (cachedThemes?.analysis) {
+                    setAnalysis(cachedThemes.analysis);
+                }
             } catch (e) {
                 if (!cancelled) setErr(String(e));
             } finally {
@@ -84,6 +93,23 @@ export default function ReviewScreen({
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [runId]);
+
+    const regenerate = async (next: UserSettings) => {
+        setRegenerating(true);
+        setErr(null);
+        try {
+            const p = await api.buildPlan(runId, preset, next);
+            setPlan(p);
+            onSettingsChange?.(next);
+            // Reset any build attempt tied to the prior plan.
+            setBuildResult(null);
+            setBuildAllResults([]);
+        } catch (e) {
+            setErr(String(e));
+        } finally {
+            setRegenerating(false);
+        }
+    };
 
     if (loading) {
         return (
@@ -211,6 +237,87 @@ export default function ReviewScreen({
                     </p>
                 )}
             </div>
+
+            {!clipHunter && analysis && (
+                <details className="card card--advanced">
+                    <summary>
+                        <span>Regenerate plan</span>
+                        <span className="muted" style={{ marginLeft: 8, fontSize: "var(--fs-2)" }}>
+                            — nudge the hook or target length, get a fresh cut in ~5s
+                        </span>
+                    </summary>
+
+                    <div style={{ marginTop: 12 }}>
+                        <label style={{ display: "block", marginBottom: 6 }}>
+                            Target length (seconds)
+                        </label>
+                        <input
+                            type="number"
+                            min={15}
+                            step={5}
+                            defaultValue={settings.target_length_s ?? 180}
+                            style={{ width: 120 }}
+                            onBlur={(e) => {
+                                const next = Number(e.target.value) || null;
+                                if (next === settings.target_length_s) return;
+                                onSettingsChange?.({
+                                    ...settings,
+                                    target_length_s: next,
+                                });
+                            }}
+                        />
+                        <p className="muted" style={{ marginTop: 4 }}>
+                            Director enforces a 75–125 % window around this.
+                        </p>
+                    </div>
+
+                    <div style={{ marginTop: 12 }}>
+                        <h3 style={{ margin: "0 0 6px" }}>Hook</h3>
+                        <p className="muted" style={{ marginTop: 0 }}>
+                            Click to swap the opening beat. Clear to let the Director pick.
+                        </p>
+                        {analysis.hook_candidates.map((h, i) => {
+                            const selected =
+                                settings.selected_hook_s != null &&
+                                Math.abs(settings.selected_hook_s - h.start_s) < 0.01;
+                            return (
+                                <div
+                                    key={i}
+                                    className={`seg hook-row ${selected ? "hook-row--selected" : ""}`}
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() =>
+                                        onSettingsChange?.({
+                                            ...settings,
+                                            selected_hook_s: selected ? null : h.start_s,
+                                        })
+                                    }
+                                >
+                                    <span className="seg-time">{h.start_s.toFixed(1)}s</span>
+                                    <span className="seg-time">
+                                        {(h.engagement_score * 100).toFixed(0)}%
+                                    </span>
+                                    <span className="seg-reason">
+                                        {selected ? "● " : ""}{h.text}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    <div className="row" style={{ marginTop: 12 }}>
+                        <button
+                            disabled={regenerating}
+                            onClick={() => regenerate(settings)}
+                        >
+                            {regenerating ? "Regenerating…" : "Regenerate plan"}
+                        </button>
+                        <span className="muted" style={{ fontSize: "var(--fs-2)" }}>
+                            Reuses the scrubbed transcript — no re-transcription.
+                        </span>
+                    </div>
+                </details>
+            )}
 
             {clipHunter && clipHunter.candidates.length > 0 && (
                 <div className="card">
