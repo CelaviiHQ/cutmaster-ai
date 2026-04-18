@@ -1,63 +1,46 @@
-# Installing the CutMaster panel inside Resolve
+# DaVinci Resolve Workflow Integration plugin
 
-This directory is a Workflow Integration Plugin. It loads the locally-running
-Python backend (`celavii-resolve-panel`) in a Resolve dock panel.
+> ⚠️ **Placeholder — being rebuilt in v3-6.**
+> The files currently in this directory (`manifest.xml`, `index.html`) are **stubs** written against outdated public docs. They do **not** form a loadable plugin on Resolve 21. Do not attempt to install them — the plugin will not appear in the `Workspace → Workflow Integrations` menu.
+>
+> Track progress: [Implementation/cutmaster_ai/v3/tracker.md](../../Implementation/cutmaster_ai/v3/tracker.md) (phase v3-6).
 
-## 1. Start the Python backend
+## What this will be (when v3-6 ships)
+
+A thin Electron-based Workflow Integration plugin whose only job is to open a `BrowserWindow` pointing at `http://127.0.0.1:8765/` — the panel backend. All Resolve interaction happens **server-side** through MCP + the FastAPI backend, not from the plugin itself.
+
+## End-user install (once v3-6 lands)
+
+See [docs/CUTMASTER_SETUP.md](../../docs/CUTMASTER_SETUP.md) — the canonical user-facing install guide.
+
+## Plugin format reference (for contributors)
+
+Resolve ships the canonical sample plugin on your machine at:
+
+```
+/Library/Application Support/Blackmagic Design/DaVinci Resolve/Developer/Workflow Integrations/Examples/SamplePlugin/
+```
+
+Read [`README.txt`](/Library/Application%20Support/Blackmagic%20Design/DaVinci%20Resolve/Developer/Workflow%20Integrations/README.txt) in that same `Developer/Workflow Integrations/` folder for the authoritative plugin spec.
+
+Key facts (verified 2026-04-18 on Resolve 21.0.0b.20):
+
+| Field | Value |
+|---|---|
+| Install path (macOS) | `/Library/Application Support/Blackmagic Design/DaVinci Resolve/Workflow Integration Plugins/` |
+| Install path (Windows) | `%PROGRAMDATA%\Blackmagic Design\DaVinci Resolve\Support\Workflow Integration Plugins\` |
+| Folder name convention | Reverse-DNS: `com.celavii.cutmaster/` |
+| Required files | `manifest.xml`, `package.json`, `main.js`, `index.html` |
+| Electron version (Resolve 20.1+) | 36.3.2 — sandboxed + context-isolated |
+| Dev-mode toggle | **None.** `resolve:SetDeveloperMode()` was removed. Plugins just load. |
+
+## Fallback during development
+
+Since the plugin is not yet functional, use the panel directly in a browser:
 
 ```bash
-celavii-resolve-panel
-# → http://127.0.0.1:8765
+uv run celavii-resolve-panel   # starts backend on :8765
+open http://127.0.0.1:8765/     # opens the panel in your default browser
 ```
 
-Keep this running in the background whenever you use the panel.
-
-## 2. Install the plugin folder
-
-Copy **this entire `resolve-plugin/` directory** (not just individual files)
-into Resolve's Workflow Integration Plugins folder, renaming it to
-`CelaviiCutMaster`.
-
-**macOS**
-
-```bash
-cp -r apps/resolve-plugin \
-  ~/Library/Application\ Support/Blackmagic\ Design/DaVinci\ Resolve/Fusion/Workflow\ Integration\ Plugins/CelaviiCutMaster
-```
-
-**Windows**
-
-```powershell
-xcopy /E panel\resolve-plugin `
-  "%APPDATA%\Blackmagic Design\DaVinci Resolve\Fusion\Workflow Integration Plugins\CelaviiCutMaster\"
-```
-
-## 3. Enable developer mode (first time only)
-
-Resolve only loads third-party Workflow Integration plugins if developer mode
-is on:
-
-1. Open Resolve.
-2. `Workspace → Console` (macOS: `⌥⇧⌘ C`).
-3. Paste into the Lua tab:
-   ```lua
-   resolve:SetDeveloperMode(true)
-   ```
-4. Restart Resolve.
-
-## 4. Open the panel
-
-`Workspace → Workflow Integrations → CutMaster AI`
-
-## If it doesn't load
-
-The XML schema in `manifest.xml` is based on the public documentation; Resolve
-may have tweaked it between versions. If your panel doesn't appear:
-
-1. Check Resolve's built-in sample plugins for the current `manifest.xml`
-   format (see the path in `manifest.xml` comments).
-2. Copy the tag names from a working example.
-3. Restart Resolve after any manifest change.
-
-As a fallback during development, just open `http://127.0.0.1:8765/` in
-Safari or Chrome — same UI, no Workflow Integration needed.
+This is the same React bundle that will eventually load inside Resolve — identical UI, identical behaviour, just no docked window.

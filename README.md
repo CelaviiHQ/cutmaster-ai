@@ -1,12 +1,32 @@
 # Celavii-Resolve
 
-Maximum-control MCP server for DaVinci Resolve Studio.
+A DaVinci Resolve toolkit with two faces: an **MCP server** (for AI clients like Claude Code / Desktop) and a **CutMaster AI panel** (a React UI that runs inside Resolve as a Workflow Integration).
 
-**233 tools** covering the complete Resolve Scripting API, AI-enhanced workflows, Claude Code skills, and domain-specific agents.
+> **DaVinci Resolve Studio required.** The Scripting API is Studio-only ($295). The free edition will not work. Verify via `DaVinci Resolve → About` — must say "DaVinci Resolve **Studio**".
 
-> **Important: DaVinci Resolve Studio Required**
->
-> This MCP server uses the DaVinci Resolve Scripting API, which is **only available in DaVinci Resolve Studio** (the paid version, $295 one-time purchase). The free edition of DaVinci Resolve does **not** support external scripting and will not work with this server. You can verify your edition by going to DaVinci Resolve > About — it must say "DaVinci Resolve **Studio**".
+---
+
+## Which path fits you?
+
+| If you want to… | Start here |
+|---|---|
+| **Use CutMaster AI inside Resolve** (editors, one-click podcast → YouTube/Shorts cuts) | [docs/CUTMASTER_SETUP.md](docs/CUTMASTER_SETUP.md) |
+| **Use MCP tools in Claude Code / Desktop** (chat-driven Resolve automation, 233 tools) | [docs/SETUP.md](docs/SETUP.md) |
+| **Contribute code** (Python server, React panel, Resolve plugin, or skills) | [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) |
+
+### What ships in this repo
+
+| Artifact | What it does | Who consumes it |
+|---|---|---|
+| **MCP server** (`celavii-resolve`) | 233 stdio tools wrapping the Resolve API | Claude Code, Claude Desktop, Cursor, any MCP client |
+| **Panel backend** (`celavii-resolve-panel`) | FastAPI HTTP server on `127.0.0.1:8765` that drives CutMaster AI | The React panel |
+| **React panel** ([apps/panel/](apps/panel/)) | The CutMaster UI | A browser, or Resolve's Workflow Integration webview |
+| **Resolve Workflow Integration plugin** ([apps/resolve-plugin/](apps/resolve-plugin/)) | Thin Electron wrapper that opens the panel inside Resolve's docked webview | DaVinci Resolve Studio 21+ |
+| **Claude Code plugin** ([.claude-plugin/](.claude-plugin/) + `skills/` + `agents/` + `hooks/`) | Packaged skills (`/deliver`, `/grade-log` etc.), domain agents, safety hooks | Claude Code CLI |
+
+> The **Resolve Workflow Integration plugin** and the **Claude Code plugin** are two entirely separate artifacts. They share no files and follow different install paths. See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md#two-plugins-one-repo) for the disambiguation.
+
+---
 
 ## Features
 

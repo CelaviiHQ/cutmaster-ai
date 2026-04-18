@@ -68,3 +68,7 @@ logs/
 # Plugin builds
 celavii-resolve-plugin-*.zip
 celavii-resolve-v*.zip
+
+# Playwright MCP scratch output + screenshots
+.playwright-mcp/
+*-tokens-gate.png

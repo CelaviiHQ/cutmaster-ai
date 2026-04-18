@@ -25,6 +25,48 @@ pre-commit run --all-files   # baseline check
 cd apps/panel && npm install && cd -
 ```
 
+## Two plugins, one repo
+
+This repo ships **two entirely separate "plugins"** that share no files and follow different install paths. Confusing them is the #1 documentation bug we've hit — call them by their full names in commits and PRs.
+
+| # | Name | Where source lives | Built by | Installs to |
+|---|---|---|---|---|
+| 1 | **Claude Code plugin** | [.claude-plugin/plugin.json](../.claude-plugin/plugin.json) + top-level `skills/` / `agents/` / `hooks/` + `.mcp.json` | [scripts/build-plugin.sh](../scripts/build-plugin.sh) → `.zip` | `claude plugin install celavii-resolve-plugin.zip` (Claude Code CLI) |
+| 2 | **Resolve Workflow Integration plugin** | [apps/resolve-plugin/](../apps/resolve-plugin/) (placeholder — being rebuilt in v3-6) | Future `scripts/package-resolve-plugin.sh` | `/Library/Application Support/Blackmagic Design/DaVinci Resolve/Workflow Integration Plugins/` (macOS, sudo) |
+
+When you say "plugin" in a commit, PR title, or doc, prefix it: `Claude Code plugin:` or `Resolve plugin:`.
+
+## Working on the React panel (`apps/panel/`)
+
+The panel is a Vite/React app that lives in [apps/panel/](../apps/panel/) and is served by the FastAPI backend at `celavii-resolve-panel` on port 8765.
+
+```bash
+# First run — install Node deps
+cd apps/panel && npm install
+
+# Dev server with HMR (proxies /cutmaster/* and /ping to the backend)
+npm run dev                       # → http://localhost:5173
+
+# Production build + ship dist/ into the Python package's static dir
+npm run build                     # writes apps/panel/dist/
+# postbuild script then copies dist → src/celavii_resolve/http/static/
+```
+
+**Architecture:**
+- Entry: [apps/panel/src/main.tsx](../apps/panel/src/main.tsx) → [App.tsx](../apps/panel/src/App.tsx)
+- Screens: [apps/panel/src/screens/](../apps/panel/src/screens/) — one file per step (Preset / Analyze / Configure / Review) + `TokensGate.tsx` (v3-0 gate)
+- Styles: [apps/panel/src/design-tokens.css](../apps/panel/src/design-tokens.css) (v3 tokens) + [styles.css](../apps/panel/src/styles.css) (base)
+- SSE hook: [apps/panel/src/useSSE.ts](../apps/panel/src/useSSE.ts)
+- HTTP client: [apps/panel/src/api.ts](../apps/panel/src/api.ts)
+
+To smoke-test the design tokens and capability checks, browse to `http://127.0.0.1:8765/?gate=tokens`. That's the v3-0 go/no-go page.
+
+## Working on the Resolve Workflow Integration plugin (`apps/resolve-plugin/`)
+
+Being rebuilt in v3-6. Don't install the current files — they will not load inside Resolve. See [apps/resolve-plugin/README.md](../apps/resolve-plugin/README.md) for the real format and the reference sample plugin path.
+
+When v3-6 lands, the plugin will be a thin Electron app: `manifest.xml` + `package.json` + a ~25-line `main.js` that opens a `BrowserWindow` at `http://127.0.0.1:8765/`. No Resolve API calls from the plugin itself — all Resolve interaction goes through the Python backend.
+
 > **Why uv?** The committed `.mcp.json` invokes the MCP server as `uv run python -m celavii_resolve`. Without `uv` on PATH, Claude Code / Desktop can't start the server. This is intentional — `uv run` handles virtual-env activation automatically so contributors don't have to edit `.mcp.json` with machine-specific paths.
 
 ## Responsibility model — where does your feature go?

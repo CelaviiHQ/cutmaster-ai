@@ -1,5 +1,9 @@
 # Celavii-Resolve — Complete Setup Guide
 
+This guide covers the **MCP server** — the stdio server that exposes 233 DaVinci Resolve tools to AI clients (Claude Code, Claude Desktop, Cursor, etc.).
+
+> **Looking for CutMaster AI?** The UI panel for editors is a separate artifact with its own install path. See [CUTMASTER_SETUP.md](CUTMASTER_SETUP.md).
+
 This guide covers everything from first clone to a fully working MCP server with skills, agents, hooks, and auto-start.
 
 ---

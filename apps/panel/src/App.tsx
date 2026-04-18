@@ -4,8 +4,14 @@ import PresetPickScreen from "./screens/PresetPickScreen";
 import AnalyzeScreen from "./screens/AnalyzeScreen";
 import ConfigureScreen from "./screens/ConfigureScreen";
 import ReviewScreen from "./screens/ReviewScreen";
+import TokensGate from "./screens/TokensGate";
 import { api } from "./api";
 import { clearSession, loadSession, saveSession } from "./persist";
+
+// v3-0 gate page — bypass the main flow when `?gate=tokens` is in the URL.
+const GATE_MODE =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("gate") === "tokens";
 
 type Step = "preset" | "analyze" | "configure" | "review";
 
@@ -29,6 +35,8 @@ interface ResumeInfo {
 }
 
 export default function App() {
+    if (GATE_MODE) return <TokensGate />;
+
     const [step, setStep] = useState<Step>("preset");
     const [timelineName, setTimelineName] = useState("Timeline 1");
     const [preset, setPreset] = useState<PresetKey>("auto");
