@@ -53,11 +53,57 @@ TRANSCRIPT (JSON array, each item has `word`, `start_time`, `end_time`):
 """
 
 
+HOOK_DEDUP_WINDOW_S = 1.0
+
+
+def _normalize_analysis(analysis: StoryAnalysis) -> StoryAnalysis:
+    """Harden Gemini's StoryAnalysis output: sort, dedupe, drop invalid rows.
+
+    Gemini is mostly well-behaved here but occasionally returns duplicated
+    hook quotes (same line, slightly different word-boundary timestamps) and
+    chapter lists whose order drifts from strictly-chronological. The UI
+    assumes both are sorted; downstream validators will also want non-
+    overlapping chapters. Do this once at the boundary so every consumer
+    gets a clean StoryAnalysis — cheap, deterministic, no extra LLM call.
+    """
+    # --- chapters: sort by start, drop zero/negative-duration, drop overlaps.
+    chapters = sorted(
+        (c for c in analysis.chapters if c.end_s > c.start_s),
+        key=lambda c: c.start_s,
+    )
+    kept_chapters: list[Chapter] = []
+    for ch in chapters:
+        if kept_chapters and ch.start_s < kept_chapters[-1].end_s:
+            # Overlap — clip the new one's start up to the previous end.
+            if ch.end_s <= kept_chapters[-1].end_s:
+                continue  # fully contained, drop
+            ch = Chapter(start_s=kept_chapters[-1].end_s, end_s=ch.end_s, title=ch.title)
+        kept_chapters.append(ch)
+
+    # --- hooks: dedupe within HOOK_DEDUP_WINDOW_S, sort chronologically.
+    sorted_hooks = sorted(analysis.hook_candidates, key=lambda h: h.start_s)
+    kept_hooks: list[HookCandidate] = []
+    for h in sorted_hooks:
+        if kept_hooks and abs(h.start_s - kept_hooks[-1].start_s) < HOOK_DEDUP_WINDOW_S:
+            # Keep whichever has the higher engagement score.
+            if h.engagement_score > kept_hooks[-1].engagement_score:
+                kept_hooks[-1] = h
+            continue
+        kept_hooks.append(h)
+
+    return StoryAnalysis(
+        chapters=kept_chapters,
+        hook_candidates=kept_hooks,
+        theme_candidates=list(dict.fromkeys(analysis.theme_candidates)),
+    )
+
+
 def analyze_themes(transcript: list[dict], preset: PresetBundle) -> StoryAnalysis:
     """Produce a `StoryAnalysis` for the Configure screen."""
-    return llm.call_structured(
+    raw = llm.call_structured(
         agent="theme",
         prompt=_prompt(transcript, preset),
         response_schema=StoryAnalysis,
         temperature=0.3,
     )
+    return _normalize_analysis(raw)

@@ -115,8 +115,20 @@ export default function ConfigureScreen({
                 const a = await api.analyzeThemes(runId, effective);
                 if (cancelled) return;
                 setAnalysis(a);
-                // Pre-check all theme candidates by default
-                onSettingsChange({ ...settings, themes: a.theme_candidates });
+                // Pre-check all theme candidates by default + auto-pick the
+                // top-engagement hook when the user hasn't chosen one yet.
+                // Skip when selected_hook_s is already set (resume-from-Back
+                // must preserve prior intent).
+                const topHook = a.hook_candidates.reduce<typeof a.hook_candidates[number] | null>(
+                    (best, h) => (best == null || h.engagement_score > best.engagement_score ? h : best),
+                    null,
+                );
+                onSettingsChange({
+                    ...settings,
+                    themes: a.theme_candidates,
+                    selected_hook_s:
+                        settings.selected_hook_s ?? (topHook ? topHook.start_s : null),
+                });
             } catch (e) {
                 if (!cancelled) setErr(String(e));
             } finally {
@@ -411,20 +423,29 @@ export default function ConfigureScreen({
                         <h2>Chapters detected</h2>
                         <p className="muted">
                             {settings.selected_hook_s != null
-                                ? "Chapters are just context — the Director won't force coverage of each one."
+                                ? "Chapters before your hook are dimmed — the cut won't lead with that material."
                                 : "Detected structure. The Director will bias toward covering each chapter."}
                         </p>
-                        {analysis.chapters.map((c, i) => (
-                            <div key={i} className="seg">
-                                <span className="seg-time">
-                                    {c.start_s.toFixed(1)}s
-                                </span>
-                                <span className="seg-time">
-                                    {(c.end_s - c.start_s).toFixed(1)}s
-                                </span>
-                                <span>{c.title}</span>
-                            </div>
-                        ))}
+                        {analysis.chapters.map((c, i) => {
+                            const hookAt = settings.selected_hook_s;
+                            const preHook = hookAt != null && c.end_s <= hookAt;
+                            const containsHook =
+                                hookAt != null && c.start_s <= hookAt && hookAt < c.end_s;
+                            return (
+                                <div
+                                    key={i}
+                                    className={`seg chapter-row ${preHook ? "chapter-row--pre-hook" : ""} ${containsHook ? "chapter-row--contains-hook" : ""}`}
+                                >
+                                    <span className="seg-time">
+                                        {c.start_s.toFixed(1)}s
+                                    </span>
+                                    <span className="seg-time">
+                                        {(c.end_s - c.start_s).toFixed(1)}s
+                                    </span>
+                                    <span>{containsHook ? "● " : ""}{c.title}</span>
+                                </div>
+                            );
+                        })}
                     </div>
 
                     <div className="card">

@@ -433,6 +433,10 @@ label {
     border-left: 2px solid var(--accent-blue);
 }
 .hook-row--selected .seg-reason { color: var(--accent-blue); font-weight: 600; }
+.chapter-row { transition: opacity 120ms; border-left: 2px solid transparent; }
+.chapter-row--pre-hook { opacity: 0.4; }
+.chapter-row--contains-hook { border-left-color: var(--accent-blue); }
+.chapter-row--contains-hook span:last-child { color: var(--accent-blue); font-weight: 600; }
 .seg-time { color: var(--text-tertiary); }
 .seg-hook { color: var(--accent-blue); font-weight: 600; }
 .seg-reason { color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
