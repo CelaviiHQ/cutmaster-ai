@@ -227,7 +227,7 @@ Creates `celavii-resolve-v0.1.0.zip` — the recipient runs `bash scripts/setup.
 ```bash
 cp .env.example .env
 # Edit .env and set GEMINI_API_KEY=your-key-here
-pip install -e ".[ai]"
+pip install -e ".[all]"
 ```
 
 Get a Gemini API key at [aistudio.google.com](https://aistudio.google.com/apikey).
@@ -257,10 +257,9 @@ celavii-davinci-resolve-mcp/
 │   ├── resources.py       # 5 MCP resources
 │   ├── tools/             # 17 modules (incl. lut_registry), granular tools
 │   ├── workflows/         # 6 modules, compound workflow tools
-│   ├── ai/                # 3 modules, AI-powered tools
-│   ├── cutmaster/         # CutMaster AI product (panel + MCP)
-│   ├── intelligence/      # Single-shot LLM tools + shared LLM dispatch
-│   ├── http/              # FastAPI backend for the panel
+│   ├── intelligence/      # Single-shot LLM tools (vision, color-assist, critique) + shared llm.py
+│   ├── cutmaster/         # CutMaster AI product (core/, stt/, analysis/, media/, resolve_ops/, data/)
+│   ├── http/              # FastAPI backend for the panel (split routes/cutmaster/ package)
 │   └── utils/             # Platform, media, path helpers
 ├── .claude-plugin/
 │   └── plugin.json        # Claude Code plugin manifest

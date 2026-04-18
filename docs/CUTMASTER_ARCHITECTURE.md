@@ -56,7 +56,7 @@ Every CutMaster function is a plain Python function the HTTP panel calls directl
                     │  UserSettings
                     ▼
     ┌──────────────────────────────────────────────────────────┐
-    │ http/routes/cutmaster.py::build_plan                     │
+    │ http/routes/cutmaster/build.py::build_plan               │
     │                                                          │
     │  branch on preset/mode:                                  │
     │    · preset=clip_hunter   → Clip Hunter Director         │
@@ -141,7 +141,7 @@ Debug artefacts next to the run state:
 ### 4.1 Add an STT provider
 
 ```python
-# src/celavii_resolve/cutmaster/stt_whisper.py
+# src/celavii_resolve/cutmaster/stt/whisper.py
 from .stt import TranscriptResponse, TranscriptWord
 
 
@@ -169,7 +169,7 @@ if chosen == "whisper":
 
 ### 4.2 Add a content-type preset
 
-Add a `PresetBundle` in `cutmaster/presets.py`:
+Add a `PresetBundle` in `cutmaster/data/presets.py`:
 
 ```python
 TRAVEL_VLOG = PresetBundle(
@@ -202,7 +202,7 @@ Run `pytest tests/cutmaster/test_presets.py -v` and the Preset picker should sho
 
 Pattern used by all three existing variants (raw-dump, assembled, clip-hunter):
 
-1. Define the schema in `cutmaster/director.py`:
+1. Define the schema in `cutmaster/core/director.py`:
    ```python
    class MyDirectorPlan(BaseModel):
        ...  # what the model must return
@@ -232,11 +232,11 @@ Pattern used by all three existing variants (raw-dump, assembled, clip-hunter):
            temperature=0.4,
        )
    ```
-5. Branch in `http/routes/cutmaster.py::build_plan` — the earlier the branch the higher the priority. Tightener and Clip Hunter branch before assembled/raw-dump because they short-circuit later stages.
+5. Branch in `http/routes/cutmaster/build.py::build_plan` — the earlier the branch the higher the priority. Tightener and Clip Hunter branch before assembled/raw-dump because they short-circuit later stages.
 
 ### 4.4 Add an output Format
 
-Add a `FormatSpec` in `cutmaster/formats.py` (width, height, max duration, safe zones, reframe default). No wiring changes needed — Configure screen auto-lists it and Execute reads it via the same path as the existing three.
+Add a `FormatSpec` in `cutmaster/media/formats.py` (width, height, max duration, safe zones, reframe default). No wiring changes needed — Configure screen auto-lists it and Execute reads it via the same path as the existing three.
 
 ---
 
@@ -268,44 +268,62 @@ One line per module. When you need to read one, know what it owns.
 
 ```
 cutmaster/
-├── __init__.py          three-axis scrubbing docstring + package marker
-├── config.py (outer)    FastMCP singleton, Gemini client factory
-├── state.py             run dict persistence, SSE queue, emit helper
-├── pipeline.py          analyze orchestrator (vfr → audio → STT → speakers → scrub)
-├── vfr.py               ffprobe-based VFR detection
-├── ffmpeg_audio.py      concat extraction (v1 default)
-├── per_clip_stt.py      v2-6 per-item extraction + cache + parallel STT
-├── stt.py               provider dispatch + shared TranscriptResponse schema
-├── stt_gemini.py        Gemini backend (≤ 8 min audio validated)
-├── stt_deepgram.py      Deepgram Nova-3 backend (long-form + diarization)
-├── speakers.py          detect / stats / apply_labels (pure helpers)
-├── speaker_reconcile.py cross-clip solo collapse + LLM reconciler
-├── scrubber.py          filler / dead-air / restart removal
-├── excludes.py          ExcludeCategory schema (preset-declared UI filters)
-├── presets.py           9 preset bundles + Preset Literal
-├── auto_detect.py       picks a preset from the scrubbed transcript
-├── themes.py            chapters + hook candidates + theme axes
-├── director.py          raw / assembled / clip-hunter schemas + prompts + validators
-├── marker_agent.py      B-roll / cutaway suggestions over selected words
-├── resolve_segments.py  CutSegment[] → per-item source-frame pieces (fps-aware)
-├── source_mapper.py     timeline seconds → source frames (with speed)
-├── subclips.py          subclip creation helpers
-├── frame_math.py        timeline ↔ frame ↔ source-fps conversions
-├── formats.py           horizontal / vertical_short / square specs
-├── captions.py          SRT + subtitle-track generation
-├── time_mapping.py      source → new-timeline position (captions + markers)
-├── tightener.py         no-LLM per-take word-block segmenter
-├── snapshot.py          .drp project snapshot before mutation
-├── execute.py           build new timeline, drop markers, write SRT
-└── llm.py               single LLM chokepoint (call_structured + validate)
+├── __init__.py                    package marker
+│
+├── core/                          pipeline + agents + state + execute
+│   ├── pipeline.py                analyze orchestrator (vfr → audio → STT → speakers → scrub)
+│   ├── state.py                   run dict persistence, SSE queue, emit helper
+│   ├── director.py                raw / assembled / clip-hunter schemas + prompts + validators
+│   ├── execute.py                 build new timeline, drop markers, write SRT
+│   └── snapshot.py                .drp project snapshot before mutation
+│
+├── stt/                           speech-to-text + speaker handling
+│   ├── base.py                    provider dispatch + shared TranscriptResponse schema
+│   ├── gemini.py                  Gemini backend (≤ 8 min audio validated)
+│   ├── deepgram.py                Deepgram Nova-3 backend (long-form + diarization)
+│   ├── per_clip.py                v2-6 per-item extraction + cache + parallel STT
+│   ├── speakers.py                detect / stats / apply_labels (pure helpers)
+│   └── reconcile.py               cross-clip solo collapse + LLM reconciler
+│
+├── analysis/                      LLM agents + heuristic analysers
+│   ├── scrubber.py                filler / dead-air / restart removal
+│   ├── auto_detect.py             picks a preset from the scrubbed transcript
+│   ├── themes.py                  chapters + hook candidates + theme axes
+│   ├── marker_agent.py            B-roll / cutaway suggestions over selected words
+│   ├── tightener.py               no-LLM per-take word-block segmenter
+│   └── captions.py                SRT + subtitle-track generation
+│
+├── media/                         media IO + time math
+│   ├── vfr.py                     ffprobe-based VFR detection
+│   ├── ffmpeg_audio.py            concat extraction (v1 default)
+│   ├── frame_math.py              timeline ↔ frame ↔ source-fps conversions
+│   ├── time_mapping.py            source → new-timeline position (captions + markers)
+│   └── formats.py                 horizontal / vertical_short / square specs
+│
+├── resolve_ops/                   DaVinci Resolve API operations
+│   ├── segments.py                CutSegment[] → per-item source-frame pieces (fps-aware)
+│   ├── source_mapper.py           timeline seconds → source frames (with speed)
+│   ├── subclips.py                subclip creation helpers
+│   └── assembled.py               timeline-item → take-entry helpers
+│
+└── data/                          static bundles + registries
+    ├── presets.py                 9 preset bundles + Preset Literal
+    └── excludes.py                ExcludeCategory schema (preset-declared UI filters)
 ```
 
+LLM dispatch lives one level up at `intelligence/llm.py` — shared by CutMaster
+and all single-shot `intelligence/` tools (vision, color_assist, critique).
+
 ```
-http/routes/cutmaster.py   Every HTTP endpoint (analyze, state, events,
-                           detect-preset, analyze-themes, build-plan,
-                           execute, delete-cut, source-aspect, speakers,
-                           project-info, stt-providers, director-prompt,
-                           formats, presets)
+http/routes/cutmaster/      feature-split FastAPI package
+├── __init__.py             aggregates sub-routers under /cutmaster prefix
+├── _models.py              Pydantic request/response models
+├── _helpers.py             _require_scrubbed, _dump_director_prompt
+├── analyze.py              POST /analyze, /events/{id}, /state/{id}
+├── presets.py              /presets, /formats, /stt-providers, detect, analyze-themes
+├── info.py                 /source-aspect, /project-info, /speakers, /director-prompt
+├── build.py                POST /build-plan — the 4-branch Director+Marker+resolver
+└── execute.py              POST /execute, POST /delete-cut
 ```
 
 ---
@@ -315,10 +333,10 @@ http/routes/cutmaster.py   Every HTTP endpoint (analyze, state, events,
 Thirty minutes to build a mental model:
 
 1. This file.
-2. [`cutmaster/pipeline.py`](../src/celavii_resolve/cutmaster/pipeline.py) — top-down, `run_analyze` orchestrator.
-3. [`cutmaster/director.py`](../src/celavii_resolve/cutmaster/director.py) — three prompt variants; read the docstrings before the prompt bodies.
-4. [`cutmaster/execute.py`](../src/celavii_resolve/cutmaster/execute.py) — how a plan becomes a real Resolve timeline.
-5. [`http/routes/cutmaster.py`](../src/celavii_resolve/http/routes/cutmaster.py) — `build_plan` is the best place to see all the branches at once.
+2. [`cutmaster/core/pipeline.py`](../src/celavii_resolve/cutmaster/core/pipeline.py) — top-down, `run_analyze` orchestrator.
+3. [`cutmaster/core/director.py`](../src/celavii_resolve/cutmaster/core/director.py) — three prompt variants; read the docstrings before the prompt bodies.
+4. [`cutmaster/core/execute.py`](../src/celavii_resolve/cutmaster/core/execute.py) — how a plan becomes a real Resolve timeline.
+5. [`http/routes/cutmaster/build.py`](../src/celavii_resolve/http/routes/cutmaster/build.py) — the best place to see all preset branches at once.
 6. The panel: [`apps/panel/src/App.tsx`](../apps/panel/src/App.tsx) → any screen you touched.
 
 Then pick one item from §4's extension points and add it. Shipping a new preset is the fastest way to understand the whole data flow.

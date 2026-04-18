@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "celavii-resolve"
-version = "0.1.0"
-description = "Maximum-control MCP server for DaVinci Resolve Studio — ~280 tools, AI-enhanced workflows, skills, and agents."
+version = "0.2.0"
+description = "Maximum-control MCP server for DaVinci Resolve Studio — 241 tools, AI-enhanced workflows, skills, and agents."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"

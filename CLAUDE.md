@@ -17,8 +17,14 @@ src/celavii_resolve/
 ├── resources.py      MCP Resources (resolve://, project://, timeline://)
 ├── tools/            Modular tool files — one per domain
 ├── workflows/        Compound workflow tools (multi-step operations)
-├── ai/               AI-powered tools (Gemini vision, color assist)
-├── cutmaster/        CutMaster AI primitives (frame math, source mapping, ffmpeg audio, VFR, snapshot)
+├── intelligence/     Stateless LLM tools (Gemini vision, color assist, timeline critique) + shared llm.py dispatch
+├── cutmaster/        CutMaster AI product — 6 subpackages:
+│   ├── core/            pipeline, director, execute, state, snapshot
+│   ├── stt/             base + deepgram + gemini providers, speakers, per-clip
+│   ├── analysis/        auto_detect, marker_agent, scrubber, tightener, captions, themes
+│   ├── media/           frame_math, time_mapping, vfr, ffmpeg_audio, formats
+│   ├── resolve_ops/     source_mapper, subclips, assembled, segments
+│   └── data/            presets, excludes
 ├── http/             FastAPI backend for the CutMaster React panel (optional)
 └── utils/            Platform detection, path safety, serialisation
 ```
@@ -42,6 +48,17 @@ Two distinct roles, by design:
 | `celavii-resolve-panel` | HTTP on `127.0.0.1:8765` | React Workflow Integration panel | `pip install 'celavii-resolve[panel]'` |
 
 Both call the same underlying Resolve logic. Every tool function under `cutmaster/` exposes a **plain Python function** (callable from `http/`) and a thin `@mcp.tool` wrapper (callable over MCP). When adding a new primitive that both consumers need, keep the business logic in the plain function and make the `@mcp.tool` a thin adapter.
+
+## Responsibility model (pick the right bucket)
+
+Every new feature fits into exactly one of these four. If it doesn't, it's two features.
+
+| Bucket | Rule | Location |
+|---|---|---|
+| **Atomic Resolve op** | One function = one Resolve SDK call = one MCP tool. No logic. | `tools/` |
+| **Deterministic compound** | Chains multiple `tools/` ops. No LLM. | `workflows/` |
+| **Stateless LLM tool** | One MCP call → one LLM roundtrip → one answer. Exposed as `@mcp.tool`. | `intelligence/` |
+| **Stateful AI product** | Owns state, multi-stage pipeline, optionally its own transport. | `cutmaster/` (and future products) |
 
 ## Adding a New Tool
 

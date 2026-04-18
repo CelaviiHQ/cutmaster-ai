@@ -1,7 +1,7 @@
 {
   "name": "celavii-resolve",
-  "version": "0.1.0",
-  "description": "Maximum-control MCP server for DaVinci Resolve Studio — 233 tools covering the complete Resolve Scripting API, AI-enhanced workflows, and domain-specific agents.",
+  "version": "0.2.0",
+  "description": "Maximum-control MCP server for DaVinci Resolve Studio — 241 tools covering the complete Resolve Scripting API, AI-enhanced workflows, and domain-specific agents.",
   "author": {
     "name": "Celavii",
     "email": "engineering@celavii.com",
