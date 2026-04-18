@@ -50,9 +50,44 @@ def _slim_for_prompt(transcript: list[dict]) -> list[dict]:
     return [{k: w[k] for k in keep if k in w} for w in transcript]
 
 
+def _clip_boundaries(transcript: list[dict]) -> list[float]:
+    """Return the ascending list of clip-start timestamps (seconds).
+
+    Only populated on per-clip-STT runs where each word carries a
+    ``clip_index``. Returns an empty list for whole-timeline STT, which
+    disables the clip-aware behaviour cleanly.
+    """
+    seen: dict[int, float] = {}
+    for w in transcript:
+        ci = w.get("clip_index")
+        if ci is None:
+            continue
+        t = float(w.get("start_time", 0.0))
+        if ci not in seen or t < seen[ci]:
+            seen[ci] = t
+    return sorted(seen.values())
+
+
+def _clip_boundaries_block(boundaries: list[float]) -> str:
+    """Render clip-cut timestamps as a prompt block, or empty string."""
+    if len(boundaries) < 2:
+        return ""
+    lines = "\n".join(f"  - {t:.2f}s (clip {i})" for i, t in enumerate(boundaries))
+    return (
+        "CLIP BOUNDARIES — the editor cut these clip-start timestamps into "
+        "the timeline. When placing chapter boundaries, prefer landing at "
+        "or within 2 seconds of one of these cuts. Chapters usually shift "
+        "at clip cuts; don't split a chapter mid-clip unless the content "
+        "genuinely changes within a single clip.\n"
+        f"{lines}"
+    )
+
+
 def _prompt(transcript: list[dict], preset: PresetBundle) -> str:
     axes = ", ".join(preset.theme_axes)
     slim = _slim_for_prompt(transcript)
+    boundaries_block = _clip_boundaries_block(_clip_boundaries(transcript))
+    boundaries_section = f"\n\n{boundaries_block}" if boundaries_block else ""
     return f"""You are a {preset.role}. Analyse the following transcript and produce a structural summary that will be shown to the user in the Configure screen.
 
 TASK:
@@ -60,7 +95,7 @@ TASK:
 2. Identify 3–5 HOOK candidates — short, high-engagement quotes (≤ 8 seconds) the user could place first. Include the exact ``text`` and an ``engagement_score`` (0.0–1.0).
 3. Extract 5–12 ``theme_candidates`` — short topic tags the user can check/uncheck. Focus on these axes: {axes}.
 
-Do NOT invent timestamps. Any ``start_s`` / ``end_s`` must appear in the transcript's word timings.
+Do NOT invent timestamps. Any ``start_s`` / ``end_s`` must appear in the transcript's word timings.{boundaries_section}
 
 TRANSCRIPT (JSON array, each item has `word`, `start_time`, `end_time`):
 {json.dumps(slim, separators=(",", ":"))}
@@ -68,9 +103,32 @@ TRANSCRIPT (JSON array, each item has `word`, `start_time`, `end_time`):
 
 
 HOOK_DEDUP_WINDOW_S = 1.0
+CHAPTER_SNAP_TOLERANCE_S = 2.0
 
 
-def _normalize_analysis(analysis: StoryAnalysis) -> StoryAnalysis:
+def _snap_to_boundary(
+    t: float,
+    boundaries: list[float],
+    word_times: list[float],
+    tol: float = CHAPTER_SNAP_TOLERANCE_S,
+) -> float:
+    """Snap ``t`` to the closest clip-boundary within ``tol``, falling back
+    to the closest word-time (because chapter edges must still match a word
+    boundary — the Configure UI renders them verbatim).
+    """
+    if not boundaries:
+        return t
+    nearest_boundary = min(boundaries, key=lambda b: abs(b - t))
+    if abs(nearest_boundary - t) > tol:
+        return t
+    # Clip boundaries are derived from word start_times, so they're already
+    # valid word timestamps — no further snap needed.
+    return nearest_boundary
+
+
+def _normalize_analysis(
+    analysis: StoryAnalysis, clip_boundaries: list[float] | None = None
+) -> StoryAnalysis:
     """Harden Gemini's StoryAnalysis output: sort, dedupe, drop invalid rows.
 
     Gemini is mostly well-behaved here but occasionally returns duplicated
@@ -80,13 +138,21 @@ def _normalize_analysis(analysis: StoryAnalysis) -> StoryAnalysis:
     overlapping chapters. Do this once at the boundary so every consumer
     gets a clean StoryAnalysis — cheap, deterministic, no extra LLM call.
     """
-    # --- chapters: sort by start, drop zero/negative-duration, drop overlaps.
+    boundaries = clip_boundaries or []
+
+    # --- chapters: sort, snap to clip cuts, drop zero-duration, drop overlaps.
     chapters = sorted(
         (c for c in analysis.chapters if c.end_s > c.start_s),
         key=lambda c: c.start_s,
     )
-    kept_chapters: list[Chapter] = []
+    snapped: list[Chapter] = []
     for ch in chapters:
+        start_s = _snap_to_boundary(ch.start_s, boundaries, [])
+        end_s = _snap_to_boundary(ch.end_s, boundaries, [])
+        if end_s > start_s:
+            snapped.append(Chapter(start_s=start_s, end_s=end_s, title=ch.title))
+    kept_chapters: list[Chapter] = []
+    for ch in snapped:
         if kept_chapters and ch.start_s < kept_chapters[-1].end_s:
             # Overlap — clip the new one's start up to the previous end.
             if ch.end_s <= kept_chapters[-1].end_s:
@@ -120,4 +186,4 @@ def analyze_themes(transcript: list[dict], preset: PresetBundle) -> StoryAnalysi
         response_schema=StoryAnalysis,
         temperature=0.3,
     )
-    return _normalize_analysis(raw)
+    return _normalize_analysis(raw, _clip_boundaries(transcript))
