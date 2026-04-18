@@ -9,6 +9,8 @@ interface Props {
     onPresetChange: (p: PresetKey) => void;
     timelineMode: TimelineMode;
     onTimelineModeChange: (m: TimelineMode) => void;
+    perClipStt: boolean;
+    onPerClipSttChange: (v: boolean) => void;
     onNext: () => void | Promise<void>;
 }
 
@@ -19,6 +21,8 @@ export default function PresetPickScreen({
     onPresetChange,
     timelineMode,
     onTimelineModeChange,
+    perClipStt,
+    onPerClipSttChange,
     onNext,
 }: Props) {
     const [presets, setPresets] = useState<PresetBundle[]>([]);
@@ -108,6 +112,24 @@ export default function PresetPickScreen({
                         </div>
                     ))}
                 </div>
+            </div>
+
+            <div className="card">
+                <h2>Transcription mode (advanced)</h2>
+                <label style={{ display: "flex", gap: 6, alignItems: "center", margin: 0 }}>
+                    <input
+                        type="checkbox"
+                        checked={perClipStt}
+                        onChange={(e) => onPerClipSttChange(e.target.checked)}
+                    />
+                    Per-clip STT — transcribe each timeline item separately
+                </label>
+                <p className="muted" style={{ marginTop: 6 }}>
+                    Slower on the first run but richer context: the Director
+                    sees per-clip metadata (file, duration) and per-clip
+                    results cache so re-analyzing a trimmed timeline only
+                    re-transcribes the changed takes.
+                </p>
             </div>
 
             {err && <div className="error-box">{err}</div>}

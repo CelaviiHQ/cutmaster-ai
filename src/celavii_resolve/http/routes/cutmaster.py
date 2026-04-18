@@ -60,6 +60,17 @@ class AnalyzeRequest(BaseModel):
     timeline_name: str
     preset: str = "auto"
     scrub_params: ScrubParams | None = Field(default=None)
+    per_clip_stt: bool = Field(
+        default=False,
+        description=(
+            "v2-6: when true, extract one WAV per timeline audio item and "
+            "transcribe each clip separately. Words get clip_index + "
+            "clip_metadata for the Director prompt; per-clip results cache "
+            "under ~/.celavii/cutmaster/per-clip-stt so re-analyze on a "
+            "trimmed timeline only re-transcribes changed takes. Off by "
+            "default during v2 A/B trial."
+        ),
+    )
 
 
 class AnalyzeResponse(BaseModel):
@@ -92,6 +103,7 @@ async def analyze(body: AnalyzeRequest) -> AnalyzeResponse:
             timeline_name=body.timeline_name,
             preset=body.preset,
             scrub_params=body.scrub_params,
+            per_clip_stt=body.per_clip_stt,
         )
     )
 

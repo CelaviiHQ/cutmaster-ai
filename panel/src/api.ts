@@ -52,10 +52,18 @@ export const api = {
   speakers: (runId: string) =>
     http<{ speakers: SpeakerRosterEntry[] }>(`/cutmaster/speakers/${runId}`),
 
-  analyze: (timelineName: string, preset: string) =>
+  analyze: (
+    timelineName: string,
+    preset: string,
+    options?: { perClipStt?: boolean },
+  ) =>
     http<{ run_id: string; status: string }>("/cutmaster/analyze", {
       method: "POST",
-      body: JSON.stringify({ timeline_name: timelineName, preset }),
+      body: JSON.stringify({
+        timeline_name: timelineName,
+        preset,
+        ...(options?.perClipStt ? { per_clip_stt: true } : {}),
+      }),
     }),
 
   getState: (runId: string) =>

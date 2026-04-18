@@ -49,6 +49,7 @@ export default function App() {
     const [backendOk, setBackendOk] = useState<boolean | null>(null);
     const [resume, setResume] = useState<ResumeInfo | null>(null);
     const [resumeChecked, setResumeChecked] = useState(false);
+    const [perClipStt, setPerClipStt] = useState(false);
 
     // Ping + resume check on mount
     useEffect(() => {
@@ -182,8 +183,12 @@ export default function App() {
                     onTimelineModeChange={(m) =>
                         setUserSettings({ ...userSettings, timeline_mode: m })
                     }
+                    perClipStt={perClipStt}
+                    onPerClipSttChange={setPerClipStt}
                     onNext={async () => {
-                        const r = await api.analyze(timelineName, preset);
+                        const r = await api.analyze(timelineName, preset, {
+                            perClipStt,
+                        });
                         setRunId(r.run_id);
                         saveSession({
                             runId: r.run_id,

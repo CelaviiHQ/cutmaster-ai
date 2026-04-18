@@ -83,6 +83,63 @@ async def _extract_audio(tl, run, emit) -> tuple[Path, float] | None:
     return wav_path, float(result["duration_s"])
 
 
+async def _transcribe_per_clip(tl, run, emit) -> list[dict] | None:
+    """v2-6: run STT per timeline audio item, stitch the results.
+
+    Falls back cleanly if any take has no media-pool backing — each skipped
+    item surfaces in the event payload so the user can diagnose.
+    """
+    await emit(run, stage="stt", status="started",
+               message="Transcribing per clip (Gemini parallel)")
+
+    from .per_clip_stt import (  # lazy — avoids ffmpeg / Gemini at import
+        build_clip_audio_specs,
+        extract_per_clip_audio,
+        transcribe_per_clip,
+    )
+
+    specs = build_clip_audio_specs(tl)
+    if not specs:
+        await emit(run, stage="stt", status="failed",
+                   message="no audio items with source backing for per-clip STT")
+        return None
+
+    extract_dir = state.audio_path_for(run["run_id"]).parent / run["run_id"]
+    extract_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        specs = await asyncio.to_thread(extract_per_clip_audio, specs, extract_dir)
+    except Exception as exc:
+        await emit(run, stage="stt", status="failed",
+                   message=f"per-clip ffmpeg extract failed: {exc}")
+        return None
+
+    try:
+        stitched, stats = await transcribe_per_clip(specs)
+    except Exception as exc:
+        await emit(run, stage="stt", status="failed",
+                   message=f"per-clip STT failed: {exc}")
+        return None
+
+    run["transcript"] = stitched
+    state.save(run)
+
+    await emit(
+        run, stage="stt", status="complete",
+        message=(
+            f"Transcribed {len(stitched)} words across {len(specs)} clips "
+            f"(cache: {stats['cache_hits']} hits / {stats['cache_misses']} misses)"
+        ),
+        data={
+            "word_count": len(stitched),
+            "clips": len(specs),
+            "cache_hits": stats["cache_hits"],
+            "cache_misses": stats["cache_misses"],
+            "dropped_out_of_range": stats["dropped"],
+        },
+    )
+    return stitched
+
+
 async def _transcribe(
     wav_path: Path,
     audio_duration_s: float,
@@ -143,6 +200,7 @@ async def run_analyze(
     timeline_name: str,
     preset: str = "auto",
     scrub_params: ScrubParams | None = None,
+    per_clip_stt: bool = False,
 ) -> None:
     """Top-level analyze orchestrator.
 
@@ -178,22 +236,34 @@ async def run_analyze(
             await state.emit(run, stage="done", status="failed", message="halted on VFR")
             return
 
-        audio_result = await _extract_audio(tl, run, state.emit)
-        if audio_result is None:
-            run["status"] = "failed"
-            run["error"] = "audio_extract_failed"
-            state.save(run)
-            await state.emit(run, stage="done", status="failed", message="halted on audio extract")
-            return
-        wav_path, audio_duration_s = audio_result
+        if per_clip_stt:
+            # v2-6: skip the global concat, run STT per timeline item, and
+            # attach clip_index + clip_metadata to every word.
+            words = await _transcribe_per_clip(tl, run, state.emit)
+            if words is None:
+                run["status"] = "failed"
+                run["error"] = "per_clip_stt_failed"
+                state.save(run)
+                await state.emit(run, stage="done", status="failed",
+                                 message="halted on per-clip STT")
+                return
+        else:
+            audio_result = await _extract_audio(tl, run, state.emit)
+            if audio_result is None:
+                run["status"] = "failed"
+                run["error"] = "audio_extract_failed"
+                state.save(run)
+                await state.emit(run, stage="done", status="failed", message="halted on audio extract")
+                return
+            wav_path, audio_duration_s = audio_result
 
-        words = await _transcribe(wav_path, audio_duration_s, run, state.emit)
-        if words is None:
-            run["status"] = "failed"
-            run["error"] = "stt_failed"
-            state.save(run)
-            await state.emit(run, stage="done", status="failed", message="halted on STT")
-            return
+            words = await _transcribe(wav_path, audio_duration_s, run, state.emit)
+            if words is None:
+                run["status"] = "failed"
+                run["error"] = "stt_failed"
+                state.save(run)
+                await state.emit(run, stage="done", status="failed", message="halted on STT")
+                return
 
         await _scrub_stage(words, scrub_params or ScrubParams(), run, state.emit)
 

@@ -204,6 +204,42 @@ def test_assembled_prompt_speaker_block_reflects_flattened_takes():
     assert "S1" in prompt and "S2" in prompt
 
 
+def test_prompt_renders_clip_metadata_block_when_words_carry_clip_index():
+    preset = get_preset("vlog")
+    transcript = [
+        {
+            "word": "Hello", "start_time": 0.0, "end_time": 0.4,
+            "speaker_id": "S1",
+            "clip_index": 0,
+            "clip_metadata": {
+                "source_name": "DJI_0006.MP4",
+                "duration_s": 3.0,
+                "timeline_offset_s": 0.0,
+            },
+        },
+        {
+            "word": "world.", "start_time": 3.1, "end_time": 3.6,
+            "speaker_id": "S1",
+            "clip_index": 1,
+            "clip_metadata": {
+                "source_name": "DJI_0007.MP4",
+                "duration_s": 2.5,
+                "timeline_offset_s": 3.0,
+            },
+        },
+    ]
+    prompt = director._prompt(preset, transcript, user_settings={})
+    assert "CLIP METADATA" in prompt
+    assert "DJI_0006.MP4" in prompt
+    assert "DJI_0007.MP4" in prompt
+
+
+def test_prompt_no_clip_metadata_block_when_absent():
+    preset = get_preset("vlog")
+    prompt = director._prompt(preset, TRANSCRIPT, user_settings={})
+    assert "CLIP METADATA" not in prompt
+
+
 def test_every_preset_has_speaker_awareness_field():
     """Schema-level invariant: after v2-5 every preset carries the field,
     even if empty. Guards against someone adding a preset without it."""

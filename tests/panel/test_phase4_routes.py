@@ -625,6 +625,55 @@ def test_build_plan_rejects_unknown_format(client, monkeypatch, scrubbed_run):
     assert r.status_code == 422
 
 
+def test_analyze_accepts_per_clip_stt_flag(client: TestClient, monkeypatch):
+    """v2-6: AnalyzeRequest must accept per_clip_stt and forward it to
+    run_analyze so the pipeline branches into the per-clip STT path."""
+    from celavii_resolve.cutmaster import pipeline as pipeline_mod
+
+    captured: dict = {}
+
+    async def fake_run_analyze(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(routes, "run_analyze", fake_run_analyze)
+    # The analyze route spawns the task via asyncio.create_task; invoking
+    # the fake is synchronous enough that we can just await it in the route.
+    _ = pipeline_mod
+
+    r = client.post("/cutmaster/analyze", json={
+        "timeline_name": "T1",
+        "preset": "auto",
+        "per_clip_stt": True,
+    })
+    assert r.status_code == 200
+    # Let the scheduled task run.
+    import time as _time
+    for _ in range(10):
+        if captured:
+            break
+        _time.sleep(0.01)
+    assert captured.get("per_clip_stt") is True
+    assert captured.get("timeline_name") == "T1"
+
+
+def test_analyze_per_clip_stt_defaults_to_false(client: TestClient, monkeypatch):
+    captured: dict = {}
+
+    async def fake_run_analyze(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(routes, "run_analyze", fake_run_analyze)
+
+    r = client.post("/cutmaster/analyze", json={"timeline_name": "T1"})
+    assert r.status_code == 200
+    import time as _time
+    for _ in range(10):
+        if captured:
+            break
+        _time.sleep(0.01)
+    assert captured.get("per_clip_stt") is False
+
+
 def test_speakers_endpoint_returns_roster_from_scrubbed(
     client: TestClient, scrubbed_run,
 ):

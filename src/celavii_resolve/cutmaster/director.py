@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from . import llm
+from .per_clip_stt import clip_metadata_table
 from .speakers import apply_speaker_labels, detect_speakers, speaker_stats
 
 if TYPE_CHECKING:
@@ -222,6 +223,26 @@ def _maybe_relabel_transcript(
     return apply_speaker_labels(transcript, labels)
 
 
+def _clip_metadata_block(transcript: list[dict]) -> str:
+    """Render a CLIP METADATA block when words carry ``clip_metadata`` (v2-6).
+
+    Per-clip STT (``UserSettings.per_clip_stt=True``) annotates every word
+    with ``clip_index`` + ``clip_metadata``; older analyze runs don't.
+    When metadata is absent this returns an empty string and the block is
+    skipped — same wire contract as the exclude / focus / speaker blocks.
+    """
+    table = clip_metadata_table(transcript)
+    if not table:
+        return ""
+    return (
+        "CLIP METADATA — each word below carries a `clip_index` linking "
+        "it to one of these source clips. Treat short, dated, or one-off "
+        "clips as more editorially 'precious' than long meandering clips; "
+        "consider the clip's position when deciding structure.\n"
+        f"{table}"
+    )
+
+
 def _relabel_takes(
     takes: list[dict],
     user_settings: dict | None,
@@ -265,7 +286,10 @@ def _prompt(preset: PresetBundle, transcript: list[dict], user_settings: dict | 
     exclude = _exclude_block(preset, user_settings)
     focus = _focus_block(user_settings)
     speakers = _speaker_block(preset, transcript, user_settings)
-    optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers) if b)
+    clip_meta = _clip_metadata_block(transcript)
+    optional_blocks = "\n\n".join(
+        b for b in (exclude, focus, speakers, clip_meta) if b
+    )
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     transcript_for_prompt = _maybe_relabel_transcript(transcript, user_settings)
     return f"""You are a {preset.role}.
@@ -399,7 +423,10 @@ def _assembled_prompt(
     for t in takes:
         flat_words.extend(t.get("transcript") or [])
     speakers = _speaker_block(preset, flat_words, user_settings)
-    optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers) if b)
+    clip_meta = _clip_metadata_block(flat_words)
+    optional_blocks = "\n\n".join(
+        b for b in (exclude, focus, speakers, clip_meta) if b
+    )
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     takes_for_prompt = _relabel_takes(takes, user_settings)
 
@@ -591,7 +618,10 @@ def _clip_hunter_prompt(
     exclude = _exclude_block(preset, user_settings)
     focus = _focus_block(user_settings)
     speakers = _speaker_block(preset, transcript, user_settings)
-    optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers) if b)
+    clip_meta = _clip_metadata_block(transcript)
+    optional_blocks = "\n\n".join(
+        b for b in (exclude, focus, speakers, clip_meta) if b
+    )
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     transcript_for_prompt = _maybe_relabel_transcript(transcript, user_settings)
     low = target_clip_length_s * 0.6
