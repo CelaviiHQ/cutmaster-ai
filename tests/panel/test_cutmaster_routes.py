@@ -39,7 +39,7 @@ def client(monkeypatch) -> TestClient:
         run["status"] = "done"
         state.save(run)
 
-    monkeypatch.setattr(routes, "run_analyze", fake_pipeline)
+    monkeypatch.setattr(routes.analyze, "run_analyze", fake_pipeline)
     return TestClient(create_app())
 
 

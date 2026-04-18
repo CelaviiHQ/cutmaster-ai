@@ -99,8 +99,8 @@ def test_build_plan_accepts_and_persists_v2_10_format_fields(
         selected_clips=[CutSegment(start_s=0.0, end_s=0.95, reason="hook")],
         reasoning="ok",
     )
-    monkeypatch.setattr(routes, "build_cut_plan", lambda *_a, **_k: plan)
-    monkeypatch.setattr(routes, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    monkeypatch.setattr(routes.build, "build_cut_plan", lambda *_a, **_k: plan)
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
 
     fake_tl = MagicMock()
     fake_tl.GetSetting.return_value = "24"
@@ -113,7 +113,7 @@ def test_build_plan_accepts_and_persists_v2_10_format_fields(
 
     monkeypatch.setattr(resolve_mod, "_boilerplate", fake_boilerplate)
     monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl)
-    monkeypatch.setattr(routes, "resolve_segments", lambda _tl, _segs: [])
+    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs: [])
 
     r = client.post(
         "/cutmaster/build-plan",
@@ -172,9 +172,9 @@ def test_build_plan_assembled_mode_uses_assembled_director(
     def forbidden_build_cut_plan(*_a, **_k):
         raise AssertionError("v1 Director should not run in assembled mode")
 
-    monkeypatch.setattr(routes, "build_assembled_cut_plan", fake_build_assembled)
-    monkeypatch.setattr(routes, "build_cut_plan", forbidden_build_cut_plan)
-    monkeypatch.setattr(routes, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    monkeypatch.setattr(routes.build, "build_assembled_cut_plan", fake_build_assembled)
+    monkeypatch.setattr(routes.build, "build_cut_plan", forbidden_build_cut_plan)
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
 
     # Stub items on the timeline: one take covering [0, 2) s.
     fake_items = [
@@ -185,7 +185,7 @@ def test_build_plan_assembled_mode_uses_assembled_director(
             "end_s": 2.0,
         }
     ]
-    monkeypatch.setattr(routes, "read_items_on_track", lambda _tl, track_index=1: fake_items)
+    monkeypatch.setattr(routes.build, "read_items_on_track", lambda _tl, track_index=1: fake_items)
 
     fake_tl = MagicMock()
     fake_tl.GetSetting.return_value = "24"
@@ -215,7 +215,7 @@ def test_build_plan_assembled_mode_uses_assembled_director(
             warnings=[],
         ),
     ]
-    monkeypatch.setattr(routes, "resolve_segments", lambda _tl, _segs: resolved_stub)
+    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs: resolved_stub)
 
     r = client.post(
         "/cutmaster/build-plan",
@@ -286,19 +286,19 @@ def test_build_plan_assembled_uses_raw_transcript_when_takes_already_scrubbed(
             reasoning="",
         )
 
-    monkeypatch.setattr(routes, "build_assembled_cut_plan", fake_build_assembled)
+    monkeypatch.setattr(routes.build, "build_assembled_cut_plan", fake_build_assembled)
     monkeypatch.setattr(
-        routes, "build_cut_plan", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError())
+        routes.build, "build_cut_plan", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError())
     )
-    monkeypatch.setattr(routes, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
     monkeypatch.setattr(
-        routes,
+        routes.build,
         "read_items_on_track",
         lambda _tl, track_index=1: [
             {"item_index": 0, "source_name": "t.mov", "start_s": 0.0, "end_s": 1.0},
         ],
     )
-    monkeypatch.setattr(routes, "resolve_segments", lambda _tl, _segs: [])
+    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs: [])
 
     fake_tl = MagicMock()
     fake_tl.GetSetting.return_value = "24"
@@ -373,10 +373,10 @@ def test_build_plan_clip_hunter_stores_candidates_and_skips_director(
     def forbidden_marker(*_a, **_k):
         raise AssertionError("clip_hunter path must NOT call the Marker agent")
 
-    monkeypatch.setattr(routes, "build_clip_hunter_plan", fake_hunter)
-    monkeypatch.setattr(routes, "build_cut_plan", forbidden_director)
-    monkeypatch.setattr(routes, "build_assembled_cut_plan", forbidden_assembled)
-    monkeypatch.setattr(routes, "suggest_markers", forbidden_marker)
+    monkeypatch.setattr(routes.build, "build_clip_hunter_plan", fake_hunter)
+    monkeypatch.setattr(routes.build, "build_cut_plan", forbidden_director)
+    monkeypatch.setattr(routes.build, "build_assembled_cut_plan", forbidden_assembled)
+    monkeypatch.setattr(routes.build, "suggest_markers", forbidden_marker)
 
     fake_tl = MagicMock()
     fake_tl.GetSetting.return_value = "24"
@@ -411,7 +411,7 @@ def test_build_plan_clip_hunter_stores_candidates_and_skips_director(
             for s in segs
         ]
 
-    monkeypatch.setattr(routes, "resolve_segments", fake_resolver)
+    monkeypatch.setattr(routes.build, "resolve_segments", fake_resolver)
 
     r = client.post(
         "/cutmaster/build-plan",
@@ -562,7 +562,7 @@ def test_execute_clip_hunter_swaps_resolved_segments_to_selected_candidate(
             "snapshot_size_kb": 1.0,
         }
 
-    monkeypatch.setattr(routes, "execute_plan", fake_execute_plan)
+    monkeypatch.setattr(routes.execute, "execute_plan", fake_execute_plan)
 
     # Pick candidate index 1.
     r = client.post(
@@ -644,9 +644,9 @@ def test_build_plan_tightener_skips_director_and_returns_stats(
     def forbidden_marker(*_a, **_k):
         raise AssertionError("tightener path must NOT call the Marker agent")
 
-    monkeypatch.setattr(routes, "build_cut_plan", forbidden_director)
-    monkeypatch.setattr(routes, "build_assembled_cut_plan", forbidden_assembled)
-    monkeypatch.setattr(routes, "suggest_markers", forbidden_marker)
+    monkeypatch.setattr(routes.build, "build_cut_plan", forbidden_director)
+    monkeypatch.setattr(routes.build, "build_assembled_cut_plan", forbidden_assembled)
+    monkeypatch.setattr(routes.build, "suggest_markers", forbidden_marker)
 
     fake_items = [
         {
@@ -656,7 +656,7 @@ def test_build_plan_tightener_skips_director_and_returns_stats(
             "end_s": 4.0,
         }
     ]
-    monkeypatch.setattr(routes, "read_items_on_track", lambda _tl, track_index=1: fake_items)
+    monkeypatch.setattr(routes.build, "read_items_on_track", lambda _tl, track_index=1: fake_items)
 
     fake_tl = MagicMock()
     fake_tl.GetSetting.return_value = "24"
@@ -668,7 +668,7 @@ def test_build_plan_tightener_skips_director_and_returns_stats(
         resolve_mod, "_boilerplate", lambda: (MagicMock(), MagicMock(), MagicMock())
     )
     monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl)
-    monkeypatch.setattr(routes, "resolve_segments", lambda _tl, _segs: [])
+    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs: [])
 
     r = client.post(
         "/cutmaster/build-plan",
@@ -758,7 +758,7 @@ def test_analyze_accepts_stt_provider(client: TestClient, monkeypatch):
     async def fake_run_analyze(**kwargs):
         captured.update(kwargs)
 
-    monkeypatch.setattr(routes, "run_analyze", fake_run_analyze)
+    monkeypatch.setattr(routes.analyze, "run_analyze", fake_run_analyze)
     r = client.post(
         "/cutmaster/analyze",
         json={
@@ -856,7 +856,7 @@ def test_analyze_accepts_per_clip_stt_flag(client: TestClient, monkeypatch):
     async def fake_run_analyze(**kwargs):
         captured.update(kwargs)
 
-    monkeypatch.setattr(routes, "run_analyze", fake_run_analyze)
+    monkeypatch.setattr(routes.analyze, "run_analyze", fake_run_analyze)
     # The analyze route spawns the task via asyncio.create_task; invoking
     # the fake is synchronous enough that we can just await it in the route.
     _ = pipeline_mod
@@ -889,7 +889,7 @@ def test_analyze_accepts_expected_speakers(client: TestClient, monkeypatch):
     async def fake_run_analyze(**kwargs):
         captured.update(kwargs)
 
-    monkeypatch.setattr(routes, "run_analyze", fake_run_analyze)
+    monkeypatch.setattr(routes.analyze, "run_analyze", fake_run_analyze)
 
     r = client.post(
         "/cutmaster/analyze",
@@ -929,7 +929,7 @@ def test_analyze_per_clip_stt_defaults_to_false(client: TestClient, monkeypatch)
     async def fake_run_analyze(**kwargs):
         captured.update(kwargs)
 
-    monkeypatch.setattr(routes, "run_analyze", fake_run_analyze)
+    monkeypatch.setattr(routes.analyze, "run_analyze", fake_run_analyze)
 
     r = client.post("/cutmaster/analyze", json={"timeline_name": "T1"})
     assert r.status_code == 200
@@ -982,8 +982,8 @@ def test_build_plan_round_trips_speaker_labels(
         selected_clips=[CutSegment(start_s=0.0, end_s=0.95, reason="hook")],
         reasoning="",
     )
-    monkeypatch.setattr(routes, "build_cut_plan", lambda *_a, **_k: plan)
-    monkeypatch.setattr(routes, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    monkeypatch.setattr(routes.build, "build_cut_plan", lambda *_a, **_k: plan)
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
 
     fake_tl = MagicMock()
     fake_tl.GetSetting.return_value = "24"
@@ -1001,7 +1001,7 @@ def test_build_plan_round_trips_speaker_labels(
         "_find_timeline_by_name",
         lambda _p, _n: fake_tl,
     )
-    monkeypatch.setattr(routes, "resolve_segments", lambda _tl, _segs: [])
+    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs: [])
 
     r = client.post(
         "/cutmaster/build-plan",
@@ -1079,7 +1079,7 @@ def test_build_plan(client: TestClient, scrubbed_run, monkeypatch):
         ],
         reasoning="hook → payoff",
     )
-    monkeypatch.setattr(routes, "build_cut_plan", lambda *a, **k: director_plan)
+    monkeypatch.setattr(routes.build, "build_cut_plan", lambda *a, **k: director_plan)
 
     # Mock Marker
     marker_plan = MarkerPlan(
@@ -1087,7 +1087,7 @@ def test_build_plan(client: TestClient, scrubbed_run, monkeypatch):
             MarkerSuggestion(at_s=1.2, name="B-Roll: target", note=""),
         ]
     )
-    monkeypatch.setattr(routes, "suggest_markers", lambda *a, **k: marker_plan)
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *a, **k: marker_plan)
 
     # Mock Resolve + source-frame resolver
     fake_project = MagicMock()
@@ -1137,7 +1137,7 @@ def test_build_plan(client: TestClient, scrubbed_run, monkeypatch):
             warnings=[],
         ),
     ]
-    monkeypatch.setattr(routes, "resolve_segments", lambda _tl, _segs: resolved)
+    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs: resolved)
 
     r = client.post(
         "/cutmaster/build-plan",
@@ -1170,9 +1170,9 @@ def test_build_plan_accepts_v2_fields_additively(client, monkeypatch, scrubbed_r
         selected_clips=[CutSegment(start_s=0.0, end_s=0.95, reason="hook")],
         reasoning="one beat",
     )
-    monkeypatch.setattr(routes, "build_cut_plan", lambda *_a, **_k: plan)
+    monkeypatch.setattr(routes.build, "build_cut_plan", lambda *_a, **_k: plan)
     monkeypatch.setattr(
-        routes,
+        routes.build,
         "suggest_markers",
         lambda *_a, **_k: MarkerPlan(markers=[]),
     )
@@ -1188,7 +1188,7 @@ def test_build_plan_accepts_v2_fields_additively(client, monkeypatch, scrubbed_r
 
     monkeypatch.setattr(resolve_mod, "_boilerplate", fake_boilerplate)
     monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl)
-    monkeypatch.setattr(routes, "resolve_segments", lambda _tl, _segs: [])
+    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs: [])
 
     r = client.post(
         "/cutmaster/build-plan",
@@ -1219,8 +1219,8 @@ def test_build_plan_omitted_v2_fields_use_safe_defaults(client, monkeypatch, scr
         selected_clips=[CutSegment(start_s=0.0, end_s=0.95, reason="hook")],
         reasoning="ok",
     )
-    monkeypatch.setattr(routes, "build_cut_plan", lambda *_a, **_k: plan)
-    monkeypatch.setattr(routes, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    monkeypatch.setattr(routes.build, "build_cut_plan", lambda *_a, **_k: plan)
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
 
     fake_tl = MagicMock()
     fake_tl.GetSetting.return_value = "24"
@@ -1233,7 +1233,7 @@ def test_build_plan_omitted_v2_fields_use_safe_defaults(client, monkeypatch, scr
 
     monkeypatch.setattr(resolve_mod, "_boilerplate", fake_boilerplate)
     monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl)
-    monkeypatch.setattr(routes, "resolve_segments", lambda _tl, _segs: [])
+    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs: [])
 
     r = client.post(
         "/cutmaster/build-plan",
