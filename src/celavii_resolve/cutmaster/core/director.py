@@ -65,16 +65,19 @@ def _close_to_any(value: float, sorted_values: list[float]) -> bool:
     return any(abs(value - v) <= TIMESTAMP_TOLERANCE_S for v in sorted_values)
 
 
-def _duration_budget(target_length_s: float) -> tuple[float, float, int, float]:
+def _duration_budget(
+    target_length_s: float, target_segment_s: float = 22.0
+) -> tuple[float, float, int, float]:
     """Return (floor_s, ceiling_s, min_segments, avg_span_s) for a target length.
 
     Mirrors the v2-11 Short Generator recipe: lite models satisfice on soft
     ranges, so we hand them pre-solved arithmetic (N segments × D seconds =
-    target) and reject plans that come in below the 75 % floor. Vlog-scale
-    average span (~22 s) is longer than a short's 8 s, matching the pacing
-    preset authors already wrote.
+    target) and reject plans that come in below the 75 % floor.
+    ``target_segment_s`` comes from the preset (vlog ~18 s, podcast ~35 s,
+    etc.) so the pre-solve matches the pacing the prompt is already
+    asking for.
     """
-    min_segments = max(8, round(target_length_s / 22))
+    min_segments = max(8, round(target_length_s / target_segment_s))
     avg_span = target_length_s / min_segments
     low = target_length_s * 0.75
     high = target_length_s * 1.25
@@ -82,6 +85,7 @@ def _duration_budget(target_length_s: float) -> tuple[float, float, int, float]:
 
 
 HOOK_TOLERANCE_S = 2.0
+COVERAGE_THRESHOLD = 0.7
 
 
 def validate_plan(
@@ -89,6 +93,7 @@ def validate_plan(
     transcript: list[dict],
     target_length_s: float | None = None,
     selected_hook_s: float | None = None,
+    preset: PresetBundle | None = None,
 ) -> list[str]:
     """Return a list of validation errors. Empty list = valid.
 
@@ -99,6 +104,11 @@ def validate_plan(
       4. hook_index is in range.
       5. When ``target_length_s`` is set: total span-sum within
          ``[0.75×, 1.25×]`` of target.
+      6. When ``preset`` has pacing bounds: each segment's duration lies
+         within ``[min_segment_s, max_segment_s]``.
+      7. When the transcript carries ``clip_index`` (per-clip STT) and
+         ``preset`` is set: at least COVERAGE_THRESHOLD of eligible clips
+         (≥ 30 words) are touched by some segment.
     """
     starts, ends = _build_timestamp_sets(transcript)
     errors: list[str] = []
@@ -142,8 +152,49 @@ def validate_plan(
                 f"{selected_hook_s:.2f}s and place it at hook_index."
             )
 
+    if preset is not None:
+        min_s = preset.min_segment_s
+        max_s = preset.max_segment_s
+        for i, seg in enumerate(plan.selected_clips):
+            duration = seg.end_s - seg.start_s
+            if duration < min_s:
+                errors.append(
+                    f"segment[{i}]: {duration:.1f}s is under the {min_s:.0f}s pacing floor "
+                    f"for this {preset.label} preset — extend the block or drop it."
+                )
+            elif duration > max_s:
+                errors.append(
+                    f"segment[{i}]: {duration:.1f}s exceeds the {max_s:.0f}s pacing ceiling "
+                    f"for this {preset.label} preset — split or tighten the block."
+                )
+
+    if preset is not None:
+        eligible = _eligible_clip_indexes(transcript)
+        if len(eligible) >= 2:
+            covered = _covered_clip_indexes(plan, transcript)
+            touched = len(covered & eligible)
+            ratio = touched / len(eligible)
+            log.info(
+                "director: per-clip coverage %d/%d (%.0f%%, threshold %.0f%%)",
+                touched,
+                len(eligible),
+                ratio * 100,
+                COVERAGE_THRESHOLD * 100,
+            )
+            if ratio < COVERAGE_THRESHOLD:
+                missing = sorted(eligible - covered)
+                errors.append(
+                    f"per-clip coverage: touched {touched}/{len(eligible)} eligible "
+                    f"clips ({ratio * 100:.0f}%, threshold {COVERAGE_THRESHOLD * 100:.0f}%). "
+                    f"Add segments from clip_index {missing[:5]}"
+                    + (" …" if len(missing) > 5 else "")
+                    + " so every substantial clip the editor placed appears "
+                    "in the cut at least once."
+                )
+
     if target_length_s and target_length_s > 0:
-        low, high, min_segments, avg_span = _duration_budget(target_length_s)
+        target_segment_s = preset.target_segment_s if preset else 22.0
+        low, high, min_segments, avg_span = _duration_budget(target_length_s, target_segment_s)
         total = sum(max(0.0, seg.end_s - seg.start_s) for seg in plan.selected_clips)
         log.info(
             "director: plan total=%.1fs target=%.0fs floor=%.1fs ceiling=%.1fs segments=%d",
@@ -399,13 +450,14 @@ opening beat. Do not substitute a different hook, even if you think \
 another line would be stronger."""
 
 
-def _target_length_recipe_block(user_settings: dict | None) -> str:
+def _target_length_recipe_block(
+    user_settings: dict | None, preset: PresetBundle | None = None
+) -> str:
     """Render the NON-NEGOTIABLE target-length recipe block, or empty string.
 
     Only emits when ``target_length_s`` is set. Pre-solves the segment-count
-    arithmetic so the model has a concrete recipe to imitate rather than a
-    range to minimise against — same intervention that fixed the Short
-    Generator's under-selection failure mode in v2-11.
+    arithmetic using the preset's ``target_segment_s`` so the recipe agrees
+    with the structured-pacing bounds rendered elsewhere in the prompt.
     """
     if not user_settings:
         return ""
@@ -413,7 +465,10 @@ def _target_length_recipe_block(user_settings: dict | None) -> str:
     if not target or float(target) <= 0:
         return ""
     target = float(target)
-    low, high, min_segments, avg_span = _duration_budget(target)
+    target_segment_s = preset.target_segment_s if preset else 22.0
+    min_segment_s = preset.min_segment_s if preset else 3.0
+    max_segment_s = preset.max_segment_s if preset else 40.0
+    low, high, min_segments, avg_span = _duration_budget(target, target_segment_s)
     return f"""### TARGET LENGTH — NON-NEGOTIABLE
 The final cut runs **{target:.0f} seconds** on screen. Not half that. Not a \
 minute-viable highlight. **{target:.0f}s.** The editor is paying to fill \
@@ -423,7 +478,7 @@ under {low:.0f}s is a failed deliverable.
 ### RECIPE — follow exactly to hit the target:
 - Pick **at least {min_segments} segments**.
 - Average segment length **~{avg_span:.0f} seconds** (individual segments \
-5–35s are legal; aim for 12–25s on vlog-style content).
+{min_segment_s:.0f}–{max_segment_s:.0f}s are legal; aim for ~{target_segment_s:.0f}s).
 - {min_segments} × {avg_span:.0f}s = {target:.0f}s. If your plan comes in \
 below {low:.0f}s, you picked too few segments — go back and add more from \
 the transcript.
@@ -434,6 +489,74 @@ not under-cut to protect editorial purity; the editor will drop segments \
 they don't like in review."""
 
 
+def _pacing_block(preset: PresetBundle | None) -> str:
+    """Render structured pacing bounds as an explicit PACING block."""
+    if preset is None:
+        return ""
+    return (
+        "### PACING BOUNDS\n"
+        f"Every individual segment must run between "
+        f"**{preset.min_segment_s:.0f}s** and **{preset.max_segment_s:.0f}s**. "
+        f"Aim for ~**{preset.target_segment_s:.0f}s** per segment — that's the "
+        f"pacing this content type ({preset.label}) expects. "
+        f"Segments shorter than {preset.min_segment_s:.0f}s feel like jump cuts; "
+        f"longer than {preset.max_segment_s:.0f}s kills retention. "
+        f"Style note: {preset.pacing}."
+    )
+
+
+def _coverage_block(transcript: list[dict]) -> str:
+    """Render PER-CLIP COVERAGE rule when the transcript carries clip_index."""
+    eligible = _eligible_clip_indexes(transcript)
+    if len(eligible) < 2:
+        return ""  # single-clip timelines or concat STT — skip the rule
+    return (
+        "### PER-CLIP COVERAGE — NON-NEGOTIABLE\n"
+        f"The editor placed {len(eligible)} substantial source clips on the "
+        "timeline (≥ 30 words each, listed in the CLIP METADATA table). "
+        "Each was chosen deliberately — you must touch every eligible clip "
+        "at least once with a segment unless:\n"
+        "- its content is fully captured by an excluded category, OR\n"
+        "- every word in it was scrubbed out as filler / dead air.\n"
+        "Collapsing the cut onto 2–3 'best' clips and ignoring the rest is "
+        "a failed deliverable — the editor will see the missing clips and "
+        "reject the plan."
+    )
+
+
+def _eligible_clip_indexes(transcript: list[dict], min_words: int = 30) -> set[int]:
+    """Return the set of clip_index values with ≥ ``min_words`` words."""
+    counts: dict[int, int] = {}
+    for w in transcript:
+        ci = w.get("clip_index")
+        if ci is None:
+            continue
+        counts[int(ci)] = counts.get(int(ci), 0) + 1
+    return {ci for ci, n in counts.items() if n >= min_words}
+
+
+def _covered_clip_indexes(plan: DirectorPlan, transcript: list[dict]) -> set[int]:
+    """Return the set of clip_index values with at least one word inside a selected segment."""
+    # Sort segments once; scan transcript linearly.
+    intervals = sorted(
+        ((s.start_s, s.end_s) for s in plan.selected_clips if s.end_s > s.start_s),
+        key=lambda iv: iv[0],
+    )
+    covered: set[int] = set()
+    for w in transcript:
+        ci = w.get("clip_index")
+        if ci is None:
+            continue
+        t = float(w.get("start_time", 0.0))
+        for start_s, end_s in intervals:
+            if start_s <= t < end_s:
+                covered.add(int(ci))
+                break
+            if t < start_s:
+                break
+    return covered
+
+
 def _prompt(preset: PresetBundle, transcript: list[dict], user_settings: dict | None) -> str:
     exclude = _exclude_block(preset, user_settings)
     focus = _focus_block(user_settings)
@@ -441,9 +564,11 @@ def _prompt(preset: PresetBundle, transcript: list[dict], user_settings: dict | 
     clip_meta = _clip_metadata_block(transcript)
     optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers, clip_meta) if b)
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
-    recipe = _target_length_recipe_block(user_settings)
+    recipe = _target_length_recipe_block(user_settings, preset)
     hook = _selected_hook_block(user_settings)
-    recipe_section = "\n\n".join(b for b in (hook, recipe) if b)
+    pacing = _pacing_block(preset)
+    coverage = _coverage_block(transcript)
+    recipe_section = "\n\n".join(b for b in (hook, recipe, pacing, coverage) if b)
     recipe_section = f"\n\n{recipe_section}" if recipe_section else ""
     transcript_for_prompt = _shape_for_prompt(transcript, user_settings)
     return f"""You are a {preset.role}.
@@ -452,7 +577,7 @@ You will receive a transcript array where each item has a `word`, `start_time`, 
 
 RULES — follow exactly:
 1. Identify the HOOK: {preset.hook_rule}. The hook's CutSegment becomes position 0 in the output, even if it's not the earliest in the transcript.
-2. Pacing: {preset.pacing}.
+2. Every segment's duration must respect the PACING BOUNDS block above.
 3. Do not alter, edit, paraphrase, or summarize ANY word. You may only select blocks of existing words.
 4. For each CutSegment, `start_s` MUST equal the `start_time` of the first word in the block, and `end_s` MUST equal the `end_time` of the last word. Do not round, truncate, or invent timestamps. If unsure, skip that block.
 5. Blocks must be word-aligned and non-overlapping.
@@ -496,7 +621,9 @@ def build_cut_plan(
         agent="director",
         prompt=prompt,
         response_schema=DirectorPlan,
-        validate=lambda plan: validate_plan(plan, transcript, target_length_s, selected_hook_s),
+        validate=lambda plan: validate_plan(
+            plan, transcript, target_length_s, selected_hook_s, preset
+        ),
         temperature=0.4,
     )
 

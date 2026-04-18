@@ -43,6 +43,25 @@ class PresetBundle(BaseModel):
     role: str
     hook_rule: str
     pacing: str
+    # Structured pacing — the Director prompt renders min/max/target as
+    # explicit bounds and validate_plan rejects segments outside
+    # [min_segment_s, max_segment_s]. ``target_segment_s`` also drives the
+    # target-length recipe (N segments × target = total), replacing the
+    # formerly-magic "22s" default. Presets that bypass the standard
+    # Director path (tightener, clip_hunter, short_generator) still carry
+    # values for schema symmetry; they're unused on those paths.
+    min_segment_s: float = Field(
+        default=3.0,
+        description="Lower bound on individual segment duration (seconds).",
+    )
+    target_segment_s: float = Field(
+        default=18.0,
+        description="Preferred per-segment duration. Drives the target-length recipe arithmetic.",
+    )
+    max_segment_s: float = Field(
+        default=40.0,
+        description="Upper bound on individual segment duration (seconds).",
+    )
     cue_vocabulary: list[str]
     marker_vocabulary: list[str]
     theme_axes: list[str]
@@ -137,6 +156,9 @@ PRODUCT_DEMO = PresetBundle(
     role="senior product marketing editor",
     hook_rule="the problem/benefit framing that earns the viewer's attention in the first 15 seconds",
     pacing="one beat per feature, no rambling, demo-first",
+    min_segment_s=4.0,
+    target_segment_s=12.0,
+    max_segment_s=30.0,
     cue_vocabulary=[
         "look at",
         "notice the",
@@ -194,6 +216,9 @@ WEDDING = PresetBundle(
     role="wedding cinema editor",
     hook_rule="the emotional peak (first kiss, vows highlight, or key family moment)",
     pacing="breathing room — let ambient silence and music-led beats land",
+    min_segment_s=5.0,
+    target_segment_s=25.0,
+    max_segment_s=60.0,
     cue_vocabulary=[
         "walking down",
         "first kiss",
@@ -259,6 +284,9 @@ INTERVIEW = PresetBundle(
     role="documentary interview editor",
     hook_rule="the strongest quote in the transcript, regardless of chronological position",
     pacing="preserve conversational cadence; don't rush the subject's pauses",
+    min_segment_s=6.0,
+    target_segment_s=22.0,
+    max_segment_s=50.0,
     cue_vocabulary=[
         "I remember when",
         "the first time",
@@ -326,6 +354,9 @@ TUTORIAL = PresetBundle(
     role="educational content editor",
     hook_rule="an outcome or result preview — what the viewer will be able to do by the end",
     pacing="aggressive on intro/preamble; never rush during actual steps or demos",
+    min_segment_s=5.0,
+    target_segment_s=20.0,
+    max_segment_s=45.0,
     cue_vocabulary=[
         "step one",
         "first",
@@ -386,6 +417,9 @@ PODCAST = PresetBundle(
     role="podcast-to-video editor",
     hook_rule="the strongest exchange in the first third of the runtime",
     pacing="conversation-paced — do not fragment question/answer pairs",
+    min_segment_s=8.0,
+    target_segment_s=35.0,
+    max_segment_s=90.0,
     cue_vocabulary=[
         "that reminds me",
         "speaking of",
@@ -453,6 +487,9 @@ REACTION = PresetBundle(
     role="reaction-content editor",
     hook_rule="the biggest genuine reaction or laugh in the clip",
     pacing="light scrub — let reactions and pauses breathe; don't sterilize",
+    min_segment_s=4.0,
+    target_segment_s=15.0,
+    max_segment_s=35.0,
     cue_vocabulary=[
         "wait",
         "what",
