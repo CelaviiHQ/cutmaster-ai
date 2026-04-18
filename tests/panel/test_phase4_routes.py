@@ -625,6 +625,62 @@ def test_build_plan_rejects_unknown_format(client, monkeypatch, scrubbed_run):
     assert r.status_code == 422
 
 
+def test_project_info_returns_timelines_with_current_flag(
+    client: TestClient, monkeypatch,
+):
+    """v2-8: /cutmaster/project-info lists every timeline in the open project
+    and marks which one is currently active in Resolve. Drives the Preset
+    screen's timeline picker."""
+    fake_current = MagicMock()
+    fake_current.GetName.return_value = "Timeline 2"
+
+    fake_tls = [
+        MagicMock(), MagicMock(), MagicMock(),
+    ]
+    fake_tls[0].GetName.return_value = "Timeline 1"
+    fake_tls[1].GetName.return_value = "Timeline 2"
+    fake_tls[2].GetName.return_value = "B-Roll"
+    for tl in fake_tls:
+        tl.GetItemListInTrack.side_effect = lambda _kind, _idx: []
+
+    fake_project = MagicMock()
+    fake_project.GetName.return_value = "Wedding 2026"
+    fake_project.GetCurrentTimeline.return_value = fake_current
+    fake_project.GetTimelineCount.return_value = 3
+    fake_project.GetTimelineByIndex.side_effect = (
+        lambda i: fake_tls[i - 1] if 1 <= i <= 3 else None
+    )
+
+    import celavii_resolve.resolve as resolve_mod
+
+    monkeypatch.setattr(
+        resolve_mod, "_boilerplate",
+        lambda: (MagicMock(), fake_project, MagicMock()),
+    )
+
+    r = client.get("/cutmaster/project-info")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["project_name"] == "Wedding 2026"
+    names = [t["name"] for t in body["timelines"]]
+    assert names == ["Timeline 1", "Timeline 2", "B-Roll"]
+    is_current = {t["name"]: t["is_current"] for t in body["timelines"]}
+    assert is_current == {"Timeline 1": False, "Timeline 2": True, "B-Roll": False}
+
+
+def test_project_info_503_when_resolve_unreachable(
+    client: TestClient, monkeypatch,
+):
+    import celavii_resolve.resolve as resolve_mod
+
+    def boom():
+        raise RuntimeError("Resolve is not running")
+
+    monkeypatch.setattr(resolve_mod, "_boilerplate", boom)
+    r = client.get("/cutmaster/project-info")
+    assert r.status_code == 503
+
+
 def test_analyze_accepts_per_clip_stt_flag(client: TestClient, monkeypatch):
     """v2-6: AnalyzeRequest must accept per_clip_stt and forward it to
     run_analyze so the pipeline branches into the per-clip STT path."""
@@ -654,6 +710,40 @@ def test_analyze_accepts_per_clip_stt_flag(client: TestClient, monkeypatch):
         _time.sleep(0.01)
     assert captured.get("per_clip_stt") is True
     assert captured.get("timeline_name") == "T1"
+
+
+def test_analyze_accepts_expected_speakers(client: TestClient, monkeypatch):
+    """v2-6 follow-up: expected_speakers must flow from AnalyzeRequest into
+    run_analyze so the pipeline can dispatch to the reconciler."""
+    captured: dict = {}
+
+    async def fake_run_analyze(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(routes, "run_analyze", fake_run_analyze)
+
+    r = client.post("/cutmaster/analyze", json={
+        "timeline_name": "T1",
+        "per_clip_stt": True,
+        "expected_speakers": 2,
+    })
+    assert r.status_code == 200
+    import time as _time
+    for _ in range(10):
+        if captured:
+            break
+        _time.sleep(0.01)
+    assert captured.get("expected_speakers") == 2
+    assert captured.get("per_clip_stt") is True
+
+
+def test_analyze_rejects_expected_speakers_out_of_range(client: TestClient):
+    # 0 and 11 both fall outside the ge=1, le=10 constraint.
+    for bad in (0, 11, -1):
+        r = client.post("/cutmaster/analyze", json={
+            "timeline_name": "T1", "expected_speakers": bad,
+        })
+        assert r.status_code == 422, f"expected 422 for {bad}, got {r.status_code}"
 
 
 def test_analyze_per_clip_stt_defaults_to_false(client: TestClient, monkeypatch):

@@ -164,6 +164,17 @@ export interface SpeakerRosterEntry {
   word_count: number;
 }
 
+export interface TimelineInfo {
+  name: string;
+  is_current: boolean;
+  item_count: number;
+}
+
+export interface ProjectInfo {
+  project_name: string;
+  timelines: TimelineInfo[];
+}
+
 export interface ClipCandidate {
   start_s: number;
   end_s: number;

@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from ...cutmaster import auto_detect as auto_detect_mod
+from ...cutmaster import director as director_mod
 from ...cutmaster import state
 from ...cutmaster import themes as themes_mod
 from ...cutmaster.assembled import (
@@ -71,6 +72,20 @@ class AnalyzeRequest(BaseModel):
             "default during v2 A/B trial."
         ),
     )
+    expected_speakers: int | None = Field(
+        default=None,
+        ge=1,
+        le=10,
+        description=(
+            "v2-6 follow-up: expected number of distinct real-world speakers "
+            "across the shoot. Only meaningful with per_clip_stt=True, where "
+            "Gemini assigns clip-local speaker_ids that don't align across "
+            "clips. When 1, the pipeline trivially collapses every speaker "
+            "to S1 (no LLM call). When >=2, a cheap Gemini-Flash-Lite "
+            "reconciliation call remaps clip-local IDs onto a consistent "
+            "global roster. When None, raw per-clip IDs are left in place."
+        ),
+    )
 
 
 class AnalyzeResponse(BaseModel):
@@ -104,6 +119,7 @@ async def analyze(body: AnalyzeRequest) -> AnalyzeResponse:
             preset=body.preset,
             scrub_params=body.scrub_params,
             per_clip_stt=body.per_clip_stt,
+            expected_speakers=body.expected_speakers,
         )
     )
 
@@ -239,6 +255,101 @@ async def source_aspect(run_id: str) -> SourceAspectResponse:
         aspect=w / h,
         recommended_format=rec.key,
     )
+
+
+def _dump_director_prompt(run_id: str, prompt_text: str) -> str:
+    """Write the Director prompt to disk + log the path for debugging.
+
+    Lands at ``~/.celavii/cutmaster/<run_id>.director_prompt.txt`` — one file
+    per run, overwritten on each Build. Gives you a ground-truth look at the
+    exact text Gemini will see (including every optional block). Returns the
+    path as a string so the caller can surface it in the response if it wants.
+    """
+    path = state.RUN_ROOT / f"{run_id}.director_prompt.txt"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(prompt_text, encoding="utf-8")
+    log.info(
+        "Director prompt (%d chars) written to %s", len(prompt_text), path,
+    )
+    return str(path)
+
+
+@router.get("/director-prompt/{run_id}")
+async def director_prompt(run_id: str) -> dict:
+    """Return the last-rendered Director prompt for this run (debug helper)."""
+    path = state.RUN_ROOT / f"{run_id}.director_prompt.txt"
+    if not path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"no prompt saved for run {run_id} — run Build plan first",
+        )
+    return {
+        "run_id": run_id,
+        "path": str(path),
+        "prompt": path.read_text(encoding="utf-8"),
+    }
+
+
+class TimelineInfo(BaseModel):
+    name: str
+    is_current: bool
+    item_count: int
+
+
+class ProjectInfoResponse(BaseModel):
+    project_name: str
+    timelines: list[TimelineInfo]
+
+
+@router.get("/project-info", response_model=ProjectInfoResponse)
+async def project_info() -> ProjectInfoResponse:
+    """Return the open project's name + every timeline in it.
+
+    Drives the Preset screen's timeline picker: instead of typing a name
+    free-hand, the user sees every timeline in the current project and
+    which one is active in Resolve. Returns a 503 when Resolve isn't
+    reachable so the UI can fall back to the legacy text input.
+    """
+    from ...resolve import _boilerplate  # lazy
+
+    try:
+        _, project, _ = _boilerplate()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Resolve unreachable: {exc}")
+
+    try:
+        project_name = project.GetName() or "(untitled project)"
+    except Exception:
+        project_name = "(unknown project)"
+
+    current = project.GetCurrentTimeline()
+    current_name = current.GetName() if current else None
+
+    timelines: list[TimelineInfo] = []
+    try:
+        count = int(project.GetTimelineCount() or 0)
+    except Exception:
+        count = 0
+
+    for i in range(1, count + 1):
+        tl = project.GetTimelineByIndex(i)
+        if tl is None:
+            continue
+        name = tl.GetName() or f"Timeline {i}"
+        try:
+            items = (tl.GetItemListInTrack("video", 1) or []) + (
+                tl.GetItemListInTrack("audio", 1) or []
+            )
+            item_count = len(items)
+        except Exception:
+            item_count = 0
+        timelines.append(TimelineInfo(
+            name=name,
+            is_current=(name == current_name),
+            item_count=item_count,
+        ))
+
+    return ProjectInfoResponse(project_name=project_name, timelines=timelines)
 
 
 class SpeakerRosterEntry(BaseModel):
@@ -448,6 +559,14 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         target_clip_length_s = float(body.user_settings.target_length_s or 60)
         num_clips = body.user_settings.num_clips
 
+        _dump_director_prompt(
+            body.run_id,
+            director_mod._clip_hunter_prompt(
+                preset, scrubbed, settings_dict,
+                target_clip_length_s, num_clips,
+            ),
+        )
+
         try:
             hunter_plan = await asyncio.to_thread(
                 build_clip_hunter_plan,
@@ -651,6 +770,11 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         per_item = split_transcript_per_item(transcript_for_takes, items)
         takes = build_take_entries(items, per_item)
 
+        _dump_director_prompt(
+            body.run_id,
+            director_mod._assembled_prompt(preset, takes, settings_dict),
+        )
+
         try:
             assembled_plan = await asyncio.to_thread(
                 build_assembled_cut_plan, takes, preset, settings_dict
@@ -669,6 +793,10 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         )
     else:
         # v1 raw-dump path — unchanged.
+        _dump_director_prompt(
+            body.run_id,
+            director_mod._prompt(preset, scrubbed, settings_dict),
+        )
         try:
             plan = await asyncio.to_thread(
                 build_cut_plan, scrubbed, preset, settings_dict

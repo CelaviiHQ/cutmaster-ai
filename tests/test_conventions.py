@@ -63,6 +63,7 @@ TOOL_MODULES = [
     "celavii_resolve.cutmaster.marker_agent",
     "celavii_resolve.cutmaster.speakers",
     "celavii_resolve.cutmaster.per_clip_stt",
+    "celavii_resolve.cutmaster.speaker_reconcile",
     "celavii_resolve.cutmaster.auto_detect",
     "celavii_resolve.cutmaster.themes",
     "celavii_resolve.cutmaster.resolve_segments",

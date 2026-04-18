@@ -35,6 +35,7 @@ DEFAULTS: dict[str, str] = {
     "marker": "gemini-3-flash-preview",
     "autodetect": "gemini-3.1-flash-lite-preview",
     "theme": "gemini-3.1-flash-lite-preview",
+    "reconcile": "gemini-3.1-flash-lite-preview",
     "stt": "gemini-3.1-flash-lite-preview",  # stt.py has its own override for legacy
 }
 

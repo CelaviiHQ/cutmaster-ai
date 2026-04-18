@@ -223,6 +223,38 @@ def _maybe_relabel_transcript(
     return apply_speaker_labels(transcript, labels)
 
 
+def _slim_transcript_for_prompt(transcript: list[dict]) -> list[dict]:
+    """Drop ``clip_metadata`` off every word before JSON-serialising.
+
+    v2-6 attaches full clip metadata to every word for the pipeline's
+    internal use. When the transcript hits the Director prompt though, the
+    CLIP METADATA table at the top of the prompt already carries
+    ``source_name`` / ``duration_s`` / ``timeline_offset_s`` once per
+    clip — repeating that on each of ~1,000 words inflates the payload by
+    roughly 3×. The ``clip_index`` integer stays so the Director can still
+    cross-reference words back to the table.
+
+    Words without ``clip_metadata`` pass through unchanged — v1 runs and
+    the concat STT path don't need this path.
+    """
+    out: list[dict] = []
+    for w in transcript:
+        if "clip_metadata" not in w:
+            out.append(w)
+            continue
+        out.append({k: v for k, v in w.items() if k != "clip_metadata"})
+    return out
+
+
+def _shape_for_prompt(
+    transcript: list[dict],
+    user_settings: dict | None,
+) -> list[dict]:
+    """Relabel + slim — the two transforms every Director-facing transcript needs."""
+    transcript = _maybe_relabel_transcript(transcript, user_settings)
+    return _slim_transcript_for_prompt(transcript)
+
+
 def _clip_metadata_block(transcript: list[dict]) -> str:
     """Render a CLIP METADATA block when words carry ``clip_metadata`` (v2-6).
 
@@ -243,26 +275,26 @@ def _clip_metadata_block(transcript: list[dict]) -> str:
     )
 
 
-def _relabel_takes(
+def _shape_takes_for_prompt(
     takes: list[dict],
     user_settings: dict | None,
 ) -> list[dict]:
-    """Assembled-mode counterpart to ``_maybe_relabel_transcript``.
+    """Assembled-mode counterpart to ``_shape_for_prompt``.
 
-    Rewrites each take's embedded transcript's ``speaker_id`` per the user
-    labels so the serialised JSON shown to the Director agrees with the
-    SPEAKER GUIDANCE block's roster. Shallow-copies each take; leaves the
-    caller's input untouched.
+    Rewrites each take's embedded transcript to apply user speaker labels
+    (so the SPEAKER GUIDANCE roster and the serialised words agree) and
+    strips redundant ``clip_metadata`` off each word — the CLIP METADATA
+    table the prompt renders at the top already carries file / duration /
+    offset once per clip.
     """
     labels = (user_settings or {}).get("speaker_labels") or None
-    if not labels:
-        return takes
     out: list[dict] = []
     for take in takes:
+        words = take.get("transcript") or []
+        words = apply_speaker_labels(words, labels)
+        words = _slim_transcript_for_prompt(words)
         new_take = dict(take)
-        new_take["transcript"] = apply_speaker_labels(
-            take.get("transcript") or [], labels,
-        )
+        new_take["transcript"] = words
         out.append(new_take)
     return out
 
@@ -291,7 +323,7 @@ def _prompt(preset: PresetBundle, transcript: list[dict], user_settings: dict | 
         b for b in (exclude, focus, speakers, clip_meta) if b
     )
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
-    transcript_for_prompt = _maybe_relabel_transcript(transcript, user_settings)
+    transcript_for_prompt = _shape_for_prompt(transcript, user_settings)
     return f"""You are a {preset.role}.
 
 You will receive a transcript array where each item has a `word`, `start_time`, and `end_time` in seconds. Your job is to select contiguous blocks of words that, when stitched together, form a compelling cut.
@@ -428,7 +460,7 @@ def _assembled_prompt(
         b for b in (exclude, focus, speakers, clip_meta) if b
     )
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
-    takes_for_prompt = _relabel_takes(takes, user_settings)
+    takes_for_prompt = _shape_takes_for_prompt(takes, user_settings)
 
     return f"""You are a {preset.role}.
 
@@ -623,7 +655,7 @@ def _clip_hunter_prompt(
         b for b in (exclude, focus, speakers, clip_meta) if b
     )
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
-    transcript_for_prompt = _maybe_relabel_transcript(transcript, user_settings)
+    transcript_for_prompt = _shape_for_prompt(transcript, user_settings)
     low = target_clip_length_s * 0.6
     high = target_clip_length_s * 1.4
     return f"""You are a {preset.role}.

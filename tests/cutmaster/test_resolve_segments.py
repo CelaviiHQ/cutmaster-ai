@@ -8,11 +8,19 @@ from celavii_resolve.cutmaster.director import CutSegment
 from celavii_resolve.cutmaster.resolve_segments import resolve_segments
 
 
-def _mp_item(uid: str, name: str, speed_pct: str = "100"):
+def _mp_item(
+    uid: str,
+    name: str,
+    speed_pct: str = "100",
+    source_fps: str | None = None,
+):
     m = MagicMock()
     m.GetUniqueId.return_value = uid
     m.GetName.return_value = name
-    m.GetClipProperty.side_effect = lambda k: {"Speed": speed_pct}.get(k)
+    props = {"Speed": speed_pct}
+    if source_fps is not None:
+        props["FPS"] = source_fps
+    m.GetClipProperty.side_effect = lambda k: props.get(k)
     return m
 
 
@@ -171,6 +179,62 @@ def test_inverted_range_raises():
     tl = _timeline(24.0, 86400, [item])
     with pytest.raises(ValueError, match="non-positive duration"):
         resolve_segments(tl, [CutSegment(start_s=5.0, end_s=2.0, reason="")])
+
+
+# ---------------------------------------------------------------------------
+# fps-aware source-frame math (v2-8)
+# ---------------------------------------------------------------------------
+
+
+def test_source_fps_matching_timeline_still_passes_1_to_1():
+    """Baseline: source 24 fps on 24 fps timeline → unchanged math."""
+    mp = _mp_item("UID1", "c.mov", source_fps="24")
+    item = _tl_item(86400, 86640, mp)
+    tl = _timeline(24.0, 86400, [item])
+    [seg] = resolve_segments(tl, [CutSegment(start_s=2.0, end_s=5.0, reason="")])
+    assert seg.source_in_frame == 48    # 2s at 24fps
+    assert seg.source_out_frame == 120  # 5s at 24fps
+
+
+def test_source_30fps_on_24fps_timeline_scales_to_source_frames():
+    """The v2-6 marker-past-end bug: 30 fps source on a 24 fps timeline.
+    Timeline-seconds → source-frames must scale by source_fps / tl_fps,
+    otherwise Resolve under-appends each piece to tl_fps/source_fps of the
+    intended duration."""
+    mp = _mp_item("UID1", "c.mov", source_fps="30")
+    # Item covers timeline frames 86400..86640 (10s @ 24fps = 10s real-time,
+    # which on a 30fps source is 300 source-frames).
+    item = _tl_item(86400, 86640, mp)
+    tl = _timeline(24.0, 86400, [item])
+    [seg] = resolve_segments(tl, [CutSegment(start_s=2.0, end_s=5.0, reason="")])
+    # 2s real-time → frame 60 of the source media; 5s → frame 150.
+    assert seg.source_in_frame == 60
+    assert seg.source_out_frame == 150
+    assert any("differs from timeline fps" in w for w in seg.warnings)
+
+
+def test_source_fps_mismatch_respects_left_offset():
+    mp = _mp_item("UID1", "c.mov", source_fps="30")
+    # Item starts at source-frame 900 (30s into the file).
+    item = _tl_item(86400, 86640, mp, left_offset=900)
+    tl = _timeline(24.0, 86400, [item])
+    [seg] = resolve_segments(tl, [CutSegment(start_s=1.0, end_s=2.0, reason="")])
+    # offset_in_item = 24 tl-frames × 30/24 = 30 source-frames, + left=900
+    assert seg.source_in_frame == 930
+    assert seg.source_out_frame == 960
+
+
+def test_missing_source_fps_property_falls_back_to_timeline_fps():
+    """Older mocks / compound items without an FPS clip property must still
+    produce the v1 math rather than zero-duration pieces."""
+    mp = _mp_item("UID1", "c.mov", source_fps=None)
+    item = _tl_item(86400, 86640, mp)
+    tl = _timeline(24.0, 86400, [item])
+    [seg] = resolve_segments(tl, [CutSegment(start_s=2.0, end_s=5.0, reason="")])
+    assert seg.source_in_frame == 48
+    assert seg.source_out_frame == 120
+    # No fps-mismatch warning when we fell back to tl fps.
+    assert not any("differs from timeline fps" in w for w in seg.warnings)
 
 
 def test_speed_ramped_item_warnings():

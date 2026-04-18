@@ -89,18 +89,20 @@ async def _transcribe_per_clip(tl, run, emit) -> list[dict] | None:
     Falls back cleanly if any take has no media-pool backing — each skipped
     item surfaces in the event payload so the user can diagnose.
     """
-    await emit(run, stage="stt", status="started",
-               message="Transcribing per clip (Gemini parallel)")
-
     from .per_clip_stt import (  # lazy — avoids ffmpeg / Gemini at import
         build_clip_audio_specs,
         extract_per_clip_audio,
         transcribe_per_clip,
     )
 
+    # Per-clip mode still does audio extraction — emit the stage event so the
+    # Analyze UI shows a green check instead of a perpetual pending spinner.
+    await emit(run, stage="audio_extract", status="started",
+               message="Extracting audio per timeline item (ffmpeg)")
+
     specs = build_clip_audio_specs(tl)
     if not specs:
-        await emit(run, stage="stt", status="failed",
+        await emit(run, stage="audio_extract", status="failed",
                    message="no audio items with source backing for per-clip STT")
         return None
 
@@ -109,9 +111,22 @@ async def _transcribe_per_clip(tl, run, emit) -> list[dict] | None:
     try:
         specs = await asyncio.to_thread(extract_per_clip_audio, specs, extract_dir)
     except Exception as exc:
-        await emit(run, stage="stt", status="failed",
+        await emit(run, stage="audio_extract", status="failed",
                    message=f"per-clip ffmpeg extract failed: {exc}")
         return None
+
+    total_duration = sum(s.duration_s for s in specs)
+    await emit(
+        run, stage="audio_extract", status="complete",
+        message=(
+            f"Extracted {len(specs)} per-clip WAV(s) — "
+            f"{total_duration:.1f}s total"
+        ),
+        data={"clips": len(specs), "duration_s": total_duration, "mode": "per_clip"},
+    )
+
+    await emit(run, stage="stt", status="started",
+               message="Transcribing per clip (Gemini parallel)")
 
     try:
         stitched, stats = await transcribe_per_clip(specs)
@@ -138,6 +153,91 @@ async def _transcribe_per_clip(tl, run, emit) -> list[dict] | None:
         },
     )
     return stitched
+
+
+async def _reconcile_speakers(
+    transcript: list[dict],
+    expected_speakers: int,
+    run,
+    emit,
+) -> list[dict]:
+    """Cross-clip speaker reconciliation after per-clip STT.
+
+    - expected_speakers == 1 → trivial collapse, no LLM call.
+    - expected_speakers >= 2 → one Gemini-Flash-Lite call that maps
+      clip-local IDs onto a consistent global roster.
+    - else → no-op (caller should not have invoked us).
+
+    Errors are surfaced as stage events but never halt the pipeline —
+    a failed reconciliation leaves the original transcript in place so
+    downstream stages keep working.
+    """
+    from .speaker_reconcile import (  # lazy — avoids Gemini client at import
+        collapse_to_solo,
+        reconcile_with_llm,
+    )
+
+    if expected_speakers == 1:
+        await emit(run, stage="speakers", status="started",
+                   message="Collapsing to single-speaker mode")
+        new_transcript = collapse_to_solo(transcript)
+        run["transcript"] = new_transcript
+        run["speaker_reconciliation"] = {
+            "expected_speakers": 1,
+            "detected_speakers": 1,
+            "strategy": "collapse",
+            "roster": ["S1"],
+        }
+        state.save(run)
+        await emit(
+            run, stage="speakers", status="complete",
+            message="Collapsed all clips to one speaker (S1)",
+            data={"detected": 1, "roster": ["S1"]},
+        )
+        return new_transcript
+
+    if expected_speakers < 2:
+        return transcript
+
+    await emit(
+        run, stage="speakers", status="started",
+        message=(
+            f"Reconciling cross-clip speaker IDs (target: {expected_speakers})"
+        ),
+    )
+    try:
+        new_transcript, summary = await asyncio.to_thread(
+            reconcile_with_llm, transcript, expected_speakers,
+        )
+    except Exception as exc:
+        log.exception("Speaker reconciliation failed")
+        await emit(
+            run, stage="speakers", status="failed",
+            message=(
+                f"reconciliation failed — keeping raw per-clip IDs: {exc}"
+            ),
+        )
+        return transcript
+
+    run["transcript"] = new_transcript
+    run["speaker_reconciliation"] = {
+        "expected_speakers": expected_speakers,
+        "strategy": "llm",
+        **summary,
+    }
+    state.save(run)
+    await emit(
+        run, stage="speakers", status="complete",
+        message=(
+            f"Reconciled to {summary['detected_speakers']} speaker(s): "
+            f"{', '.join(summary['roster'])}"
+        ),
+        data={
+            "detected": summary["detected_speakers"],
+            "roster": summary["roster"],
+        },
+    )
+    return new_transcript
 
 
 async def _transcribe(
@@ -201,6 +301,7 @@ async def run_analyze(
     preset: str = "auto",
     scrub_params: ScrubParams | None = None,
     per_clip_stt: bool = False,
+    expected_speakers: int | None = None,
 ) -> None:
     """Top-level analyze orchestrator.
 
@@ -247,6 +348,13 @@ async def run_analyze(
                 await state.emit(run, stage="done", status="failed",
                                  message="halted on per-clip STT")
                 return
+            # Cross-clip speaker reconciliation — only runs when the user
+            # supplied a count, so v2-6 legacy behaviour (raw per-clip IDs)
+            # stays the default.
+            if expected_speakers:
+                words = await _reconcile_speakers(
+                    words, expected_speakers, run, state.emit,
+                )
         else:
             audio_result = await _extract_audio(tl, run, state.emit)
             if audio_result is None:

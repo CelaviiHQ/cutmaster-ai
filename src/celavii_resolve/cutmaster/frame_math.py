@@ -34,6 +34,35 @@ def _timeline_start_frame(tl) -> int:
         return 0
 
 
+def _source_fps(mp_item, fallback: float | None = None) -> float:
+    """Return the source media's native frame rate.
+
+    When source fps differs from timeline fps (e.g. 30 fps source on a
+    24 fps timeline), Resolve conforms the item to real-time on the
+    timeline. Without this value, conversions between timeline-frames and
+    source-media-frames silently compress or stretch pieces — the bug
+    that parked v2-6 markers past the end of the cut timeline.
+
+    Uses Resolve's ``GetClipProperty("FPS")`` which returns a string like
+    ``"24"`` / ``"29.97"``. Falls back to ``fallback`` (typically the
+    timeline fps) so callers on single-fps projects don't need to branch.
+    Returns ``0.0`` if no usable value can be read.
+    """
+    if mp_item is None:
+        return float(fallback or 0.0)
+    try:
+        raw = mp_item.GetClipProperty("FPS")
+    except Exception:
+        return float(fallback or 0.0)
+    if not raw:
+        return float(fallback or 0.0)
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return float(fallback or 0.0)
+    return value if value > 0 else float(fallback or 0.0)
+
+
 def seconds_to_frame(tl, seconds: float) -> int:
     """Convert timeline-seconds to absolute timeline frame number.
 

@@ -5,6 +5,7 @@ import type {
   FormatSpec,
   PresetBundle,
   PresetRecommendation,
+  ProjectInfo,
   RunState,
   SpeakerRosterEntry,
   StoryAnalysis,
@@ -43,6 +44,8 @@ export const api = {
   listPresets: () =>
     http<{ presets: PresetBundle[] }>("/cutmaster/presets"),
 
+  projectInfo: () => http<ProjectInfo>("/cutmaster/project-info"),
+
   listFormats: () =>
     http<{ formats: FormatSpec[] }>("/cutmaster/formats"),
 
@@ -55,7 +58,7 @@ export const api = {
   analyze: (
     timelineName: string,
     preset: string,
-    options?: { perClipStt?: boolean },
+    options?: { perClipStt?: boolean; expectedSpeakers?: number | null },
   ) =>
     http<{ run_id: string; status: string }>("/cutmaster/analyze", {
       method: "POST",
@@ -63,6 +66,9 @@ export const api = {
         timeline_name: timelineName,
         preset,
         ...(options?.perClipStt ? { per_clip_stt: true } : {}),
+        ...(options?.expectedSpeakers != null
+          ? { expected_speakers: options.expectedSpeakers }
+          : {}),
       }),
     }),
 

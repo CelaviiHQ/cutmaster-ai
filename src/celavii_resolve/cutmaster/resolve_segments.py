@@ -19,7 +19,7 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 from .director import CutSegment
-from .frame_math import _timeline_fps, _timeline_start_frame
+from .frame_math import _source_fps, _timeline_fps, _timeline_start_frame
 from .source_mapper import _item_clip_speed
 
 
@@ -116,16 +116,26 @@ def resolve_segments(tl, segments: list[CutSegment]) -> list[ResolvedCutSegment]
 
         part_total = len(pieces)
         for i, (item, mp_item, tl_in, tl_out) in enumerate(pieces):
-            offset_in_item = tl_in - item.GetStart()
-            duration = tl_out - tl_in
+            offset_in_item = tl_in - item.GetStart()  # timeline-frames
+            duration = tl_out - tl_in                 # timeline-frames
             speed = _item_clip_speed(item, mp_item)
             try:
                 left_offset = int(item.GetLeftOffset() or 0)
             except Exception:
                 left_offset = 0
 
-            src_in = left_offset + int(round(offset_in_item * speed))
-            src_out = left_offset + int(round((offset_in_item + duration) * speed))
+            # Source-vs-timeline fps: AppendToTimeline wants startFrame/endFrame
+            # in source-media frames. A 30 fps clip on a 24 fps timeline needs
+            # its timeline-frame offsets scaled by source_fps / tl_fps, else
+            # Resolve under-appends each piece by tl_fps/source_fps (the v2-6
+            # bug that parked markers past the cut timeline's end).
+            src_fps = _source_fps(mp_item, fallback=fps)
+            fps_ratio = (src_fps / fps) if fps > 0 else 1.0
+
+            src_in = left_offset + int(round(offset_in_item * fps_ratio * speed))
+            src_out = left_offset + int(
+                round((offset_in_item + duration) * fps_ratio * speed)
+            )
 
             piece_start_s = (tl_in - tl_start) / fps
             piece_end_s = (tl_out - tl_start) / fps
@@ -141,6 +151,11 @@ def resolve_segments(tl, segments: list[CutSegment]) -> list[ResolvedCutSegment]
             warnings: list[str] = []
             if speed != 1.0:
                 warnings.append(f"speed-ramped source ({speed}×) — verify in viewer")
+            if abs(src_fps - fps) > 0.01:
+                warnings.append(
+                    f"source fps {src_fps:.2f} differs from timeline fps "
+                    f"{fps:.2f} — pieces placed at real-time"
+                )
 
             out.append(ResolvedCutSegment(
                 start_s=piece_start_s,

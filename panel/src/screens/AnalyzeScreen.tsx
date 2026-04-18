@@ -11,6 +11,7 @@ const STAGES = [
     { key: "vfr_check", label: "VFR check" },
     { key: "audio_extract", label: "Extract audio (ffmpeg)" },
     { key: "stt", label: "Transcribe (Gemini)" },
+    { key: "speakers", label: "Reconcile speakers", optional: true },
     { key: "scrub", label: "Scrub fillers / restarts" },
 ] as const;
 
@@ -40,6 +41,11 @@ export default function AnalyzeScreen({ runId, onDone, onReset }: Props) {
 
                 {STAGES.map((s) => {
                     const state = byStage[s.key];
+                    // Optional stages (e.g. speaker reconciliation) only
+                    // render if they actually emitted an event — otherwise
+                    // they'd mislead as perpetually "pending".
+                    const isOptional = "optional" in s && s.optional;
+                    if (isOptional && !state) return null;
                     const icon = state
                         ? state.status === "complete"
                             ? "✓"

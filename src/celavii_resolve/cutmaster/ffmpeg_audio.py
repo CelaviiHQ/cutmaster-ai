@@ -20,7 +20,7 @@ from pathlib import Path
 from ..config import mcp
 from ..errors import safe_resolve_call
 from ..resolve import _boilerplate
-from .frame_math import _timeline_fps
+from .frame_math import _source_fps, _timeline_fps
 
 
 def _require_ffmpeg() -> None:
@@ -76,7 +76,13 @@ def extract_timeline_audio(
         except Exception:
             src_start_frame = 0
 
-        in_s = src_start_frame / fps
+        # `src_start_frame` is in source-media frames; when source fps differs
+        # from timeline fps (e.g. 30 fps source on a 24 fps timeline), dividing
+        # by `fps` would seek ffmpeg to the wrong moment. Use the source's
+        # native fps for the seek, and the timeline fps for the real-time
+        # duration (which Resolve has already conformed).
+        src_fps = _source_fps(mp_item, fallback=fps)
+        in_s = src_start_frame / src_fps
         out_s = in_s + duration_frames / fps
         segments.append((src, in_s, out_s))
 

@@ -50,6 +50,7 @@ export default function App() {
     const [resume, setResume] = useState<ResumeInfo | null>(null);
     const [resumeChecked, setResumeChecked] = useState(false);
     const [perClipStt, setPerClipStt] = useState(false);
+    const [expectedSpeakers, setExpectedSpeakers] = useState<number | null>(null);
 
     // Ping + resume check on mount
     useEffect(() => {
@@ -185,9 +186,12 @@ export default function App() {
                     }
                     perClipStt={perClipStt}
                     onPerClipSttChange={setPerClipStt}
+                    expectedSpeakers={expectedSpeakers}
+                    onExpectedSpeakersChange={setExpectedSpeakers}
                     onNext={async () => {
                         const r = await api.analyze(timelineName, preset, {
                             perClipStt,
+                            expectedSpeakers,
                         });
                         setRunId(r.run_id);
                         saveSession({

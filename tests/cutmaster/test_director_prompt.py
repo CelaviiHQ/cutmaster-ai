@@ -234,6 +234,34 @@ def test_prompt_renders_clip_metadata_block_when_words_carry_clip_index():
     assert "DJI_0007.MP4" in prompt
 
 
+def test_prompt_strips_per_word_clip_metadata_to_save_tokens():
+    """The CLIP METADATA table renders clip info once; embedding the same
+    dict on every word roughly triples the prompt. v2-6 payoff should keep
+    `clip_index` on words and drop `clip_metadata`."""
+    preset = get_preset("vlog")
+    transcript = [
+        {
+            "word": "Hello", "start_time": 0.0, "end_time": 0.4,
+            "speaker_id": "S1",
+            "clip_index": 0,
+            "clip_metadata": {
+                "source_name": "DJI_0006.MP4", "duration_s": 3.0,
+                "timeline_offset_s": 0.0, "source_path": "/tmp/x.mov",
+            },
+        },
+    ]
+    prompt = director._prompt(preset, transcript, user_settings={})
+    # Metadata block still renders (the table).
+    assert "DJI_0006.MP4" in prompt
+    # But it must NOT appear as a JSON value inside the per-word array —
+    # that would mean we're sending the redundant metadata to Gemini.
+    _, _, tail = prompt.partition("TRANSCRIPT (JSON array):")
+    assert "clip_metadata" not in tail
+    assert "source_path" not in tail
+    # clip_index still there so the Director can cross-reference.
+    assert "clip_index" in tail
+
+
 def test_prompt_no_clip_metadata_block_when_absent():
     preset = get_preset("vlog")
     prompt = director._prompt(preset, TRANSCRIPT, user_settings={})
