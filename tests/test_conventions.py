@@ -62,6 +62,7 @@ TOOL_MODULES = [
     "celavii_resolve.cutmaster.analysis.captions",
     "celavii_resolve.cutmaster.media.time_mapping",
     "celavii_resolve.cutmaster.resolve_ops.assembled",
+    "celavii_resolve.cutmaster.resolve_ops.groups",
     "celavii_resolve.cutmaster.analysis.tightener",
     "celavii_resolve.cutmaster.core.director",
     "celavii_resolve.cutmaster.analysis.marker_agent",
