@@ -59,6 +59,12 @@ class TranscriptWord(BaseModel):
     speaker_id: str = Field(default="S1")
     start_time: float
     end_time: float
+    # Per-word confidence in the 0.0–1.0 range when the provider reports
+    # it (Deepgram Nova-3 always does; Gemini STT does not surface a
+    # usable per-word confidence so it stays ``None``). Downstream
+    # validators gate cut boundaries on this field when present and
+    # skip the check otherwise — graceful degradation for Gemini runs.
+    confidence: float | None = Field(default=None)
 
 
 class TranscriptResponse(BaseModel):

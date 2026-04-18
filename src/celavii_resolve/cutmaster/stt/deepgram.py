@@ -174,12 +174,20 @@ def _map_deepgram_words(payload: dict) -> list[TranscriptWord]:
             continue
         if end <= start:
             continue
+        confidence: float | None = None
+        raw_conf = w.get("confidence")
+        if raw_conf is not None:
+            try:
+                confidence = float(raw_conf)
+            except (TypeError, ValueError):
+                confidence = None
         out.append(
             TranscriptWord(
                 word=spoken,
                 speaker_id=speaker_id,
                 start_time=start,
                 end_time=end,
+                confidence=confidence,
             )
         )
     return out

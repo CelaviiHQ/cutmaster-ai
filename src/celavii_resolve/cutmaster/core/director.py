@@ -86,6 +86,23 @@ def _duration_budget(
 
 HOOK_TOLERANCE_S = 2.0
 COVERAGE_THRESHOLD = 0.7
+CONFIDENCE_FLOOR = 0.6
+
+
+def _nearest_word(target_time: float, transcript: list[dict], key: str) -> dict | None:
+    """Return the transcript word whose ``key`` ("start_time" / "end_time")
+    is closest to ``target_time`` within TIMESTAMP_TOLERANCE_S, else None."""
+    best: dict | None = None
+    best_delta = TIMESTAMP_TOLERANCE_S
+    for w in transcript:
+        v = w.get(key)
+        if v is None:
+            continue
+        delta = abs(float(v) - target_time)
+        if delta <= best_delta:
+            best = w
+            best_delta = delta
+    return best
 
 
 def validate_plan(
@@ -109,6 +126,8 @@ def validate_plan(
       7. When the transcript carries ``clip_index`` (per-clip STT) and
          ``preset`` is set: at least COVERAGE_THRESHOLD of eligible clips
          (≥ 30 words) are touched by some segment.
+      8. When transcript words carry ``confidence`` (Deepgram runs): each
+         segment's first and last word has confidence >= CONFIDENCE_FLOOR.
     """
     starts, ends = _build_timestamp_sets(transcript)
     errors: list[str] = []
@@ -151,6 +170,36 @@ def validate_plan(
                 f"whose first word starts within {HOOK_TOLERANCE_S:.1f}s of "
                 f"{selected_hook_s:.2f}s and place it at hook_index."
             )
+
+    # Confidence gate: only fires when the transcript actually carries
+    # per-word confidence (Deepgram). Skipping silently on Gemini-STT runs
+    # is the graceful-degradation path — the validator isn't forcing a
+    # transcript upgrade on users who haven't opted in to Deepgram.
+    has_confidence = any(w.get("confidence") is not None for w in transcript)
+    if has_confidence:
+        for i, seg in enumerate(plan.selected_clips):
+            if seg.end_s <= seg.start_s:
+                continue  # already flagged above
+            first = _nearest_word(seg.start_s, transcript, "start_time")
+            last = _nearest_word(seg.end_s, transcript, "end_time")
+            if first is not None:
+                c = first.get("confidence")
+                if c is not None and float(c) < CONFIDENCE_FLOOR:
+                    errors.append(
+                        f"segment[{i}]: starts on low-confidence word "
+                        f"'{first.get('word', '?')}' (conf {float(c):.2f} < "
+                        f"{CONFIDENCE_FLOOR:.2f}). Move the start to the next "
+                        "crisply-transcribed word boundary."
+                    )
+            if last is not None:
+                c = last.get("confidence")
+                if c is not None and float(c) < CONFIDENCE_FLOOR:
+                    errors.append(
+                        f"segment[{i}]: ends on low-confidence word "
+                        f"'{last.get('word', '?')}' (conf {float(c):.2f} < "
+                        f"{CONFIDENCE_FLOOR:.2f}). Move the end to the previous "
+                        "crisply-transcribed word boundary."
+                    )
 
     if preset is not None:
         min_s = preset.min_segment_s

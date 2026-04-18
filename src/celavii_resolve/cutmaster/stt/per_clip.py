@@ -411,16 +411,17 @@ def _stitch_one(spec: ClipAudioSpec, clip_words: list[dict]) -> list[dict]:
         if end > limit:
             continue
         start = float(w.get("start_time", 0.0))
-        stitched.append(
-            {
-                "word": w.get("word", ""),
-                "speaker_id": w.get("speaker_id", "S1"),
-                "start_time": round(start + offset, 3),
-                "end_time": round(end + offset, 3),
-                "clip_index": spec.item_index,
-                "clip_metadata": metadata,
-            }
-        )
+        out: dict = {
+            "word": w.get("word", ""),
+            "speaker_id": w.get("speaker_id", "S1"),
+            "start_time": round(start + offset, 3),
+            "end_time": round(end + offset, 3),
+            "clip_index": spec.item_index,
+            "clip_metadata": metadata,
+        }
+        if w.get("confidence") is not None:
+            out["confidence"] = w["confidence"]
+        stitched.append(out)
     return stitched
 
 
