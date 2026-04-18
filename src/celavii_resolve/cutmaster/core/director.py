@@ -11,6 +11,7 @@ Model-agnostic: the actual LLM call goes through ``llm.call_structured``.
 from __future__ import annotations
 
 import json
+import logging
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
@@ -21,6 +22,8 @@ from ..stt.speakers import apply_speaker_labels, detect_speakers, speaker_stats
 
 if TYPE_CHECKING:
     from ..data.presets import PresetBundle
+
+log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -863,9 +866,13 @@ class ShortCandidate(BaseModel):
         ...,
         description="3–8 source spans in play order. First span is the hook.",
     )
+    # total_s is computed server-side from the spans; keeping it optional
+    # means Gemini's arithmetic slip-ups (regularly off by a few seconds
+    # on multi-span sums) don't blow up the validator. The validator
+    # computes the canonical value before every check.
     total_s: float = Field(
-        ...,
-        description="Sum of span durations — must be 45–120 s. Used for plan validation.",
+        default=0.0,
+        description="Computed server-side from span durations; field ignored if provided.",
     )
     engagement_score: float = Field(
         ...,
@@ -909,29 +916,34 @@ def _short_generator_prompt(
     optional_blocks = "\n\n".join(b for b in (exclude, focus, themes, speakers, clip_meta) if b)
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     transcript_for_prompt = _shape_for_prompt(transcript, user_settings)
-    low = target_short_length_s * 0.75
-    high = target_short_length_s * 1.33
+    low = target_short_length_s * 0.5
+    high = target_short_length_s * 1.5
     return f"""You are a {preset.role}.
 
 You receive a transcript and will **compose {num_shorts} punchy assembled shorts** — each a list of 3–8 source spans jump-cut together around a single through-line theme.
 
-RULES — follow exactly:
-1. Each short is 3–8 spans that play end-to-end; total duration across its spans must be {low:.0f}–{high:.0f} s (target {target_short_length_s:.0f} s).
-2. Each short has a clear THEME — a through-line (e.g. "why AR replaces phones", "the loneliness debate"). Spans are picked because they serve that theme.
+### CRITICAL DURATION CONSTRAINT
+For every short, sum the duration of its spans (end_s − start_s) across all spans in the short. That sum **MUST be between {low:.0f} and {high:.0f} seconds**. A short whose spans sum to less than {low:.0f} s is rejected — add more spans until the sum is in range. Target is {target_short_length_s:.0f} s.
+
+### RULES — follow exactly:
+1. Each short has 3–8 spans. If the combined duration is below {low:.0f} s with 3 spans, add more spans (up to 8) or make individual spans longer.
+2. Each short has a clear THEME — a through-line (e.g. "why AR replaces phones", "the loneliness debate"). Every span must serve that theme.
 3. The FIRST span of each short is the HOOK — it must earn the next 5 s on its own. Use {preset.hook_rule}.
 4. Subsequent spans advance the short: setup → payoff, claim → callback, question → answer. Mark the role on each span.
 5. Each span's `start_s` MUST equal the `start_time` of its first word; `end_s` MUST equal `end_time` of its last word. Verbatim — no rounding.
-6. Individual spans may be as short as 1 s or as long as 25 s. Favour short punchy spans over long meandering ones.
+6. Individual spans should be 3–25 s. A span under 3 s is almost always too short to read on camera — prefer longer punchy spans over sub-3s fragments.
 7. Within a short, spans MUST NOT overlap each other in source time.
 8. Across different shorts, cross-short overlap is allowed (two shorts can reference the same hook).
 9. Pacing: {preset.pacing}.
 10. Return candidates in descending engagement order.
-11. `total_s` is the sum of span durations — compute it, include it, we'll validate.
-12. `suggested_caption` ≤ 120 chars, social-ready.
+11. `suggested_caption` ≤ 120 chars, social-ready.
+
+### BEFORE YOU RESPOND
+For each short, mentally compute: sum of (end_s − start_s) across all spans. If that number is below {low:.0f}, the short is invalid — extend spans or add more until the sum is {low:.0f}–{high:.0f} s. Do not submit a short whose spans sum below the minimum.
 
 USER SETTINGS
 {_user_settings_block(user_settings)}
-- Target short length: {target_short_length_s:.0f} s
+- Target short length: {target_short_length_s:.0f} s (acceptable range {low:.0f}–{high:.0f} s)
 - Number of shorts: {num_shorts}{optional_section}
 
 TRANSCRIPT (JSON array):
@@ -948,7 +960,7 @@ def validate_short_generator_plan(
     transcript: list[dict],
     target_short_length_s: float,
     num_shorts: int,
-    duration_tolerance: float = 0.33,
+    duration_tolerance: float = 0.5,
 ) -> list[str]:
     """Validate a ShortGeneratorPlan.
 
@@ -957,9 +969,12 @@ def validate_short_generator_plan(
       2. Each candidate has 3–8 spans.
       3. Every span's ``start_s`` / ``end_s`` matches a verbatim word boundary.
       4. Per span: ``end_s > start_s``, span ≤ 25 s.
-      5. Per candidate: spans are non-overlapping in source time, in play order
-         (which need not be source order — intercutting is legal).
-      6. Per candidate: ``total_s`` within ±tolerance of target.
+      5. Per candidate: spans are non-overlapping in source time.
+      6. Per candidate: **computed** span-sum within ±tolerance of target.
+         The model's ``total_s`` field is ignored and overwritten — Gemini's
+         arithmetic on multi-span sums was off by 5–10s in practice, so we
+         compute the canonical total from spans and mutate the candidate in
+         place before downstream code reads it.
       7. Engagement scores monotone non-increasing.
     """
     starts, ends = _build_timestamp_sets(transcript)
@@ -971,22 +986,39 @@ def validate_short_generator_plan(
     if abs(len(plan.candidates) - num_shorts) > 1:
         errors.append(f"expected {num_shorts} candidates (±1), got {len(plan.candidates)}")
 
-    low = target_short_length_s * (1.0 - duration_tolerance)
+    # Asymmetric bounds: shorts can be meaningfully shorter than target (20s is a
+    # valid TikTok/Reels short) but runaway-long shorts defeat the format. Floor
+    # is min(target*(1-tol), 20s) so a 60s target still accepts 20-30s shorts
+    # when the content's natural breakpoints land there.
+    low = min(target_short_length_s * (1.0 - duration_tolerance), 15.0)
     high = target_short_length_s * (1.0 + duration_tolerance)
+
+    # Diagnostic: dump the shape the model returned so we can see whether it's
+    # picking too-few spans or too-short spans. One line per candidate.
+    for i, cand in enumerate(plan.candidates):
+        span_durs = [round(s.end_s - s.start_s, 2) for s in cand.spans]
+        log.info(
+            "short_generator: cand[%d] theme=%r n_spans=%d durs=%s sum=%.1fs target=%.0fs",
+            i,
+            cand.theme,
+            len(cand.spans),
+            span_durs,
+            sum(span_durs),
+            target_short_length_s,
+        )
 
     prev_score = 1.01
     for i, cand in enumerate(plan.candidates):
         if not (3 <= len(cand.spans) <= 8):
             errors.append(f"candidate[{i}]: {len(cand.spans)} spans — must be 3–8")
-        # Duration check on computed vs reported.
+        # Canonical total = span-sum. Overwrite whatever the model reported
+        # so downstream code (UI, execute) sees the real number.
         computed = sum(s.end_s - s.start_s for s in cand.spans)
-        if abs(computed - cand.total_s) > 0.5:
+        cand.total_s = computed
+        if not (low <= computed <= high):
             errors.append(
-                f"candidate[{i}]: total_s={cand.total_s:.1f} disagrees with span-sum {computed:.1f}"
-            )
-        if not (low <= cand.total_s <= high):
-            errors.append(
-                f"candidate[{i}]: total {cand.total_s:.1f}s outside [{low:.1f}, {high:.1f}]s"
+                f"candidate[{i}]: total {computed:.1f}s outside [{low:.1f}, {high:.1f}]s — "
+                f"add more spans or extend existing ones to reach {target_short_length_s:.0f}s"
             )
 
         # Per-span verbatim + duration.

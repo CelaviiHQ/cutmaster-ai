@@ -204,7 +204,10 @@ export default function ReviewScreen({
                                     className={
                                         i === selectedCandidate ? "" : "secondary"
                                     }
-                                    onClick={() => setSelectedCandidate(i)}
+                                    onClick={() => {
+                                        setSelectedCandidate(i);
+                                        if (i !== selectedCandidate) setBuildResult(null);
+                                    }}
                                 >
                                     #{i + 1} ·{" "}
                                     {(c.engagement_score * 100).toFixed(0)}%

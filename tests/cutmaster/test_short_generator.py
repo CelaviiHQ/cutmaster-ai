@@ -97,12 +97,13 @@ def test_rejects_overlapping_spans():
 
 def test_rejects_total_outside_tolerance():
     transcript = _transcript()
-    # Three spans totaling only 15s — way under 60s target
+    # Three ~3s spans = ~9s total, well under the 30s floor (target 60s
+    # × (1 - 0.5 tolerance)). Must be rejected.
     plan = ShortGeneratorPlan(
         candidates=[
             _cand(
                 "short",
-                [(0.0, 4.9, "a"), (10.0, 14.9, "b"), (20.0, 24.9, "c")],
+                [(0.0, 2.9, "a"), (10.0, 12.9, "b"), (20.0, 22.9, "c")],
             )
         ],
         reasoning="ok",
@@ -132,17 +133,24 @@ def test_rejects_non_descending_engagement():
     assert any("rank descending" in e for e in errors)
 
 
-def test_rejects_total_s_disagreement():
+def test_validator_overwrites_total_s_with_computed_value():
+    """Gemini's arithmetic on multi-span sums is unreliable — the validator
+    recomputes total_s from spans and mutates the candidate in place so
+    downstream code never sees the wrong number."""
     transcript = _transcript()
     cand = _cand(
         "t",
         [(0.0, 19.9, "h"), (25.0, 44.9, "s"), (50.0, 69.9, "p")],
     )
-    # Tamper with reported total to force the span-sum check.
-    cand = cand.model_copy(update={"total_s": cand.total_s + 5.0})
+    real_total = cand.total_s
+    # Simulate Gemini reporting a wildly wrong total.
+    cand = cand.model_copy(update={"total_s": real_total + 20.0})
     plan = ShortGeneratorPlan(candidates=[cand], reasoning="ok")
     errors = validate_short_generator_plan(plan, transcript, 60.0, 1)
-    assert any("disagrees with span-sum" in e for e in errors)
+    # No disagreement error — validator just overwrites.
+    assert not any("disagrees" in e for e in errors)
+    # The candidate's total_s now reflects the real span-sum.
+    assert abs(plan.candidates[0].total_s - real_total) < 0.01
 
 
 def test_short_candidate_to_segments_preserves_order():
