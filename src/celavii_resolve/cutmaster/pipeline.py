@@ -127,15 +127,19 @@ async def _transcribe_per_clip(
         data={"clips": len(specs), "duration_s": total_duration, "mode": "per_clip"},
     )
 
-    provider_label = (stt_provider or "default").lower()
+    # Resolve the effective provider up front so cache isolation + the
+    # event label both reflect what we're actually about to run.
+    from .stt import DEFAULT_PROVIDER
+    effective_provider = (stt_provider or DEFAULT_PROVIDER).lower()
     await emit(
         run, stage="stt", status="started",
-        message=f"Transcribing per clip in parallel ({provider_label})",
+        message=f"Transcribing per clip in parallel ({effective_provider})",
+        data={"provider": effective_provider},
     )
 
     try:
         stitched, stats = await transcribe_per_clip(
-            specs, provider=stt_provider,
+            specs, provider=effective_provider,
         )
     except Exception as exc:
         await emit(run, stage="stt", status="failed",
@@ -149,6 +153,7 @@ async def _transcribe_per_clip(
         run, stage="stt", status="complete",
         message=(
             f"Transcribed {len(stitched)} words across {len(specs)} clips "
+            f"via {effective_provider} "
             f"(cache: {stats['cache_hits']} hits / {stats['cache_misses']} misses)"
         ),
         data={
@@ -157,6 +162,7 @@ async def _transcribe_per_clip(
             "cache_hits": stats["cache_hits"],
             "cache_misses": stats["cache_misses"],
             "dropped_out_of_range": stats["dropped"],
+            "provider": effective_provider,
         },
     )
     return stitched
@@ -292,16 +298,17 @@ async def _transcribe(
     emit,
     stt_provider: str | None = None,
 ) -> list[dict] | None:
-    provider_label = (stt_provider or "default").lower()
+    from .stt import DEFAULT_PROVIDER, transcribe_audio  # lazy
+    effective_provider = (stt_provider or DEFAULT_PROVIDER).lower()
     await emit(
         run, stage="stt", status="started",
-        message=f"Transcribing with word-level timestamps ({provider_label})",
+        message=f"Transcribing with word-level timestamps ({effective_provider})",
+        data={"provider": effective_provider},
     )
-    from .stt import transcribe_audio  # lazy
 
     try:
         transcript = await asyncio.to_thread(
-            transcribe_audio, wav_path, None, stt_provider,
+            transcribe_audio, wav_path, None, effective_provider,
         )
     except Exception as exc:
         await emit(run, stage="stt", status="failed",
@@ -320,7 +327,7 @@ async def _transcribe(
     run["transcript"] = words
     state.save(run)
 
-    msg = f"Transcribed {len(words)} words via {provider_label}"
+    msg = f"Transcribed {len(words)} words via {effective_provider}"
     if dropped:
         msg += f" (dropped {dropped} with timestamps past audio end of {audio_duration_s:.1f}s)"
     await emit(run, stage="stt", status="complete",
@@ -328,7 +335,7 @@ async def _transcribe(
                data={
                    "word_count": len(words),
                    "dropped_out_of_range": dropped,
-                   "provider": provider_label,
+                   "provider": effective_provider,
                })
     return words
 

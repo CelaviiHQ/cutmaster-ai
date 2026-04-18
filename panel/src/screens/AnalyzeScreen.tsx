@@ -10,10 +10,15 @@ interface Props {
 const STAGES = [
     { key: "vfr_check", label: "VFR check" },
     { key: "audio_extract", label: "Extract audio (ffmpeg)" },
-    { key: "stt", label: "Transcribe (Gemini)" },
+    { key: "stt", label: "Transcribe" },
     { key: "speakers", label: "Reconcile speakers", optional: true },
     { key: "scrub", label: "Scrub fillers / restarts" },
 ] as const;
+
+const PROVIDER_LABELS: Record<string, string> = {
+    gemini: "Gemini",
+    deepgram: "Deepgram",
+};
 
 export default function AnalyzeScreen({ runId, onDone, onReset }: Props) {
     const { events, terminal } = useSSE(runId);
@@ -46,6 +51,19 @@ export default function AnalyzeScreen({ runId, onDone, onReset }: Props) {
                     // they'd mislead as perpetually "pending".
                     const isOptional = "optional" in s && s.optional;
                     if (isOptional && !state) return null;
+                    // Annotate the STT row with the actual provider the
+                    // backend used (Gemini / Deepgram) instead of the
+                    // hardcoded placeholder.
+                    let label = s.label as string;
+                    if (s.key === "stt" && state?.data) {
+                        const provider = (state.data as { provider?: string })
+                            ?.provider;
+                        if (provider) {
+                            const pretty =
+                                PROVIDER_LABELS[provider] ?? provider;
+                            label = `Transcribe (${pretty})`;
+                        }
+                    }
                     const icon = state
                         ? state.status === "complete"
                             ? "✓"
@@ -63,7 +81,7 @@ export default function AnalyzeScreen({ runId, onDone, onReset }: Props) {
                     return (
                         <div key={s.key} className="stage-row">
                             <span className={`stage-icon ${cls}`}>{icon}</span>
-                            <span className="stage-name">{s.label}</span>
+                            <span className="stage-name">{label}</span>
                             <span className="stage-msg">{state?.message ?? "…"}</span>
                         </div>
                     );

@@ -363,10 +363,19 @@ async def transcribe_per_clip(
     choice without mutating env vars. When ``transcribe_fn`` is supplied
     the provider value is ignored (tests own the dispatch).
 
+    Cache isolation: when ``cache_root`` is left as ``None``, each
+    provider gets its own subdirectory under :data:`CACHE_ROOT`
+    (``per-clip-stt/<provider>/``) so switching providers mid-run never
+    serves a stale cross-provider transcript. Tests supply an explicit
+    ``cache_root`` and bypass that logic.
+
     Stats: ``{"cache_hits": n, "cache_misses": n, "dropped": n}``.
     """
     if transcribe_fn is None:
         transcribe_fn = _make_default_transcribe(provider)
+
+    if cache_root is None and provider:
+        cache_root = CACHE_ROOT / provider.lower()
 
     sem = asyncio.Semaphore(max(1, max_concurrency))
     results: list[list[dict]] = [[] for _ in specs]
