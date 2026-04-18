@@ -37,8 +37,22 @@ class StoryAnalysis(BaseModel):
     )
 
 
+def _slim_for_prompt(transcript: list[dict]) -> list[dict]:
+    """Keep only the fields the theme analyzer needs.
+
+    Per-clip STT annotates every word with a full ``clip_metadata`` dict
+    (source name, file path, duration, timeline offset, source frames).
+    Multiplied across ~5000 words that blows past Gemini's 1M input-token
+    budget. The theme analyzer only needs ``word``, ``start_time``,
+    ``end_time`` — everything else is noise at this stage.
+    """
+    keep = ("word", "start_time", "end_time")
+    return [{k: w[k] for k in keep if k in w} for w in transcript]
+
+
 def _prompt(transcript: list[dict], preset: PresetBundle) -> str:
     axes = ", ".join(preset.theme_axes)
+    slim = _slim_for_prompt(transcript)
     return f"""You are a {preset.role}. Analyse the following transcript and produce a structural summary that will be shown to the user in the Configure screen.
 
 TASK:
@@ -49,7 +63,7 @@ TASK:
 Do NOT invent timestamps. Any ``start_s`` / ``end_s`` must appear in the transcript's word timings.
 
 TRANSCRIPT (JSON array, each item has `word`, `start_time`, `end_time`):
-{json.dumps(transcript, separators=(",", ":"))}
+{json.dumps(slim, separators=(",", ":"))}
 """
 
 
