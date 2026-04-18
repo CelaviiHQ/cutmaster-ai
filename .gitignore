@@ -71,4 +71,4 @@ celavii-resolve-v*.zip
 
 # Playwright MCP scratch output + screenshots
 .playwright-mcp/
-*-tokens-gate.png
+v3-*.png
