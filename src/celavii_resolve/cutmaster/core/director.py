@@ -906,6 +906,8 @@ def build_assembled_cut_plan(
         response_schema=AssembledDirectorPlan,
         validate=lambda plan: validate_assembled_plan(plan, takes, reorder_allowed),
         temperature=0.4,
+        max_retries=5,
+        accept_best_effort=True,
     )
 
 
@@ -1132,6 +1134,8 @@ def build_clip_hunter_plan(
             num_clips,
         ),
         temperature=0.5,
+        max_retries=5,
+        accept_best_effort=True,
     )
 
 
@@ -1408,6 +1412,8 @@ def build_short_generator_plan(
             plan, transcript, target_short_length_s, num_shorts
         ),
         temperature=0.5,
+        max_retries=5,
+        accept_best_effort=True,
     )
 
 
@@ -1584,6 +1590,8 @@ def build_curated_cut_plan(
         response_schema=CuratedDirectorPlan,
         validate=lambda plan: validate_curated_plan(plan, takes),
         temperature=0.4,
+        max_retries=5,
+        accept_best_effort=True,
     )
 
 
@@ -1801,4 +1809,6 @@ def build_rough_cut_plan(
         response_schema=CuratedDirectorPlan,
         validate=lambda plan: validate_rough_cut_plan(plan, takes, groups),
         temperature=0.4,
+        max_retries=5,
+        accept_best_effort=True,
     )
