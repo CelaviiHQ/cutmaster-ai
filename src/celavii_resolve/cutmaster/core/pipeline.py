@@ -35,7 +35,7 @@ async def _vfr_check(tl, run, emit) -> bool:
         message="Checking source media for variable frame rate",
     )
 
-    from .vfr import detect_vfr  # lazy — avoids ffprobe requirement at import
+    from ..media.vfr import detect_vfr  # lazy — avoids ffprobe requirement at import
 
     items = tl.GetItemListInTrack("video", 1) or []
     seen: set[str] = set()
@@ -83,7 +83,7 @@ async def _extract_audio(tl, run, emit) -> tuple[Path, float] | None:
         status="started",
         message="Reassembling timeline audio via ffmpeg",
     )
-    from .ffmpeg_audio import extract_timeline_audio  # lazy
+    from ..media.ffmpeg_audio import extract_timeline_audio  # lazy
 
     wav_path = state.audio_path_for(run["run_id"])
     try:
@@ -115,7 +115,7 @@ async def _transcribe_per_clip(
     Falls back cleanly if any take has no media-pool backing — each skipped
     item surfaces in the event payload so the user can diagnose.
     """
-    from .per_clip_stt import (  # lazy — avoids ffmpeg / Gemini at import
+    from ..stt.per_clip import (  # lazy — avoids ffmpeg / Gemini at import
         build_clip_audio_specs,
         extract_per_clip_audio,
         transcribe_per_clip,
@@ -164,7 +164,7 @@ async def _transcribe_per_clip(
 
     # Resolve the effective provider up front so cache isolation + the
     # event label both reflect what we're actually about to run.
-    from .stt import DEFAULT_PROVIDER
+    from ..stt import DEFAULT_PROVIDER
 
     effective_provider = (stt_provider or DEFAULT_PROVIDER).lower()
     await emit(
@@ -239,7 +239,7 @@ async def _reconcile_speakers(
     a failed reconciliation leaves the original transcript in place so
     downstream stages keep working.
     """
-    from .speaker_reconcile import (  # lazy — avoids Gemini client at import
+    from ..stt.reconcile import (  # lazy — avoids Gemini client at import
         collapse_to_solo,
         reconcile_with_llm,
     )
@@ -346,7 +346,7 @@ async def _transcribe(
     emit,
     stt_provider: str | None = None,
 ) -> list[dict] | None:
-    from .stt import DEFAULT_PROVIDER, transcribe_audio  # lazy
+    from ..stt import DEFAULT_PROVIDER, transcribe_audio  # lazy
 
     effective_provider = (stt_provider or DEFAULT_PROVIDER).lower()
     await emit(
@@ -444,7 +444,7 @@ async def run_analyze(
 
     try:
         # Lazy import Resolve bridge — avoids import-time Resolve dependency for tests
-        from ..resolve import _boilerplate  # noqa: PLC0415
+        from ...resolve import _boilerplate  # noqa: PLC0415
 
         _, project, _ = _boilerplate()
         tl = _find_timeline_by_name(project, timeline_name)

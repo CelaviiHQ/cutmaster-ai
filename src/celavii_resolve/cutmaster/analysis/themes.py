@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from ...intelligence import llm
 
 if TYPE_CHECKING:
-    from .presets import PresetBundle
+    from ..data.presets import PresetBundle
 
 
 class Chapter(BaseModel):

@@ -20,7 +20,7 @@ from ..stt.per_clip import clip_metadata_table
 from ..stt.speakers import apply_speaker_labels, detect_speakers, speaker_stats
 
 if TYPE_CHECKING:
-    from .presets import PresetBundle
+    from ..data.presets import PresetBundle
 
 
 # ---------------------------------------------------------------------------

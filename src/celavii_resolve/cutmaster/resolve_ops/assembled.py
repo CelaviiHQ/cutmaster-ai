@@ -106,7 +106,7 @@ def read_items_on_track(tl, track_index: int = 1) -> list[ItemSummary]:
     of this module and called only when we're already inside build-plan.
     Requires ``tl`` to be a Resolve ``Timeline``.
     """
-    from .frame_math import _timeline_fps, _timeline_start_frame
+    from ..media.frame_math import _timeline_fps, _timeline_start_frame
 
     fps = _timeline_fps(tl)
     tl_start_frame = _timeline_start_frame(tl)

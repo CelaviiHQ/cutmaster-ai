@@ -90,7 +90,7 @@ def build_clip_audio_specs(tl, track_index: int = 1) -> list[ClipAudioSpec]:
     item separate. Items without a media-pool backing (compound/nested
     clips) are skipped with a warning — per-clip STT can't handle them yet.
     """
-    from .frame_math import _timeline_fps, _timeline_start_frame
+    from ..media.frame_math import _timeline_fps, _timeline_start_frame
 
     fps = _timeline_fps(tl)
     tl_start = _timeline_start_frame(tl)
@@ -431,7 +431,7 @@ def _make_default_transcribe(provider: str | None):
                 f"spec for item {spec.item_index} has no wav_path — call "
                 "extract_per_clip_audio first"
             )
-        from .stt import transcribe_audio  # lazy
+        from . import transcribe_audio  # lazy
 
         resp = transcribe_audio(Path(spec.wav_path), provider=provider)
         return [w.model_dump() for w in resp.words]

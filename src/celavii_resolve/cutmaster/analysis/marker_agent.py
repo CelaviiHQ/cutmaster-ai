@@ -15,8 +15,8 @@ from ...intelligence import llm
 from ..stt.speakers import apply_speaker_labels, detect_speakers
 
 if TYPE_CHECKING:
-    from .director import DirectorPlan
-    from .presets import PresetBundle
+    from ..core.director import DirectorPlan
+    from ..data.presets import PresetBundle
 
 
 # ---------------------------------------------------------------------------
