@@ -84,8 +84,14 @@ def test_every_content_type_preset_bundles_exclude_categories_and_placeholder():
     from celavii_resolve.cutmaster.presets import PRESETS
 
     content_type_presets = [
-        "vlog", "product_demo", "wedding", "interview",
-        "tutorial", "podcast", "reaction", "clip_hunter",
+        "vlog",
+        "product_demo",
+        "wedding",
+        "interview",
+        "tutorial",
+        "podcast",
+        "reaction",
+        "clip_hunter",
     ]
     for key in content_type_presets:
         bundle = PRESETS[key]
@@ -167,12 +173,20 @@ def test_clip_hunter_prompt_shows_speaker_block_when_awareness_set():
     block should be absent even with 2 speakers."""
     preset = get_preset("clip_hunter")
     dense = [
-        {"word": f"w{i}", "start_time": i * 1.0, "end_time": i * 1.0 + 0.9,
-         "speaker_id": "S1" if i % 2 == 0 else "S2"}
+        {
+            "word": f"w{i}",
+            "start_time": i * 1.0,
+            "end_time": i * 1.0 + 0.9,
+            "speaker_id": "S1" if i % 2 == 0 else "S2",
+        }
         for i in range(60)
     ]
     prompt = director._clip_hunter_prompt(
-        preset, dense, user_settings={}, target_clip_length_s=30.0, num_clips=2,
+        preset,
+        dense,
+        user_settings={},
+        target_clip_length_s=30.0,
+        num_clips=2,
     )
     assert "SPEAKER GUIDANCE" not in prompt
 
@@ -183,19 +197,21 @@ def test_assembled_prompt_speaker_block_reflects_flattened_takes():
     preset = get_preset("interview")
     takes = [
         {
-            "item_index": 0, "source_name": "take_a.mov",
-            "start_s": 0.0, "end_s": 5.0,
+            "item_index": 0,
+            "source_name": "take_a.mov",
+            "start_s": 0.0,
+            "end_s": 5.0,
             "transcript": [
-                {"i": 0, "word": "hi", "start_time": 0.0, "end_time": 0.3,
-                 "speaker_id": "S1"},
+                {"i": 0, "word": "hi", "start_time": 0.0, "end_time": 0.3, "speaker_id": "S1"},
             ],
         },
         {
-            "item_index": 1, "source_name": "take_b.mov",
-            "start_s": 5.0, "end_s": 10.0,
+            "item_index": 1,
+            "source_name": "take_b.mov",
+            "start_s": 5.0,
+            "end_s": 10.0,
             "transcript": [
-                {"i": 0, "word": "thanks", "start_time": 5.0, "end_time": 5.4,
-                 "speaker_id": "S2"},
+                {"i": 0, "word": "thanks", "start_time": 5.0, "end_time": 5.4, "speaker_id": "S2"},
             ],
         },
     ]
@@ -208,7 +224,9 @@ def test_prompt_renders_clip_metadata_block_when_words_carry_clip_index():
     preset = get_preset("vlog")
     transcript = [
         {
-            "word": "Hello", "start_time": 0.0, "end_time": 0.4,
+            "word": "Hello",
+            "start_time": 0.0,
+            "end_time": 0.4,
             "speaker_id": "S1",
             "clip_index": 0,
             "clip_metadata": {
@@ -218,7 +236,9 @@ def test_prompt_renders_clip_metadata_block_when_words_carry_clip_index():
             },
         },
         {
-            "word": "world.", "start_time": 3.1, "end_time": 3.6,
+            "word": "world.",
+            "start_time": 3.1,
+            "end_time": 3.6,
             "speaker_id": "S1",
             "clip_index": 1,
             "clip_metadata": {
@@ -241,12 +261,16 @@ def test_prompt_strips_per_word_clip_metadata_to_save_tokens():
     preset = get_preset("vlog")
     transcript = [
         {
-            "word": "Hello", "start_time": 0.0, "end_time": 0.4,
+            "word": "Hello",
+            "start_time": 0.0,
+            "end_time": 0.4,
             "speaker_id": "S1",
             "clip_index": 0,
             "clip_metadata": {
-                "source_name": "DJI_0006.MP4", "duration_s": 3.0,
-                "timeline_offset_s": 0.0, "source_path": "/tmp/x.mov",
+                "source_name": "DJI_0006.MP4",
+                "duration_s": 3.0,
+                "timeline_offset_s": 0.0,
+                "source_path": "/tmp/x.mov",
             },
         },
     ]
@@ -282,9 +306,7 @@ def test_interview_and_podcast_are_the_only_speaker_aware_presets():
     update this test consciously, not drift in."""
     from celavii_resolve.cutmaster.presets import PRESETS
 
-    speaker_aware = {
-        k for k, b in PRESETS.items() if (b.speaker_awareness or "").strip()
-    }
+    speaker_aware = {k for k, b in PRESETS.items() if (b.speaker_awareness or "").strip()}
     assert speaker_aware == {"interview", "podcast"}
 
 

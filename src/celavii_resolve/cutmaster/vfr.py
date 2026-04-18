@@ -49,17 +49,25 @@ def detect_vfr(path: Path, tolerance: float = 0.01) -> dict:
 
     r = subprocess.run(
         [
-            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
             "-show_entries",
             "stream=r_frame_rate,avg_frame_rate,nb_frames,duration",
-            "-of", "json", str(path),
+            "-of",
+            "json",
+            str(path),
         ],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if r.returncode != 0:
         raise VFRProbeError(f"ffprobe failed: {r.stderr.strip()}")
 
-    streams = (json.loads(r.stdout).get("streams") or [])
+    streams = json.loads(r.stdout).get("streams") or []
     if not streams:
         raise VFRProbeError("ffprobe returned no video stream.")
     stream = streams[0]
@@ -68,9 +76,7 @@ def detect_vfr(path: Path, tolerance: float = 0.01) -> dict:
     r_fps = _ratio(r_fps_str)
     avg_fps = _ratio(avg_fps_str)
     if r_fps == 0.0 or avg_fps == 0.0:
-        raise VFRProbeError(
-            f"Could not determine frame rate (r={r_fps_str}, avg={avg_fps_str})."
-        )
+        raise VFRProbeError(f"Could not determine frame rate (r={r_fps_str}, avg={avg_fps_str}).")
 
     diff = abs(r_fps - avg_fps) / max(r_fps, avg_fps)
     return {

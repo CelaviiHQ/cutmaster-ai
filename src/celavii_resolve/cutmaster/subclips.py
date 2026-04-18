@@ -19,11 +19,11 @@ MEDIA_TYPE = {"video": 1, "audio": 2}
 
 
 class SubclipSegment(TypedDict, total=False):
-    source_item_id: str          # required — uniquely identifies the media pool item
-    start_frame: int              # required — inclusive, source frame
-    end_frame: int                # required — exclusive, source frame
-    track_index: int              # default 1
-    media_type: str               # 'video' | 'audio' | 'both' (default 'both')
+    source_item_id: str  # required — uniquely identifies the media pool item
+    start_frame: int  # required — inclusive, source frame
+    end_frame: int  # required — exclusive, source frame
+    track_index: int  # default 1
+    media_type: str  # 'video' | 'audio' | 'both' (default 'both')
 
 
 def append_subclips_with_ranges(
@@ -80,15 +80,17 @@ def append_subclips_with_ranges(
         # 'both' omits mediaType entirely → Resolve appends V+linked A
 
         clip_infos.append(info)
-        per_segment.append({
-            "index": idx,
-            "source_item_name": mp_item.GetName(),
-            "start_frame": int(start),
-            "end_frame": int(end),
-            "frames": int(end) - int(start),
-            "track_index": track,
-            "media_type": media_type,
-        })
+        per_segment.append(
+            {
+                "index": idx,
+                "source_item_name": mp_item.GetName(),
+                "start_frame": int(start),
+                "end_frame": int(end),
+                "frames": int(end) - int(start),
+                "track_index": track,
+                "media_type": media_type,
+            }
+        )
 
     if not clip_infos:
         return {"appended": 0, "segments": per_segment, "errors": errors or ["no valid segments"]}

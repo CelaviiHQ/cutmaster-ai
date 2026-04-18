@@ -56,11 +56,13 @@ def _segment_take(
                 if total_blocks > 1
                 else f"take {item_index}: '{source_name}'"
             )
-            segments.append(CutSegment(
-                start_s=float(words[block_start]["start_time"]),
-                end_s=float(words[i - 1]["end_time"]),
-                reason=reason,
-            ))
+            segments.append(
+                CutSegment(
+                    start_s=float(words[block_start]["start_time"]),
+                    end_s=float(words[i - 1]["end_time"]),
+                    reason=reason,
+                )
+            )
             block_start = i
             block_no += 1
 
@@ -69,11 +71,13 @@ def _segment_take(
         if total_blocks > 1
         else f"take {item_index}: '{source_name}'"
     )
-    segments.append(CutSegment(
-        start_s=float(words[block_start]["start_time"]),
-        end_s=float(words[-1]["end_time"]),
-        reason=tail_reason,
-    ))
+    segments.append(
+        CutSegment(
+            start_s=float(words[block_start]["start_time"]),
+            end_s=float(words[-1]["end_time"]),
+            reason=tail_reason,
+        )
+    )
     return segments
 
 
@@ -111,10 +115,7 @@ def tightener_stats(
     kept_words = sum(len(t.get("transcript") or []) for t in takes)
     original_words = len(original_transcript)
 
-    take_total = sum(
-        float(t.get("end_s", 0.0)) - float(t.get("start_s", 0.0))
-        for t in takes
-    )
+    take_total = sum(float(t.get("end_s", 0.0)) - float(t.get("start_s", 0.0)) for t in takes)
     segment_total = sum(s.end_s - s.start_s for s in segments)
 
     if take_total <= 0:

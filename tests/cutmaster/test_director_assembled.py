@@ -153,17 +153,13 @@ def test_empty_spans_in_selection_rejected():
 
 def test_prompt_reorder_on_instructs_reorder_freedom():
     take = _take(0, [("x", 0.0, 0.5)])
-    prompt = director._assembled_prompt(
-        get_preset("vlog"), [take], {"reorder_allowed": True}
-    )
+    prompt = director._assembled_prompt(get_preset("vlog"), [take], {"reorder_allowed": True})
     assert "MAY reorder" in prompt
 
 
 def test_prompt_reorder_off_instructs_strict_order():
     take = _take(0, [("x", 0.0, 0.5)])
-    prompt = director._assembled_prompt(
-        get_preset("vlog"), [take], {"reorder_allowed": False}
-    )
+    prompt = director._assembled_prompt(get_preset("vlog"), [take], {"reorder_allowed": False})
     assert "MUST NOT reorder" in prompt
     assert "strictly ascending" in prompt
 
@@ -216,12 +212,15 @@ def test_expand_multi_take_preserves_director_order():
 
 
 def test_expand_multi_span_per_take_creates_multiple_segments():
-    take = _take(0, [
-        ("a", 0.0, 0.5),
-        ("b", 0.5, 1.0),
-        ("c", 2.0, 2.5),
-        ("d", 2.5, 3.0),
-    ])
+    take = _take(
+        0,
+        [
+            ("a", 0.0, 0.5),
+            ("b", 0.5, 1.0),
+            ("c", 2.0, 2.5),
+            ("d", 2.5, 3.0),
+        ],
+    )
     plan = _plan([(0, [(0, 1), (2, 3)])])
     segments, _ = expand_assembled_plan(plan, [take])
     assert len(segments) == 2

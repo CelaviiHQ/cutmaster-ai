@@ -55,12 +55,18 @@ def test_three_piece_marker_mapping():
 
 def _fake_project(names):
     class T:
-        def __init__(self, n): self.n = n
-        def GetName(self): return self.n
+        def __init__(self, n):
+            self.n = n
+
+        def GetName(self):
+            return self.n
 
     class P:
-        def GetTimelineCount(self): return len(names)
-        def GetTimelineByIndex(self, i): return T(names[i - 1])
+        def GetTimelineCount(self):
+            return len(names)
+
+        def GetTimelineByIndex(self, i):
+            return T(names[i - 1])
 
     return P()
 

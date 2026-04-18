@@ -152,8 +152,8 @@ def test_segment_entirely_in_gap_raises():
 def test_segment_spanning_gap_produces_pieces_for_both_sides():
     mp_a = _mp_item("UID_A", "c_a.mov")
     mp_b = _mp_item("UID_B", "c_b.mov")
-    item_a = _tl_item(86400, 86520, mp_a)   # 0..5s
-    item_b = _tl_item(86640, 86760, mp_b)   # 10..15s, gap 5..10s
+    item_a = _tl_item(86400, 86520, mp_a)  # 0..5s
+    item_b = _tl_item(86640, 86760, mp_b)  # 10..15s, gap 5..10s
     tl = _timeline(24.0, 86400, [item_a, item_b])
 
     # 3s..12s spans [item_a tail] + [gap] + [item_b head]
@@ -192,7 +192,7 @@ def test_source_fps_matching_timeline_still_passes_1_to_1():
     item = _tl_item(86400, 86640, mp)
     tl = _timeline(24.0, 86400, [item])
     [seg] = resolve_segments(tl, [CutSegment(start_s=2.0, end_s=5.0, reason="")])
-    assert seg.source_in_frame == 48    # 2s at 24fps
+    assert seg.source_in_frame == 48  # 2s at 24fps
     assert seg.source_out_frame == 120  # 5s at 24fps
 
 

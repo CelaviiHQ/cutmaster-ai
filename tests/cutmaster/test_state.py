@@ -84,9 +84,7 @@ def test_audio_path_for_creates_parent(isolated_run_root):
 
 def test_state_file_is_valid_json(isolated_run_root):
     run = state.new_run("T1")
-    asyncio.run(
-        state.emit(run, stage="stt", status="started", data={"k": [1, 2, 3]})
-    )
+    asyncio.run(state.emit(run, stage="stt", status="started", data={"k": [1, 2, 3]}))
     raw = state.run_path(run["run_id"]).read_text()
     parsed = json.loads(raw)
     assert parsed["events"][0]["data"] == {"k": [1, 2, 3]}

@@ -125,9 +125,7 @@ def build_caption_lines(words: list[dict]) -> list[CaptionLine]:
 
         candidate_len = _joined_length(current_text, word_text)
         would_overflow_chars = candidate_len > MAX_CHARS
-        would_overflow_time = (
-            line_start_s is not None and (end - line_start_s) > MAX_DURATION_S
-        )
+        would_overflow_time = line_start_s is not None and (end - line_start_s) > MAX_DURATION_S
 
         if buffer and (would_overflow_chars or would_overflow_time):
             flush()
@@ -149,10 +147,7 @@ def build_caption_lines(words: list[dict]) -> list[CaptionLine]:
 
         # Secondary break: clause punctuation flushes if we're already past
         # the soft char budget. Avoids over-aggressive commas.
-        if (
-            _ends_with(word_text, CLAUSE_PUNCT)
-            and len(current_text) >= int(MAX_CHARS * 0.7)
-        ):
+        if _ends_with(word_text, CLAUSE_PUNCT) and len(current_text) >= int(MAX_CHARS * 0.7):
             flush()
             prev_end_s = None
 
@@ -185,10 +180,7 @@ def render_srt(lines: list[CaptionLine]) -> str:
     out: list[str] = []
     for i, line in enumerate(lines, start=1):
         out.append(str(i))
-        out.append(
-            f"{_format_srt_timestamp(line.start_s)} --> "
-            f"{_format_srt_timestamp(line.end_s)}"
-        )
+        out.append(f"{_format_srt_timestamp(line.start_s)} --> {_format_srt_timestamp(line.end_s)}")
         out.append(line.text)
         out.append("")
     return "\n".join(out)

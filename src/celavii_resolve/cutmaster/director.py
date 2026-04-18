@@ -87,9 +87,7 @@ def validate_plan(plan: DirectorPlan, transcript: list[dict]) -> list[str]:
 
     for i, seg in enumerate(plan.selected_clips):
         if seg.end_s <= seg.start_s:
-            errors.append(
-                f"segment[{i}]: end_s {seg.end_s} must be > start_s {seg.start_s}"
-            )
+            errors.append(f"segment[{i}]: end_s {seg.end_s} must be > start_s {seg.start_s}")
             continue
         if not _close_to_any(seg.start_s, starts):
             errors.append(
@@ -119,10 +117,10 @@ def _user_settings_block(user_settings: dict | None) -> str:
     if not user_settings:
         return "(no user overrides — use preset defaults)"
     lines: list[str] = []
-    if (tgt := user_settings.get("target_length_s")):
+    if tgt := user_settings.get("target_length_s"):
         mins = tgt / 60.0
         lines.append(f"- Target length: ~{mins:.1f} minutes")
-    if (themes := user_settings.get("themes")):
+    if themes := user_settings.get("themes"):
         lines.append(f"- Prioritized themes: {', '.join(themes)}")
     if not lines:
         lines.append("(no user overrides)")
@@ -198,9 +196,7 @@ def _speaker_block(
         return ""
 
     counts = speaker_stats(relabeled)
-    roster = "\n".join(
-        f"- **{sid}** — {counts.get(sid, 0)} words" for sid in speakers
-    )
+    roster = "\n".join(f"- **{sid}** — {counts.get(sid, 0)} words" for sid in speakers)
     header = (
         "SPEAKER GUIDANCE — each word in the transcript carries a "
         "`speaker_id`. Use it to make better keep/drop choices per the "
@@ -310,7 +306,7 @@ def _focus_block(user_settings: dict | None) -> str:
         "USER FOCUS — treat this as a soft priority: when two candidate "
         "blocks compete for the same slot, prefer the one that serves "
         "the focus. Do NOT force content in if the transcript doesn't "
-        f"support it.\n\"{focus}\""
+        f'support it.\n"{focus}"'
     )
 
 
@@ -319,9 +315,7 @@ def _prompt(preset: PresetBundle, transcript: list[dict], user_settings: dict | 
     focus = _focus_block(user_settings)
     speakers = _speaker_block(preset, transcript, user_settings)
     clip_meta = _clip_metadata_block(transcript)
-    optional_blocks = "\n\n".join(
-        b for b in (exclude, focus, speakers, clip_meta) if b
-    )
+    optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers, clip_meta) if b)
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     transcript_for_prompt = _shape_for_prompt(transcript, user_settings)
     return f"""You are a {preset.role}.
@@ -393,7 +387,8 @@ class WordSpan(BaseModel):
 
 class AssembledItemSelection(BaseModel):
     item_index: int = Field(
-        ..., ge=0,
+        ...,
+        ge=0,
         description="0-based index into the input TAKES array.",
     )
     kept_word_spans: list[WordSpan] = Field(
@@ -456,9 +451,7 @@ def _assembled_prompt(
         flat_words.extend(t.get("transcript") or [])
     speakers = _speaker_block(preset, flat_words, user_settings)
     clip_meta = _clip_metadata_block(flat_words)
-    optional_blocks = "\n\n".join(
-        b for b in (exclude, focus, speakers, clip_meta) if b
-    )
+    optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers, clip_meta) if b)
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     takes_for_prompt = _shape_takes_for_prompt(takes, user_settings)
 
@@ -510,8 +503,7 @@ def validate_assembled_plan(
 
     if not (0 <= plan.hook_index < len(plan.selections)):
         errors.append(
-            f"hook_index {plan.hook_index} out of range for "
-            f"{len(plan.selections)} selections"
+            f"hook_index {plan.hook_index} out of range for {len(plan.selections)} selections"
         )
 
     take_by_index = {t["item_index"]: t for t in takes}
@@ -549,17 +541,13 @@ def validate_assembled_plan(
 
         transcript_len = len(take.get("transcript") or [])
         if transcript_len == 0:
-            errors.append(
-                f"selections[{i}]: take {sel.item_index} has no transcript"
-            )
+            errors.append(f"selections[{i}]: take {sel.item_index} has no transcript")
             continue
 
         last_b = -1
         for j, span in enumerate(sel.kept_word_spans):
             if span.a > span.b:
-                errors.append(
-                    f"selections[{i}].spans[{j}]: a={span.a} > b={span.b}"
-                )
+                errors.append(f"selections[{i}].spans[{j}]: a={span.a} > b={span.b}")
                 continue
             if span.a >= transcript_len or span.b >= transcript_len:
                 errors.append(
@@ -609,14 +597,20 @@ def build_assembled_cut_plan(
 
 
 class ClipCandidate(BaseModel):
-    start_s: float = Field(..., description="Start of the candidate on the source timeline, in seconds.")
-    end_s: float = Field(..., description="End of the candidate on the source timeline, in seconds.")
+    start_s: float = Field(
+        ..., description="Start of the candidate on the source timeline, in seconds."
+    )
+    end_s: float = Field(
+        ..., description="End of the candidate on the source timeline, in seconds."
+    )
     quote: str = Field(
         default="",
         description="The key line that anchors the clip — used in the Review tabs.",
     )
     engagement_score: float = Field(
-        ..., ge=0.0, le=1.0,
+        ...,
+        ge=0.0,
+        le=1.0,
         description="Director's confidence this clip is viral-worthy (0–1, higher is better).",
     )
     suggested_caption: str = Field(
@@ -651,9 +645,7 @@ def _clip_hunter_prompt(
     focus = _focus_block(user_settings)
     speakers = _speaker_block(preset, transcript, user_settings)
     clip_meta = _clip_metadata_block(transcript)
-    optional_blocks = "\n\n".join(
-        b for b in (exclude, focus, speakers, clip_meta) if b
-    )
+    optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers, clip_meta) if b)
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     transcript_for_prompt = _shape_for_prompt(transcript, user_settings)
     low = target_clip_length_s * 0.6
@@ -713,9 +705,7 @@ def validate_clip_hunter_plan(
 
     # 1. count leniency
     if abs(len(plan.candidates) - num_clips) > 1:
-        errors.append(
-            f"expected {num_clips} candidates (±1), got {len(plan.candidates)}"
-        )
+        errors.append(f"expected {num_clips} candidates (±1), got {len(plan.candidates)}")
 
     low = target_clip_length_s * (1.0 - duration_tolerance)
     high = target_clip_length_s * (1.0 + duration_tolerance)
@@ -723,9 +713,7 @@ def validate_clip_hunter_plan(
     sorted_by_start = sorted(plan.candidates, key=lambda c: c.start_s)
     for i, cand in enumerate(plan.candidates):
         if cand.end_s <= cand.start_s:
-            errors.append(
-                f"candidate[{i}]: end_s {cand.end_s} must be > start_s {cand.start_s}"
-            )
+            errors.append(f"candidate[{i}]: end_s {cand.end_s} must be > start_s {cand.start_s}")
             continue
         duration = cand.end_s - cand.start_s
         if not (low <= duration <= high):
@@ -775,14 +763,21 @@ def build_clip_hunter_plan(
 ) -> ClipHunterPlan:
     """Run the Clip Hunter Director. Retries on structural violations."""
     prompt = _clip_hunter_prompt(
-        preset, transcript, user_settings, target_clip_length_s, num_clips,
+        preset,
+        transcript,
+        user_settings,
+        target_clip_length_s,
+        num_clips,
     )
     return llm.call_structured(
         agent="director",
         prompt=prompt,
         response_schema=ClipHunterPlan,
         validate=lambda plan: validate_clip_hunter_plan(
-            plan, transcript, target_clip_length_s, num_clips,
+            plan,
+            transcript,
+            target_clip_length_s,
+            num_clips,
         ),
         temperature=0.5,
     )
@@ -796,11 +791,13 @@ def candidate_to_segments(cand: ClipCandidate) -> list[CutSegment]:
     timeline-item boundaries if the candidate spans multiple takes, so
     the caller gets multiple ResolvedCutSegments for free.
     """
-    return [CutSegment(
-        start_s=cand.start_s,
-        end_s=cand.end_s,
-        reason=cand.quote or cand.reasoning,
-    )]
+    return [
+        CutSegment(
+            start_s=cand.start_s,
+            end_s=cand.end_s,
+            reason=cand.quote or cand.reasoning,
+        )
+    ]
 
 
 def expand_assembled_plan(
@@ -827,9 +824,11 @@ def expand_assembled_plan(
         if sel_pos == plan.hook_index and sel.kept_word_spans:
             hook_cut_index = len(segments)
         for span in sel.kept_word_spans:
-            segments.append(CutSegment(
-                start_s=float(words[span.a]["start_time"]),
-                end_s=float(words[span.b]["end_time"]),
-                reason=f"take {sel.item_index}: '{take.get('source_name', '')}'",
-            ))
+            segments.append(
+                CutSegment(
+                    start_s=float(words[span.a]["start_time"]),
+                    end_s=float(words[span.b]["end_time"]),
+                    reason=f"take {sel.item_index}: '{take.get('source_name', '')}'",
+                )
+            )
     return segments, hook_cut_index

@@ -17,20 +17,30 @@ from celavii_resolve.cutmaster.stt_deepgram import _map_deepgram_words, is_confi
 def test_mapper_extracts_words_from_first_alternative():
     payload = {
         "results": {
-            "channels": [{
-                "alternatives": [{
-                    "words": [
+            "channels": [
+                {
+                    "alternatives": [
                         {
-                            "word": "hello", "punctuated_word": "Hello,",
-                            "start": 0.1, "end": 0.4, "speaker": 0,
-                        },
-                        {
-                            "word": "world", "punctuated_word": "world.",
-                            "start": 0.5, "end": 0.9, "speaker": 0,
-                        },
+                            "words": [
+                                {
+                                    "word": "hello",
+                                    "punctuated_word": "Hello,",
+                                    "start": 0.1,
+                                    "end": 0.4,
+                                    "speaker": 0,
+                                },
+                                {
+                                    "word": "world",
+                                    "punctuated_word": "world.",
+                                    "start": 0.5,
+                                    "end": 0.9,
+                                    "speaker": 0,
+                                },
+                            ],
+                        }
                     ],
-                }],
-            }],
+                }
+            ],
         },
     }
     words = _map_deepgram_words(payload)
@@ -46,15 +56,19 @@ def test_mapper_shifts_speaker_indices_one_based():
     """Deepgram speaker ids are 0-indexed; we surface S1..SN to match Gemini."""
     payload = {
         "results": {
-            "channels": [{
-                "alternatives": [{
-                    "words": [
-                        {"word": "a", "start": 0.0, "end": 0.2, "speaker": 0},
-                        {"word": "b", "start": 0.3, "end": 0.5, "speaker": 1},
-                        {"word": "c", "start": 0.6, "end": 0.8, "speaker": 2},
+            "channels": [
+                {
+                    "alternatives": [
+                        {
+                            "words": [
+                                {"word": "a", "start": 0.0, "end": 0.2, "speaker": 0},
+                                {"word": "b", "start": 0.3, "end": 0.5, "speaker": 1},
+                                {"word": "c", "start": 0.6, "end": 0.8, "speaker": 2},
+                            ],
+                        }
                     ],
-                }],
-            }],
+                }
+            ],
         },
     }
     words = _map_deepgram_words(payload)
@@ -65,13 +79,17 @@ def test_mapper_defaults_to_s1_when_speaker_missing():
     """Diarization off → Deepgram omits `speaker`. Default to single-speaker."""
     payload = {
         "results": {
-            "channels": [{
-                "alternatives": [{
-                    "words": [
-                        {"word": "solo", "start": 0.0, "end": 0.4},
+            "channels": [
+                {
+                    "alternatives": [
+                        {
+                            "words": [
+                                {"word": "solo", "start": 0.0, "end": 0.4},
+                            ],
+                        }
                     ],
-                }],
-            }],
+                }
+            ],
         },
     }
     words = _map_deepgram_words(payload)
@@ -82,15 +100,19 @@ def test_mapper_defaults_to_s1_when_speaker_missing():
 def test_mapper_drops_zero_duration_words():
     payload = {
         "results": {
-            "channels": [{
-                "alternatives": [{
-                    "words": [
-                        {"word": "a", "start": 0.0, "end": 0.2},
-                        {"word": "b", "start": 0.3, "end": 0.3},  # zero dur
-                        {"word": "c", "start": 0.5, "end": 0.4},  # inverted
+            "channels": [
+                {
+                    "alternatives": [
+                        {
+                            "words": [
+                                {"word": "a", "start": 0.0, "end": 0.2},
+                                {"word": "b", "start": 0.3, "end": 0.3},  # zero dur
+                                {"word": "c", "start": 0.5, "end": 0.4},  # inverted
+                            ],
+                        }
                     ],
-                }],
-            }],
+                }
+            ],
         },
     }
     words = _map_deepgram_words(payload)
@@ -101,9 +123,14 @@ def test_mapper_returns_empty_on_empty_payload():
     assert _map_deepgram_words({}) == []
     assert _map_deepgram_words({"results": {}}) == []
     assert _map_deepgram_words({"results": {"channels": []}}) == []
-    assert _map_deepgram_words({
-        "results": {"channels": [{"alternatives": []}]},
-    }) == []
+    assert (
+        _map_deepgram_words(
+            {
+                "results": {"channels": [{"alternatives": []}]},
+            }
+        )
+        == []
+    )
 
 
 # ------------------------- configuration ---------------------------------
@@ -159,10 +186,12 @@ def test_dispatch_routes_to_deepgram_when_selected(tmp_path, monkeypatch):
         raise AssertionError("gemini path must not run when provider=deepgram")
 
     monkeypatch.setattr(
-        "celavii_resolve.cutmaster.stt_deepgram.transcribe", fake_deepgram,
+        "celavii_resolve.cutmaster.stt_deepgram.transcribe",
+        fake_deepgram,
     )
     monkeypatch.setattr(
-        "celavii_resolve.cutmaster.stt_gemini.transcribe", forbidden,
+        "celavii_resolve.cutmaster.stt_gemini.transcribe",
+        forbidden,
     )
 
     resp = stt_module.transcribe_audio(audio, provider="deepgram")
@@ -185,7 +214,8 @@ def test_dispatch_falls_back_to_env_var(tmp_path, monkeypatch):
         return TranscriptResponse(words=[])
 
     monkeypatch.setattr(
-        "celavii_resolve.cutmaster.stt_deepgram.transcribe", fake_deepgram,
+        "celavii_resolve.cutmaster.stt_deepgram.transcribe",
+        fake_deepgram,
     )
     stt_module.transcribe_audio(audio)
     assert "hit" in calls
@@ -222,14 +252,23 @@ def test_transcribe_parses_good_response(tmp_path, monkeypatch):
         def json() -> dict:
             return {
                 "results": {
-                    "channels": [{
-                        "alternatives": [{
-                            "words": [
-                                {"word": "yes", "punctuated_word": "Yes.",
-                                 "start": 0.1, "end": 0.5, "speaker": 0},
+                    "channels": [
+                        {
+                            "alternatives": [
+                                {
+                                    "words": [
+                                        {
+                                            "word": "yes",
+                                            "punctuated_word": "Yes.",
+                                            "start": 0.1,
+                                            "end": 0.5,
+                                            "speaker": 0,
+                                        },
+                                    ],
+                                }
                             ],
-                        }],
-                    }],
+                        }
+                    ],
                 },
             }
 

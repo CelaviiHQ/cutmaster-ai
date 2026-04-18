@@ -185,9 +185,7 @@ class TestModuleCoverage:
             if f.name != "__init__.py"
         }
         ai_files = {
-            f"celavii_resolve.ai.{f.stem}"
-            for f in AI_DIR.glob("*.py")
-            if f.name != "__init__.py"
+            f"celavii_resolve.ai.{f.stem}" for f in AI_DIR.glob("*.py") if f.name != "__init__.py"
         }
         cutmaster_files = {
             f"celavii_resolve.cutmaster.{f.stem}"
@@ -209,10 +207,6 @@ class TestModuleCoverage:
             (WORKFLOWS_DIR, "from .workflows import"),
             (AI_DIR, "from .ai import"),
         ]:
-            py_files = {
-                f.stem
-                for f in scan_dir.glob("*.py")
-                if f.name != "__init__.py"
-            }
+            py_files = {f.stem for f in scan_dir.glob("*.py") if f.name != "__init__.py"}
             missing = {f for f in py_files if f"{import_prefix} {f}" not in init_text}
             assert not missing, f"Modules not in __init__.py ({import_prefix}): {missing}"

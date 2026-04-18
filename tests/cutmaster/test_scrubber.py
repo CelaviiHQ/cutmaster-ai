@@ -42,7 +42,7 @@ def test_collapse_restart_prefix():
         _w("I", 0.0, 0.1),
         _w("was", 0.1, 0.3),
         _w("going,", 0.3, 0.6),
-        _w("I", 0.8, 0.9),        # repeat starts here (inside 3s window)
+        _w("I", 0.8, 0.9),  # repeat starts here (inside 3s window)
         _w("was", 0.9, 1.1),
         _w("going", 1.1, 1.4),
         _w("to", 1.4, 1.55),
@@ -94,7 +94,9 @@ def test_empty_input():
 
 
 def test_result_totals_consistent():
-    words = [_w(x, i * 0.2, (i + 1) * 0.2) for i, x in enumerate(["hi", "um", "there", "uh", "friend"])]
+    words = [
+        _w(x, i * 0.2, (i + 1) * 0.2) for i, x in enumerate(["hi", "um", "there", "uh", "friend"])
+    ]
     result = scrub(words)
     assert len(result.kept) + len(result.removed) == result.original_count
     assert result.kept_count == len(result.kept)

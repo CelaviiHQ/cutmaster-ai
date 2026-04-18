@@ -30,6 +30,7 @@ class MarkerSuggestion(BaseModel):
     ``at_s`` is in the ORIGINAL timeline's time (seconds). The execute stage
     maps it to the new timeline's frame after segments are stitched.
     """
+
     at_s: float = Field(description="Time (s) in the original timeline where the cue occurs.")
     color: str = Field(default="Blue")
     name: str
@@ -72,7 +73,7 @@ def _prompt(
             f"speakers in this cut: {', '.join(roster)}. When a marker is "
             "speaker-specific (a visual referenced by one person only), "
             "include the speaker tag in the marker's `name` so the editor "
-            "can tell them apart (e.g. \"Cutaway — Guest: {subject}\")."
+            'can tell them apart (e.g. "Cutaway — Guest: {subject}").'
         )
 
     cue_list = ", ".join(f'"{c}"' for c in preset.cue_vocabulary)

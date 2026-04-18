@@ -13,6 +13,7 @@ def test_package_imports():
 
 def test_config_imports():
     from celavii_resolve.config import mcp
+
     assert mcp.name == "celavii-resolve"
 
 
@@ -22,6 +23,7 @@ def test_errors_imports():
         ResolveNotRunning,
         safe_resolve_call,
     )
+
     assert issubclass(ResolveNotRunning, ResolveError)
     assert callable(safe_resolve_call)
 
@@ -33,6 +35,7 @@ def test_constants_imports():
         PAGES,
         TRACK_TYPES,
     )
+
     assert "Blue" in MARKER_COLORS
     assert "video" in TRACK_TYPES
     assert "edit" in PAGES
@@ -44,6 +47,7 @@ def test_resolve_helpers_import():
         _boilerplate,
         get_resolve,
     )
+
     assert callable(get_resolve)
     assert callable(_boilerplate)
 

@@ -17,9 +17,7 @@ def _fake_project():
 def _fake_media_pool(items_by_uid):
     """Build a media pool whose root folder yields the given items."""
     root = MagicMock()
-    root.GetClipList.return_value = [
-        _fake_mp_item(uid, name) for uid, name in items_by_uid.items()
-    ]
+    root.GetClipList.return_value = [_fake_mp_item(uid, name) for uid, name in items_by_uid.items()]
     root.GetSubFolderList.return_value = []
     mp = MagicMock()
     mp.GetRootFolder.return_value = root
@@ -60,8 +58,9 @@ def test_media_type_video_only_sets_media_type_1():
     mp = _fake_media_pool({"UID1": "c.mov"})
     mp.AppendToTimeline.return_value = [MagicMock()]
 
-    segments = [{"source_item_id": "UID1", "start_frame": 0, "end_frame": 50,
-                 "media_type": "video"}]
+    segments = [
+        {"source_item_id": "UID1", "start_frame": 0, "end_frame": 50, "media_type": "video"}
+    ]
     append_subclips_with_ranges(project, mp, segments)
     assert mp.AppendToTimeline.call_args[0][0][0]["mediaType"] == 1
 

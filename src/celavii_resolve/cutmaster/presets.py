@@ -78,8 +78,14 @@ VLOG = PresetBundle(
     hook_rule="the single highest-energy summary statement in the first 20% of the runtime",
     pacing="retention curve — front-load the payoff, keep beats tight",
     cue_vocabulary=[
-        "as you can see", "look at this", "check this out", "so here's",
-        "when I went to", "over here", "right here", "this is where",
+        "as you can see",
+        "look at this",
+        "check this out",
+        "so here's",
+        "when I went to",
+        "over here",
+        "right here",
+        "this is where",
     ],
     marker_vocabulary=["B-Roll: {subject}", "Cutaway: {subject}"],
     theme_axes=["locations", "activities", "reactions", "key takeaways"],
@@ -131,8 +137,12 @@ PRODUCT_DEMO = PresetBundle(
     hook_rule="the problem/benefit framing that earns the viewer's attention in the first 15 seconds",
     pacing="one beat per feature, no rambling, demo-first",
     cue_vocabulary=[
-        "look at", "notice the", "here's the", "as you can see",
-        "one of the features", "the difference is",
+        "look at",
+        "notice the",
+        "here's the",
+        "as you can see",
+        "one of the features",
+        "the difference is",
     ],
     marker_vocabulary=["Insert product shot: {feature}", "Zoom: {feature}"],
     theme_axes=["features", "specs", "use cases", "comparisons"],
@@ -184,13 +194,19 @@ WEDDING = PresetBundle(
     hook_rule="the emotional peak (first kiss, vows highlight, or key family moment)",
     pacing="breathing room — let ambient silence and music-led beats land",
     cue_vocabulary=[
-        "walking down", "first kiss", "our vows", "when we met",
-        "the day we", "dancing", "speech", "toast",
+        "walking down",
+        "first kiss",
+        "our vows",
+        "when we met",
+        "the day we",
+        "dancing",
+        "speech",
+        "toast",
     ],
     marker_vocabulary=["Cutaway: {moment}", "B-Roll: {moment}"],
     theme_axes=["ceremony", "reception", "toasts", "first dance", "family"],
     scrub_defaults={
-        "remove_fillers": False,       # preserve authentic pauses
+        "remove_fillers": False,  # preserve authentic pauses
         "remove_dead_air": False,
         "collapse_restarts": True,
         "dead_air_threshold_s": 1.5,
@@ -243,8 +259,11 @@ INTERVIEW = PresetBundle(
     hook_rule="the strongest quote in the transcript, regardless of chronological position",
     pacing="preserve conversational cadence; don't rush the subject's pauses",
     cue_vocabulary=[
-        "I remember when", "the first time", "what happened was",
-        "I'll never forget", "the thing is",
+        "I remember when",
+        "the first time",
+        "what happened was",
+        "I'll never forget",
+        "the thing is",
     ],
     marker_vocabulary=["B-Roll to cover cut: {topic}", "Archive insert: {topic}"],
     theme_axes=["named entities", "turning points", "topics", "opinions"],
@@ -292,8 +311,8 @@ INTERVIEW = PresetBundle(
         "each exchange — keep the guest's full answers verbatim, and keep "
         "only the crisp core of each interviewer question (the 1–2 sentences "
         "that actually set up the answer). Drop the interviewer's verbose "
-        "multi-sentence setups, re-framings, and agreement noises (\"right\", "
-        "\"yeah, that makes sense\") unless they're the hook. If the "
+        'multi-sentence setups, re-framings, and agreement noises ("right", '
+        '"yeah, that makes sense") unless they\'re the hook. If the '
         "interviewer paraphrases the guest's answer back, drop the paraphrase "
         "and keep the original answer. Never drop a guest answer to tighten "
         "length — tighten interviewer material instead."
@@ -307,8 +326,15 @@ TUTORIAL = PresetBundle(
     hook_rule="an outcome or result preview — what the viewer will be able to do by the end",
     pacing="aggressive on intro/preamble; never rush during actual steps or demos",
     cue_vocabulary=[
-        "step one", "first", "next", "then", "finally",
-        "click", "select", "drag", "type",
+        "step one",
+        "first",
+        "next",
+        "then",
+        "finally",
+        "click",
+        "select",
+        "drag",
+        "type",
     ],
     marker_vocabulary=["Screen recording: {step}", "Zoom: {UI element}"],
     theme_axes=["steps", "tools", "gotchas", "results"],
@@ -360,8 +386,11 @@ PODCAST = PresetBundle(
     hook_rule="the strongest exchange in the first third of the runtime",
     pacing="conversation-paced — do not fragment question/answer pairs",
     cue_vocabulary=[
-        "that reminds me", "speaking of", "on that note",
-        "let's talk about", "moving on to",
+        "that reminds me",
+        "speaking of",
+        "on that note",
+        "let's talk about",
+        "moving on to",
     ],
     marker_vocabulary=["Chapter: {topic shift}", "Pull quote: {line}"],
     theme_axes=["topics", "speaker turns", "guest bio beats"],
@@ -409,8 +438,8 @@ PODCAST = PresetBundle(
         "answer turns as a unit — never split a speaker's answer across a "
         "cut. When two hosts riff with each other, keep both sides; when a "
         "host asks a guest a question, keep the question crisp and keep the "
-        "guest's full answer. Drop host agreement interjections (\"totally\", "
-        "\"for sure\", \"right\") that interrupt a guest's answer. The "
+        'guest\'s full answer. Drop host agreement interjections ("totally", '
+        '"for sure", "right") that interrupt a guest\'s answer. The '
         "speaker with the most words across the transcript is usually the "
         "primary host — treat their housekeeping / show-wrap material as "
         "lower priority than guest content."
@@ -424,8 +453,13 @@ REACTION = PresetBundle(
     hook_rule="the biggest genuine reaction or laugh in the clip",
     pacing="light scrub — let reactions and pauses breathe; don't sterilize",
     cue_vocabulary=[
-        "wait", "what", "no way", "oh my", "hold on",
-        "did you see that", "I can't believe",
+        "wait",
+        "what",
+        "no way",
+        "oh my",
+        "hold on",
+        "did you see that",
+        "I can't believe",
     ],
     marker_vocabulary=["Show source: {moment}", "Split screen: {moment}"],
     theme_axes=["reaction peaks", "commentary threads"],
@@ -471,16 +505,16 @@ TIGHTENER = PresetBundle(
     role="no-LLM tightener — skips the Director and relies on per-take word-block segmentation",
     hook_rule="preserve the original opening of each take; no narrative reordering",
     pacing="surgical — drop filler + dead air inside each take; keep the story order",
-    cue_vocabulary=[],           # no Marker LLM runs for tightener
-    marker_vocabulary=[],        # keep empty — tightener output is take-level only
-    theme_axes=[],               # no theme selection in the UI
+    cue_vocabulary=[],  # no Marker LLM runs for tightener
+    marker_vocabulary=[],  # keep empty — tightener output is take-level only
+    theme_axes=[],  # no theme selection in the UI
     scrub_defaults={
         "remove_fillers": True,
         "remove_dead_air": True,
         "collapse_restarts": True,
-        "dead_air_threshold_s": 0.3,   # more aggressive than vlog's 0.6
+        "dead_air_threshold_s": 0.3,  # more aggressive than vlog's 0.6
     },
-    exclude_categories=[],       # category exclusion is a Director concept
+    exclude_categories=[],  # category exclusion is a Director concept
     default_custom_focus_placeholder="",  # no Director to read focus
 )
 
@@ -492,9 +526,16 @@ CLIP_HUNTER = PresetBundle(
     hook_rule="the single most quotable, tension-rich, or emotionally clear moment in the window",
     pacing="each candidate must be self-contained — a viewer with zero prior context should get the moment",
     cue_vocabulary=[
-        "the thing is", "here's the problem", "what blew my mind",
-        "you won't believe", "nobody talks about", "the truth is",
-        "wait, so", "hold on", "imagine", "picture this",
+        "the thing is",
+        "here's the problem",
+        "what blew my mind",
+        "you won't believe",
+        "nobody talks about",
+        "the truth is",
+        "wait, so",
+        "hold on",
+        "imagine",
+        "picture this",
     ],
     marker_vocabulary=["Clip: {topic}", "Hook: {line}"],
     theme_axes=["punchlines", "revelations", "disagreements", "emotional peaks", "quotable lines"],
@@ -537,8 +578,15 @@ CLIP_HUNTER = PresetBundle(
 PRESETS: dict[str, PresetBundle] = {
     p.key: p
     for p in (
-        VLOG, PRODUCT_DEMO, WEDDING, INTERVIEW, TUTORIAL, PODCAST, REACTION,
-        TIGHTENER, CLIP_HUNTER,
+        VLOG,
+        PRODUCT_DEMO,
+        WEDDING,
+        INTERVIEW,
+        TUTORIAL,
+        PODCAST,
+        REACTION,
+        TIGHTENER,
+        CLIP_HUNTER,
     )
 }
 

@@ -51,6 +51,7 @@ def xdg_config() -> Path:
 # Platform detection
 # ---------------------------------------------------------------------------
 
+
 def platform_name() -> str:
     return {"Darwin": "macOS", "Windows": "Windows", "Linux": "Linux"}.get(SYSTEM, SYSTEM)
 
@@ -61,8 +62,10 @@ def find_resolve_api_path() -> str | None:
         "Darwin": [
             "/Library/Application Support/Blackmagic Design/"
             "DaVinci Resolve/Developer/Scripting/Modules",
-            str(home() / "Library/Application Support/Blackmagic Design/"
-                "DaVinci Resolve/Developer/Scripting/Modules"),
+            str(
+                home() / "Library/Application Support/Blackmagic Design/"
+                "DaVinci Resolve/Developer/Scripting/Modules"
+            ),
         ],
         "Windows": [
             os.path.expandvars(
@@ -89,8 +92,14 @@ def find_python() -> str | None:
         if path:
             try:
                 result = subprocess.run(
-                    [path, "-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"],
-                    capture_output=True, text=True, timeout=5,
+                    [
+                        path,
+                        "-c",
+                        "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
                 )
                 version = result.stdout.strip()
                 major, minor = map(int, version.split("."))
@@ -110,7 +119,11 @@ MCP_CLIENTS = [
         "id": "claude-desktop",
         "name": "Claude Desktop",
         "get_path": lambda: {
-            "Darwin": home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json",
+            "Darwin": home()
+            / "Library"
+            / "Application Support"
+            / "Claude"
+            / "claude_desktop_config.json",
             "Windows": appdata() / "Claude" / "claude_desktop_config.json",
             "Linux": xdg_config() / "Claude" / "claude_desktop_config.json",
         }.get(SYSTEM),
@@ -185,6 +198,7 @@ MCP_CLIENTS = [
 # Config builders
 # ---------------------------------------------------------------------------
 
+
 def build_server_entry(python_path: str, server_dir: str) -> dict:
     """Standard MCP server config entry."""
     return {
@@ -209,6 +223,7 @@ def build_zed_entry(python_path: str, server_dir: str) -> dict:
 # ---------------------------------------------------------------------------
 # File I/O helpers
 # ---------------------------------------------------------------------------
+
 
 def read_json(path: Path) -> dict:
     """Read a JSON file, returning empty dict if missing/invalid."""
@@ -243,13 +258,16 @@ def write_json(path: Path, data: dict, dry_run: bool = False) -> bool:
 # Venv setup
 # ---------------------------------------------------------------------------
 
+
 def setup_venv(python_path: str, dry_run: bool = False) -> str | None:
     """Create a virtual environment and install dependencies.
 
     Returns the path to the venv Python interpreter, or None on failure.
     """
     venv_dir = PROJECT_DIR / ".venv"
-    venv_python = venv_dir / ("Scripts" / "python.exe" if SYSTEM == "Windows" else "bin" / "python3")
+    venv_python = venv_dir / (
+        Path("Scripts") / "python.exe" if SYSTEM == "Windows" else Path("bin") / "python3"
+    )
 
     if venv_dir.is_dir() and venv_python.is_file():
         print(f"  Virtual environment already exists at {venv_dir}")
@@ -284,6 +302,7 @@ def setup_venv(python_path: str, dry_run: bool = False) -> str | None:
 # Resolve connection verification
 # ---------------------------------------------------------------------------
 
+
 def verify_resolve_connection(python_path: str) -> tuple[bool, str]:
     """Verify DaVinciResolveScript can be imported."""
     api_path = find_resolve_api_path()
@@ -311,7 +330,9 @@ def verify_resolve_connection(python_path: str) -> tuple[bool, str]:
     try:
         result = subprocess.run(
             [python_path, "-c", test_script],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         output = result.stdout.strip()
         if output.startswith("CONNECTED:"):
@@ -329,6 +350,7 @@ def verify_resolve_connection(python_path: str) -> tuple[bool, str]:
 # ---------------------------------------------------------------------------
 # Client configuration
 # ---------------------------------------------------------------------------
+
 
 def configure_client(client: dict, venv_python: str, dry_run: bool = False) -> tuple[bool, str]:
     """Write MCP config for a specific client. Returns (success, message)."""
@@ -385,6 +407,7 @@ def print_manual_config(venv_python: str):
 # Main installer flow
 # ---------------------------------------------------------------------------
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="Celavii-Resolve — Universal MCP Installer",
@@ -394,7 +417,7 @@ def main():
         "--clients",
         default="",
         help="Comma-separated client IDs (e.g. 'claude-desktop,cursor'), "
-             "'all' for all detected, or 'manual' for config snippets",
+        "'all' for all detected, or 'manual' for config snippets",
     )
     parser.add_argument("--dry-run", action="store_true", help="Preview without writing files")
     parser.add_argument("--no-venv", action="store_true", help="Skip virtual environment creation")

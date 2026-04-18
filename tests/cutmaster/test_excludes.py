@@ -48,8 +48,14 @@ def test_every_content_type_preset_has_exclude_categories_populated():
     content_type_presets = {k for k, p in _P.items() if p.exclude_categories}
     # At minimum the 8 content-type presets must populate excludes.
     assert content_type_presets >= {
-        "vlog", "product_demo", "wedding", "interview",
-        "tutorial", "podcast", "reaction", "clip_hunter",
+        "vlog",
+        "product_demo",
+        "wedding",
+        "interview",
+        "tutorial",
+        "podcast",
+        "reaction",
+        "clip_hunter",
     }
     for key in content_type_presets:
         bundle = _P[key]

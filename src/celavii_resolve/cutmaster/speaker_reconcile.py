@@ -132,12 +132,14 @@ def _collect_local_samples(
 
     samples: list[dict] = []
     for (clip, sid), quote_tokens in sorted(buckets.items()):
-        samples.append({
-            "clip_index": clip,
-            "local_id": sid,
-            "quotes": [" ".join(q) for q in quote_tokens],
-            "word_count": len(running_words[(clip, sid)]),
-        })
+        samples.append(
+            {
+                "clip_index": clip,
+                "local_id": sid,
+                "quotes": [" ".join(q) for q in quote_tokens],
+                "word_count": len(running_words[(clip, sid)]),
+            }
+        )
     return samples
 
 
@@ -180,13 +182,10 @@ def _validate_reconciliation(
     extra = mapped_keys - sample_keys
     if missing:
         errors.append(
-            f"mapping is missing {len(missing)} (clip_index, local_id) pair(s): "
-            f"{sorted(missing)}"
+            f"mapping is missing {len(missing)} (clip_index, local_id) pair(s): {sorted(missing)}"
         )
     if extra:
-        errors.append(
-            f"mapping references {len(extra)} unknown pair(s): {sorted(extra)}"
-        )
+        errors.append(f"mapping references {len(extra)} unknown pair(s): {sorted(extra)}")
 
     used_globals: set[str] = set()
     for entry in plan.mapping:
@@ -196,15 +195,11 @@ def _validate_reconciliation(
             continue
         n = int(gid[1:])
         if n < 1 or n > expected_speakers:
-            errors.append(
-                f"global_id {gid} outside S1..S{expected_speakers}"
-            )
+            errors.append(f"global_id {gid} outside S1..S{expected_speakers}")
         used_globals.add(gid)
 
     if plan.detected_speakers < 1 or plan.detected_speakers > expected_speakers:
-        errors.append(
-            f"detected_speakers={plan.detected_speakers} outside 1..{expected_speakers}"
-        )
+        errors.append(f"detected_speakers={plan.detected_speakers} outside 1..{expected_speakers}")
 
     return errors
 
@@ -258,9 +253,7 @@ def reconcile_with_llm(
 
     samples = _collect_local_samples(transcript)
     if not samples:
-        raise ValueError(
-            "transcript has no clip_index annotations — is per_clip_stt on?"
-        )
+        raise ValueError("transcript has no clip_index annotations — is per_clip_stt on?")
 
     # Shortcut: only one (clip, local_id) pair means one local speaker total
     # and nothing to reconcile. Collapse to S1 so downstream sees a clean
@@ -290,10 +283,7 @@ def reconcile_with_llm(
     )
     plan: SpeakerReconciliation = call()
 
-    mapping = {
-        (entry.clip_index, entry.local_id): entry.global_id
-        for entry in plan.mapping
-    }
+    mapping = {(entry.clip_index, entry.local_id): entry.global_id for entry in plan.mapping}
     new_transcript = _apply_mapping(transcript, mapping)
 
     roster = sorted(

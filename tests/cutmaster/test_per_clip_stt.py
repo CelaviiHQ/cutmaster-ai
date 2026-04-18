@@ -48,7 +48,7 @@ def test_cache_key_changes_when_source_range_changes():
     """Trimming a take must invalidate its cache; sibling takes don't."""
     base = _spec(0, "/a.mov", 100, 340)
     trimmed = _spec(0, "/a.mov", 100, 300)  # shortened
-    moved = _spec(0, "/a.mov", 120, 360)    # shifted in
+    moved = _spec(0, "/a.mov", 120, 360)  # shifted in
     other_source = _spec(0, "/b.mov", 100, 340)
     keys = {base.cache_key, trimmed.cache_key, moved.cache_key, other_source.cache_key}
     assert len(keys) == 4
@@ -73,8 +73,7 @@ def test_cache_miss_returns_none(tmp_path):
 
 def test_cache_file_corrupt_returns_none(tmp_path):
     spec = _spec(0)
-    save_cached_words(spec, [{"word": "x", "start_time": 0, "end_time": 1}],
-                      root=tmp_path)
+    save_cached_words(spec, [{"word": "x", "start_time": 0, "end_time": 1}], root=tmp_path)
     # Corrupt the file.
     path = tmp_path / f"{spec.cache_key}.json"
     path.write_text("not-json{{{")
@@ -85,8 +84,10 @@ def test_cache_file_corrupt_returns_none(tmp_path):
 
 
 def test_stitch_offsets_to_timeline_seconds_and_attaches_metadata():
-    specs = [_spec(0, offset=0.0, duration=5.0),
-             _spec(1, offset=5.0, duration=5.0, name="take_1.mov")]
+    specs = [
+        _spec(0, offset=0.0, duration=5.0),
+        _spec(1, offset=5.0, duration=5.0, name="take_1.mov"),
+    ]
     per_clip = [
         [
             {"word": "hi", "start_time": 0.0, "end_time": 0.4, "speaker_id": "S1"},
@@ -109,8 +110,7 @@ def test_stitch_offsets_to_timeline_seconds_and_attaches_metadata():
 
 def test_stitch_sorts_by_timeline_start_time():
     """Even if specs arrive out of timeline order, output is time-sorted."""
-    specs = [_spec(0, offset=5.0, duration=3.0),
-             _spec(1, offset=0.0, duration=5.0)]
+    specs = [_spec(0, offset=5.0, duration=3.0), _spec(1, offset=0.0, duration=5.0)]
     per_clip = [
         [{"word": "late", "start_time": 0.0, "end_time": 0.5, "speaker_id": "S1"}],
         [{"word": "early", "start_time": 0.0, "end_time": 0.5, "speaker_id": "S1"}],
@@ -121,11 +121,13 @@ def test_stitch_sorts_by_timeline_start_time():
 
 def test_stitch_drops_words_past_clip_end():
     specs = [_spec(0, offset=0.0, duration=5.0)]
-    per_clip = [[
-        {"word": "ok", "start_time": 0.0, "end_time": 0.4, "speaker_id": "S1"},
-        # End past duration + grace — must drop.
-        {"word": "dropped", "start_time": 0.4, "end_time": 5.3, "speaker_id": "S1"},
-    ]]
+    per_clip = [
+        [
+            {"word": "ok", "start_time": 0.0, "end_time": 0.4, "speaker_id": "S1"},
+            # End past duration + grace — must drop.
+            {"word": "dropped", "start_time": 0.4, "end_time": 5.3, "speaker_id": "S1"},
+        ]
+    ]
     out = stitch_transcripts(specs, per_clip)
     assert len(out) == 1
     assert out[0]["word"] == "ok"
@@ -145,17 +147,20 @@ def test_stitch_rejects_mismatched_list_lengths():
 
 def _dummy_transcribe(spec: ClipAudioSpec) -> list[dict]:
     return [
-        {"word": f"w{spec.item_index}", "start_time": 0.0, "end_time": 0.5,
-         "speaker_id": "S1"},
+        {"word": f"w{spec.item_index}", "start_time": 0.0, "end_time": 0.5, "speaker_id": "S1"},
     ]
 
 
 def test_transcribe_per_clip_uses_cache(tmp_path):
     spec = _spec(0, offset=0.0, duration=2.0)
     # Pre-seed cache — transcribe_fn should not be invoked.
-    save_cached_words(spec, [
-        {"word": "cached", "start_time": 0.0, "end_time": 0.4, "speaker_id": "S1"},
-    ], root=tmp_path)
+    save_cached_words(
+        spec,
+        [
+            {"word": "cached", "start_time": 0.0, "end_time": 0.4, "speaker_id": "S1"},
+        ],
+        root=tmp_path,
+    )
 
     calls: list[int] = []
 
@@ -163,9 +168,13 @@ def test_transcribe_per_clip_uses_cache(tmp_path):
         calls.append(1)
         return []
 
-    stitched, stats = asyncio.run(transcribe_per_clip(
-        [spec], cache_root=tmp_path, transcribe_fn=forbid,
-    ))
+    stitched, stats = asyncio.run(
+        transcribe_per_clip(
+            [spec],
+            cache_root=tmp_path,
+            transcribe_fn=forbid,
+        )
+    )
     assert stats == {"cache_hits": 1, "cache_misses": 0, "dropped": 0}
     assert stitched[0]["word"] == "cached"
     assert stitched[0]["clip_metadata"]["source_name"] == "take_0.mov"
@@ -174,15 +183,22 @@ def test_transcribe_per_clip_uses_cache(tmp_path):
 
 def test_transcribe_per_clip_writes_new_entries_to_cache(tmp_path):
     spec = _spec(0, offset=0.0, duration=2.0)
-    stitched, stats = asyncio.run(transcribe_per_clip(
-        [spec], cache_root=tmp_path, transcribe_fn=_dummy_transcribe,
-    ))
+    stitched, stats = asyncio.run(
+        transcribe_per_clip(
+            [spec],
+            cache_root=tmp_path,
+            transcribe_fn=_dummy_transcribe,
+        )
+    )
     assert stats == {"cache_hits": 0, "cache_misses": 1, "dropped": 0}
     # Next call should hit cache.
-    _, stats2 = asyncio.run(transcribe_per_clip(
-        [spec], cache_root=tmp_path,
-        transcribe_fn=lambda _s: (_ for _ in ()).throw(AssertionError("should not run")),
-    ))
+    _, stats2 = asyncio.run(
+        transcribe_per_clip(
+            [spec],
+            cache_root=tmp_path,
+            transcribe_fn=lambda _s: (_ for _ in ()).throw(AssertionError("should not run")),
+        )
+    )
     assert stats2["cache_hits"] == 1
     # Cache payload is valid JSON with expected shape.
     payload = json.loads((tmp_path / f"{spec.cache_key}.json").read_text())
@@ -193,10 +209,14 @@ def test_transcribe_per_clip_writes_new_entries_to_cache(tmp_path):
 
 def test_transcribe_per_clip_can_run_without_cache(tmp_path):
     spec = _spec(0, offset=0.0, duration=2.0)
-    stitched, stats = asyncio.run(transcribe_per_clip(
-        [spec], use_cache=False, cache_root=tmp_path,
-        transcribe_fn=_dummy_transcribe,
-    ))
+    stitched, stats = asyncio.run(
+        transcribe_per_clip(
+            [spec],
+            use_cache=False,
+            cache_root=tmp_path,
+            transcribe_fn=_dummy_transcribe,
+        )
+    )
     assert stats == {"cache_hits": 0, "cache_misses": 1, "dropped": 0}
     assert stitched[0]["word"] == "w0"
     # No cache file written.
@@ -207,13 +227,21 @@ def test_transcribe_per_clip_mixed_hit_and_miss(tmp_path):
     s0 = _spec(0, offset=0.0, duration=2.0)
     s1 = _spec(1, "/b.mov", in_f=10, out_f=100, offset=2.0, duration=3.0)
     # Only s0 cached.
-    save_cached_words(s0, [
-        {"word": "cached", "start_time": 0.0, "end_time": 0.3, "speaker_id": "S1"},
-    ], root=tmp_path)
+    save_cached_words(
+        s0,
+        [
+            {"word": "cached", "start_time": 0.0, "end_time": 0.3, "speaker_id": "S1"},
+        ],
+        root=tmp_path,
+    )
 
-    stitched, stats = asyncio.run(transcribe_per_clip(
-        [s0, s1], cache_root=tmp_path, transcribe_fn=_dummy_transcribe,
-    ))
+    stitched, stats = asyncio.run(
+        transcribe_per_clip(
+            [s0, s1],
+            cache_root=tmp_path,
+            transcribe_fn=_dummy_transcribe,
+        )
+    )
     assert stats["cache_hits"] == 1
     assert stats["cache_misses"] == 1
     # Stitched output is timeline-ordered: cached (offset 0) before new (offset 2).
@@ -226,11 +254,15 @@ def test_transcribe_per_clip_mixed_hit_and_miss(tmp_path):
 
 
 def test_clip_metadata_table_renders_deduped_entries():
-    specs = [_spec(0, offset=0.0, duration=3.0),
-             _spec(1, offset=3.0, duration=2.5, name="second.mov")]
+    specs = [
+        _spec(0, offset=0.0, duration=3.0),
+        _spec(1, offset=3.0, duration=2.5, name="second.mov"),
+    ]
     per_clip = [
-        [{"word": "a", "start_time": 0.0, "end_time": 0.3, "speaker_id": "S1"},
-         {"word": "b", "start_time": 0.3, "end_time": 0.6, "speaker_id": "S1"}],
+        [
+            {"word": "a", "start_time": 0.0, "end_time": 0.3, "speaker_id": "S1"},
+            {"word": "b", "start_time": 0.3, "end_time": 0.6, "speaker_id": "S1"},
+        ],
         [{"word": "c", "start_time": 0.0, "end_time": 0.4, "speaker_id": "S2"}],
     ]
     transcript = stitch_transcripts(specs, per_clip)

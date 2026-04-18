@@ -18,10 +18,10 @@ from typing import TypedDict
 class ItemSummary(TypedDict):
     """The minimum slice of a ``TimelineItem`` we need for take splitting."""
 
-    item_index: int       # 0-based index within the source-timeline video track 1
-    source_name: str      # media-pool clip name, for prompt context
-    start_s: float        # timeline seconds — inclusive
-    end_s: float          # timeline seconds — exclusive
+    item_index: int  # 0-based index within the source-timeline video track 1
+    source_name: str  # media-pool clip name, for prompt context
+    start_s: float  # timeline seconds — inclusive
+    end_s: float  # timeline seconds — exclusive
 
 
 def _word_timeline_seconds(word: dict) -> float:
@@ -87,13 +87,15 @@ def build_take_entries(
             }
             for i, w in enumerate(words)
         ]
-        out.append({
-            "item_index": item["item_index"],
-            "source_name": item["source_name"],
-            "start_s": float(item["start_s"]),
-            "end_s": float(item["end_s"]),
-            "transcript": transcript,
-        })
+        out.append(
+            {
+                "item_index": item["item_index"],
+                "source_name": item["source_name"],
+                "start_s": float(item["start_s"]),
+                "end_s": float(item["end_s"]),
+                "transcript": transcript,
+            }
+        )
     return out
 
 
@@ -116,10 +118,12 @@ def read_items_on_track(tl, track_index: int = 1) -> list[ItemSummary]:
         name = mp_item.GetName() if mp_item is not None else f"item_{idx}"
         start_frame = item.GetStart() - tl_start_frame
         end_frame = item.GetEnd() - tl_start_frame
-        out.append(ItemSummary(
-            item_index=idx,
-            source_name=str(name),
-            start_s=start_frame / fps,
-            end_s=end_frame / fps,
-        ))
+        out.append(
+            ItemSummary(
+                item_index=idx,
+                source_name=str(name),
+                start_s=start_frame / fps,
+                end_s=end_frame / fps,
+            )
+        )
     return out

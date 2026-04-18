@@ -85,9 +85,7 @@ def call_structured(
     """
     client = get_gemini_client()
     if client is None:
-        raise ValueError(
-            "GEMINI_API_KEY not set. Add it to .env or the environment."
-        )
+        raise ValueError("GEMINI_API_KEY not set. Add it to .env or the environment.")
 
     from google.genai import types  # deferred — optional dependency
 
@@ -119,16 +117,14 @@ def call_structured(
         if validate is not None:
             errors = validate(parsed)
             if errors:
-                log.warning("agent=%s attempt=%d validation_errors=%d",
-                            agent, attempt, len(errors))
+                log.warning("agent=%s attempt=%d validation_errors=%d", agent, attempt, len(errors))
                 last_errors = errors
                 continue
 
         return parsed
 
     raise AgentError(
-        f"{agent} agent failed after {max_retries} retries. "
-        f"Last errors: {last_errors}"
+        f"{agent} agent failed after {max_retries} retries. Last errors: {last_errors}"
     )
 
 
@@ -149,7 +145,8 @@ def _parse_response(response, schema: type[T]) -> T:
     # field (the way TranscriptResponse does).
     if isinstance(payload, list):
         list_fields = [
-            name for name, f in schema.model_fields.items()
+            name
+            for name, f in schema.model_fields.items()
             if getattr(f.annotation, "__origin__", None) is list
         ]
         if len(list_fields) == 1:

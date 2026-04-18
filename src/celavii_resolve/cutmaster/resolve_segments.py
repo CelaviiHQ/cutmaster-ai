@@ -30,6 +30,7 @@ class ResolvedCutSegment(BaseModel):
     becomes multiple ``ResolvedCutSegment`` entries in order, each with
     ``part_index`` / ``part_total`` set. UIs should render them as a group.
     """
+
     start_s: float
     end_s: float
     reason: str
@@ -97,16 +98,12 @@ def resolve_segments(tl, segments: list[CutSegment]) -> list[ResolvedCutSegment]
         seg_end_frame = tl_start + round(seg.end_s * fps)
 
         if seg_end_frame <= seg_start_frame:
-            raise ValueError(
-                f"segment [{seg.start_s},{seg.end_s}]s has non-positive duration"
-            )
+            raise ValueError(f"segment [{seg.start_s},{seg.end_s}]s has non-positive duration")
 
         try:
             pieces = _find_overlapping_pieces(items, seg_start_frame, seg_end_frame)
         except ValueError as exc:
-            raise ValueError(
-                f"segment [{seg.start_s:.3f},{seg.end_s:.3f}]s: {exc}"
-            )
+            raise ValueError(f"segment [{seg.start_s:.3f},{seg.end_s:.3f}]s: {exc}")
 
         if not pieces:
             raise ValueError(
@@ -117,7 +114,7 @@ def resolve_segments(tl, segments: list[CutSegment]) -> list[ResolvedCutSegment]
         part_total = len(pieces)
         for i, (item, mp_item, tl_in, tl_out) in enumerate(pieces):
             offset_in_item = tl_in - item.GetStart()  # timeline-frames
-            duration = tl_out - tl_in                 # timeline-frames
+            duration = tl_out - tl_in  # timeline-frames
             speed = _item_clip_speed(item, mp_item)
             try:
                 left_offset = int(item.GetLeftOffset() or 0)
@@ -133,9 +130,7 @@ def resolve_segments(tl, segments: list[CutSegment]) -> list[ResolvedCutSegment]
             fps_ratio = (src_fps / fps) if fps > 0 else 1.0
 
             src_in = left_offset + int(round(offset_in_item * fps_ratio * speed))
-            src_out = left_offset + int(
-                round((offset_in_item + duration) * fps_ratio * speed)
-            )
+            src_out = left_offset + int(round((offset_in_item + duration) * fps_ratio * speed))
 
             piece_start_s = (tl_in - tl_start) / fps
             piece_end_s = (tl_out - tl_start) / fps
@@ -157,21 +152,23 @@ def resolve_segments(tl, segments: list[CutSegment]) -> list[ResolvedCutSegment]
                     f"{fps:.2f} — pieces placed at real-time"
                 )
 
-            out.append(ResolvedCutSegment(
-                start_s=piece_start_s,
-                end_s=piece_end_s,
-                reason=reason,
-                source_item_id=mp_item.GetUniqueId(),
-                source_item_name=mp_item.GetName(),
-                source_in_frame=src_in,
-                source_out_frame=src_out,
-                timeline_start_frame=tl_in,
-                timeline_end_frame=tl_out,
-                speed=speed,
-                speed_ramped=speed != 1.0,
-                part_index=i,
-                part_total=part_total,
-                warnings=warnings,
-            ))
+            out.append(
+                ResolvedCutSegment(
+                    start_s=piece_start_s,
+                    end_s=piece_end_s,
+                    reason=reason,
+                    source_item_id=mp_item.GetUniqueId(),
+                    source_item_name=mp_item.GetName(),
+                    source_in_frame=src_in,
+                    source_out_frame=src_out,
+                    timeline_start_frame=tl_in,
+                    timeline_end_frame=tl_out,
+                    speed=speed,
+                    speed_ramped=speed != 1.0,
+                    part_index=i,
+                    part_total=part_total,
+                    warnings=warnings,
+                )
+            )
 
     return out

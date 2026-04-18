@@ -57,8 +57,15 @@ def test_list_presets(client: TestClient):
     r = client.get("/cutmaster/presets")
     assert r.status_code == 200
     keys = [p["key"] for p in r.json()["presets"]]
-    assert {"vlog", "product_demo", "wedding", "interview",
-            "tutorial", "podcast", "reaction"} <= set(keys)
+    assert {
+        "vlog",
+        "product_demo",
+        "wedding",
+        "interview",
+        "tutorial",
+        "podcast",
+        "reaction",
+    } <= set(keys)
 
 
 def test_list_formats(client: TestClient):
@@ -73,7 +80,9 @@ def test_list_formats(client: TestClient):
 
 
 def test_build_plan_accepts_and_persists_v2_10_format_fields(
-    client, monkeypatch, scrubbed_run,
+    client,
+    monkeypatch,
+    scrubbed_run,
 ):
     """v2-10 adds `format` / `captions_enabled` / `safe_zones_enabled` to
     UserSettings. The route must accept them, validate `format` as a
@@ -123,7 +132,9 @@ def test_build_plan_accepts_and_persists_v2_10_format_fields(
 
 
 def test_build_plan_assembled_mode_uses_assembled_director(
-    client, monkeypatch, scrubbed_run,
+    client,
+    monkeypatch,
+    scrubbed_run,
 ):
     """When timeline_mode='assembled', the route should call
     build_assembled_cut_plan (not the v1 Director), feed it items from
@@ -156,9 +167,7 @@ def test_build_plan_assembled_mode_uses_assembled_director(
 
     monkeypatch.setattr(routes, "build_assembled_cut_plan", fake_build_assembled)
     monkeypatch.setattr(routes, "build_cut_plan", forbidden_build_cut_plan)
-    monkeypatch.setattr(
-        routes, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[])
-    )
+    monkeypatch.setattr(routes, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
 
     # Stub items on the timeline: one take covering [0, 2) s.
     fake_items = [
@@ -185,11 +194,18 @@ def test_build_plan_assembled_mode_uses_assembled_director(
     # Resolver receives the expanded segments — stub it to a known value.
     resolved_stub = [
         ResolvedCutSegment(
-            start_s=0.0, end_s=0.95, reason="take 0",
-            source_item_id="UID1", source_item_name="take1.mov",
-            source_in_frame=0, source_out_frame=23,
-            timeline_start_frame=0, timeline_end_frame=23,
-            speed=1.0, speed_ramped=False, warnings=[],
+            start_s=0.0,
+            end_s=0.95,
+            reason="take 0",
+            source_item_id="UID1",
+            source_item_name="take1.mov",
+            source_in_frame=0,
+            source_out_frame=23,
+            timeline_start_frame=0,
+            timeline_end_frame=23,
+            speed=1.0,
+            speed_ramped=False,
+            warnings=[],
         ),
     ]
     monkeypatch.setattr(routes, "resolve_segments", lambda _tl, _segs: resolved_stub)
@@ -228,7 +244,9 @@ def test_build_plan_assembled_mode_uses_assembled_director(
 
 
 def test_build_plan_assembled_uses_raw_transcript_when_takes_already_scrubbed(
-    client, monkeypatch, scrubbed_run,
+    client,
+    monkeypatch,
+    scrubbed_run,
 ):
     """When takes_already_scrubbed=true, build-plan must feed the raw
     transcript (not the scrubbed one) into the assembled Director."""
@@ -252,20 +270,27 @@ def test_build_plan_assembled_uses_raw_transcript_when_takes_already_scrubbed(
         seen_takes["takes"] = takes
         return AssembledDirectorPlan(
             hook_index=0,
-            selections=[AssembledItemSelection(
-                item_index=0, kept_word_spans=[WordSpan(a=0, b=0)],
-            )],
+            selections=[
+                AssembledItemSelection(
+                    item_index=0,
+                    kept_word_spans=[WordSpan(a=0, b=0)],
+                )
+            ],
             reasoning="",
         )
 
     monkeypatch.setattr(routes, "build_assembled_cut_plan", fake_build_assembled)
-    monkeypatch.setattr(routes, "build_cut_plan",
-                        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError()))
-    monkeypatch.setattr(routes, "suggest_markers",
-                        lambda *_a, **_k: MarkerPlan(markers=[]))
-    monkeypatch.setattr(routes, "read_items_on_track", lambda _tl, track_index=1: [
-        {"item_index": 0, "source_name": "t.mov", "start_s": 0.0, "end_s": 1.0},
-    ])
+    monkeypatch.setattr(
+        routes, "build_cut_plan", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError())
+    )
+    monkeypatch.setattr(routes, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    monkeypatch.setattr(
+        routes,
+        "read_items_on_track",
+        lambda _tl, track_index=1: [
+            {"item_index": 0, "source_name": "t.mov", "start_s": 0.0, "end_s": 1.0},
+        ],
+    )
     monkeypatch.setattr(routes, "resolve_segments", lambda _tl, _segs: [])
 
     fake_tl = MagicMock()
@@ -274,10 +299,10 @@ def test_build_plan_assembled_uses_raw_transcript_when_takes_already_scrubbed(
     import celavii_resolve.cutmaster.pipeline as pipeline_mod
     import celavii_resolve.resolve as resolve_mod
 
-    monkeypatch.setattr(resolve_mod, "_boilerplate",
-                        lambda: (MagicMock(), MagicMock(), MagicMock()))
-    monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name",
-                        lambda _p, _n: fake_tl)
+    monkeypatch.setattr(
+        resolve_mod, "_boilerplate", lambda: (MagicMock(), MagicMock(), MagicMock())
+    )
+    monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl)
 
     r = client.post(
         "/cutmaster/build-plan",
@@ -299,7 +324,9 @@ def test_build_plan_assembled_uses_raw_transcript_when_takes_already_scrubbed(
 
 
 def test_build_plan_clip_hunter_stores_candidates_and_skips_director(
-    client, monkeypatch, scrubbed_run,
+    client,
+    monkeypatch,
+    scrubbed_run,
 ):
     """When preset='clip_hunter', /build-plan must call the Clip Hunter
     Director (NOT the v1 or assembled Director), persist all candidates
@@ -311,13 +338,19 @@ def test_build_plan_clip_hunter_stores_candidates_and_skips_director(
         return ClipHunterPlan(
             candidates=[
                 ClipCandidate(
-                    start_s=0.0, end_s=0.95, engagement_score=0.9,
-                    quote="Hello world", suggested_caption="Say hi.",
+                    start_s=0.0,
+                    end_s=0.95,
+                    engagement_score=0.9,
+                    quote="Hello world",
+                    suggested_caption="Say hi.",
                     reasoning="opener",
                 ),
                 ClipCandidate(
-                    start_s=1.2, end_s=2.0, engagement_score=0.7,
-                    quote="Look at this.", suggested_caption="Check it out.",
+                    start_s=1.2,
+                    end_s=2.0,
+                    engagement_score=0.7,
+                    quote="Look at this.",
+                    suggested_caption="Check it out.",
                     reasoning="pointer",
                 ),
             ],
@@ -344,10 +377,10 @@ def test_build_plan_clip_hunter_stores_candidates_and_skips_director(
     import celavii_resolve.cutmaster.pipeline as pipeline_mod
     import celavii_resolve.resolve as resolve_mod
 
-    monkeypatch.setattr(resolve_mod, "_boilerplate",
-                        lambda: (MagicMock(), MagicMock(), MagicMock()))
-    monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name",
-                        lambda _p, _n: fake_tl)
+    monkeypatch.setattr(
+        resolve_mod, "_boilerplate", lambda: (MagicMock(), MagicMock(), MagicMock())
+    )
+    monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl)
 
     # Distinguish per-candidate resolver output by tagging the source item.
     def fake_resolver(_tl, segs):
@@ -370,6 +403,7 @@ def test_build_plan_clip_hunter_stores_candidates_and_skips_director(
             )
             for s in segs
         ]
+
     monkeypatch.setattr(routes, "resolve_segments", fake_resolver)
 
     r = client.post(
@@ -396,14 +430,20 @@ def test_build_plan_clip_hunter_stores_candidates_and_skips_director(
 
 
 def test_build_plan_clip_hunter_rejects_sources_past_60min(
-    client, monkeypatch, scrubbed_run,
+    client,
+    monkeypatch,
+    scrubbed_run,
 ):
     """Proposal §4.7: Clip Hunter hard-caps source duration at 60 min for v2."""
     run = state.load(scrubbed_run["run_id"])
-    run["scrubbed"] = [{
-        "word": "endless", "start_time": 0.0,
-        "end_time": 60 * 60 + 1.0, "speaker_id": "S1",
-    }]
+    run["scrubbed"] = [
+        {
+            "word": "endless",
+            "start_time": 0.0,
+            "end_time": 60 * 60 + 1.0,
+            "speaker_id": "S1",
+        }
+    ]
     state.save(run)
 
     r = client.post(
@@ -419,29 +459,51 @@ def test_build_plan_clip_hunter_rejects_sources_past_60min(
 
 
 def test_execute_clip_hunter_swaps_resolved_segments_to_selected_candidate(
-    client, monkeypatch, scrubbed_run,
+    client,
+    monkeypatch,
+    scrubbed_run,
 ):
     """POST /execute with candidate_index must swap the plan's
     resolved_segments to that candidate's slice before execute_plan runs,
     and name the new timeline ``<source>_AI_Clip_N``."""
     # Seed a persisted clip_hunter plan by hand (skip the build step).
     run = state.load(scrubbed_run["run_id"])
-    cand0_segs = [{
-        "start_s": 0.0, "end_s": 10.0, "reason": "hook",
-        "source_item_id": "UID_0", "source_item_name": "t.mov",
-        "source_in_frame": 0, "source_out_frame": 240,
-        "timeline_start_frame": 0, "timeline_end_frame": 240,
-        "speed": 1.0, "speed_ramped": False, "part_index": 0, "part_total": 1,
-        "warnings": [],
-    }]
-    cand1_segs = [{
-        "start_s": 60.0, "end_s": 70.0, "reason": "second",
-        "source_item_id": "UID_1", "source_item_name": "t.mov",
-        "source_in_frame": 1440, "source_out_frame": 1680,
-        "timeline_start_frame": 1440, "timeline_end_frame": 1680,
-        "speed": 1.0, "speed_ramped": False, "part_index": 0, "part_total": 1,
-        "warnings": [],
-    }]
+    cand0_segs = [
+        {
+            "start_s": 0.0,
+            "end_s": 10.0,
+            "reason": "hook",
+            "source_item_id": "UID_0",
+            "source_item_name": "t.mov",
+            "source_in_frame": 0,
+            "source_out_frame": 240,
+            "timeline_start_frame": 0,
+            "timeline_end_frame": 240,
+            "speed": 1.0,
+            "speed_ramped": False,
+            "part_index": 0,
+            "part_total": 1,
+            "warnings": [],
+        }
+    ]
+    cand1_segs = [
+        {
+            "start_s": 60.0,
+            "end_s": 70.0,
+            "reason": "second",
+            "source_item_id": "UID_1",
+            "source_item_name": "t.mov",
+            "source_in_frame": 1440,
+            "source_out_frame": 1680,
+            "timeline_start_frame": 1440,
+            "timeline_end_frame": 1680,
+            "speed": 1.0,
+            "speed_ramped": False,
+            "part_index": 0,
+            "part_total": 1,
+            "warnings": [],
+        }
+    ]
     run["plan"] = {
         "preset": "clip_hunter",
         "user_settings": {"num_clips": 2, "target_length_s": 10},
@@ -450,10 +512,24 @@ def test_execute_clip_hunter_swaps_resolved_segments_to_selected_candidate(
         "resolved_segments": cand0_segs,
         "clip_hunter": {
             "candidates": [
-                {"start_s": 0.0, "end_s": 10.0, "quote": "a", "engagement_score": 0.9,
-                 "suggested_caption": "", "reasoning": "", "resolved_segments": cand0_segs},
-                {"start_s": 60.0, "end_s": 70.0, "quote": "b", "engagement_score": 0.7,
-                 "suggested_caption": "", "reasoning": "", "resolved_segments": cand1_segs},
+                {
+                    "start_s": 0.0,
+                    "end_s": 10.0,
+                    "quote": "a",
+                    "engagement_score": 0.9,
+                    "suggested_caption": "",
+                    "reasoning": "",
+                    "resolved_segments": cand0_segs,
+                },
+                {
+                    "start_s": 60.0,
+                    "end_s": 70.0,
+                    "quote": "b",
+                    "engagement_score": 0.7,
+                    "suggested_caption": "",
+                    "reasoning": "",
+                    "resolved_segments": cand1_segs,
+                },
             ],
             "selected_index": 0,
             "target_clip_length_s": 10,
@@ -471,9 +547,12 @@ def test_execute_clip_hunter_swaps_resolved_segments_to_selected_candidate(
         captured["name_suffix"] = name_suffix
         return {
             "new_timeline_name": f"{run_arg['timeline_name']}{name_suffix}",
-            "appended": 1, "append_errors": [],
-            "markers_added": 0, "markers_skipped": [],
-            "snapshot_path": "/tmp/snap.drp", "snapshot_size_kb": 1.0,
+            "appended": 1,
+            "append_errors": [],
+            "markers_added": 0,
+            "markers_skipped": [],
+            "snapshot_path": "/tmp/snap.drp",
+            "snapshot_size_kb": 1.0,
         }
 
     monkeypatch.setattr(routes, "execute_plan", fake_execute_plan)
@@ -490,19 +569,34 @@ def test_execute_clip_hunter_swaps_resolved_segments_to_selected_candidate(
 
 
 def test_execute_clip_hunter_rejects_out_of_range_candidate(
-    client, monkeypatch, scrubbed_run,
+    client,
+    monkeypatch,
+    scrubbed_run,
 ):
     run = state.load(scrubbed_run["run_id"])
     run["plan"] = {
-        "preset": "clip_hunter", "user_settings": {},
+        "preset": "clip_hunter",
+        "user_settings": {},
         "director": {"hook_index": 0, "selected_clips": [], "reasoning": ""},
-        "markers": {"markers": []}, "resolved_segments": [],
+        "markers": {"markers": []},
+        "resolved_segments": [],
         "clip_hunter": {
-            "candidates": [{"start_s": 0.0, "end_s": 10.0, "quote": "",
-                            "engagement_score": 0.8, "suggested_caption": "",
-                            "reasoning": "", "resolved_segments": []}],
-            "selected_index": 0, "target_clip_length_s": 10,
-            "num_clips": 1, "duration_warning": None, "source_duration_s": 60.0,
+            "candidates": [
+                {
+                    "start_s": 0.0,
+                    "end_s": 10.0,
+                    "quote": "",
+                    "engagement_score": 0.8,
+                    "suggested_caption": "",
+                    "reasoning": "",
+                    "resolved_segments": [],
+                }
+            ],
+            "selected_index": 0,
+            "target_clip_length_s": 10,
+            "num_clips": 1,
+            "duration_warning": None,
+            "source_duration_s": 60.0,
         },
     }
     state.save(run)
@@ -516,7 +610,9 @@ def test_execute_clip_hunter_rejects_out_of_range_candidate(
 
 
 def test_build_plan_tightener_skips_director_and_returns_stats(
-    client, monkeypatch, scrubbed_run,
+    client,
+    monkeypatch,
+    scrubbed_run,
 ):
     """When preset='tightener', /build-plan must NOT call the Director or
     Marker LLMs and must return a `tightener` summary block with
@@ -545,12 +641,15 @@ def test_build_plan_tightener_skips_director_and_returns_stats(
     monkeypatch.setattr(routes, "build_assembled_cut_plan", forbidden_assembled)
     monkeypatch.setattr(routes, "suggest_markers", forbidden_marker)
 
-    fake_items = [{
-        "item_index": 0, "source_name": "take1.mov",
-        "start_s": 0.0, "end_s": 4.0,
-    }]
-    monkeypatch.setattr(routes, "read_items_on_track",
-                        lambda _tl, track_index=1: fake_items)
+    fake_items = [
+        {
+            "item_index": 0,
+            "source_name": "take1.mov",
+            "start_s": 0.0,
+            "end_s": 4.0,
+        }
+    ]
+    monkeypatch.setattr(routes, "read_items_on_track", lambda _tl, track_index=1: fake_items)
 
     fake_tl = MagicMock()
     fake_tl.GetSetting.return_value = "24"
@@ -558,10 +657,10 @@ def test_build_plan_tightener_skips_director_and_returns_stats(
     import celavii_resolve.cutmaster.pipeline as pipeline_mod
     import celavii_resolve.resolve as resolve_mod
 
-    monkeypatch.setattr(resolve_mod, "_boilerplate",
-                        lambda: (MagicMock(), MagicMock(), MagicMock()))
-    monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name",
-                        lambda _p, _n: fake_tl)
+    monkeypatch.setattr(
+        resolve_mod, "_boilerplate", lambda: (MagicMock(), MagicMock(), MagicMock())
+    )
+    monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl)
     monkeypatch.setattr(routes, "resolve_segments", lambda _tl, _segs: [])
 
     r = client.post(
@@ -587,7 +686,9 @@ def test_build_plan_tightener_skips_director_and_returns_stats(
 
 
 def test_build_plan_tightener_errors_when_raw_transcript_missing(
-    client, monkeypatch, scrubbed_run,
+    client,
+    monkeypatch,
+    scrubbed_run,
 ):
     """Tightener reads run['transcript']. If analyze somehow finished
     without populating it (unlikely but possible on legacy runs), the
@@ -651,12 +752,16 @@ def test_analyze_accepts_stt_provider(client: TestClient, monkeypatch):
         captured.update(kwargs)
 
     monkeypatch.setattr(routes, "run_analyze", fake_run_analyze)
-    r = client.post("/cutmaster/analyze", json={
-        "timeline_name": "T1",
-        "stt_provider": "deepgram",
-    })
+    r = client.post(
+        "/cutmaster/analyze",
+        json={
+            "timeline_name": "T1",
+            "stt_provider": "deepgram",
+        },
+    )
     assert r.status_code == 200
     import time as _time
+
     for _ in range(10):
         if captured:
             break
@@ -665,15 +770,19 @@ def test_analyze_accepts_stt_provider(client: TestClient, monkeypatch):
 
 
 def test_analyze_rejects_unknown_stt_provider(client: TestClient):
-    r = client.post("/cutmaster/analyze", json={
-        "timeline_name": "T1",
-        "stt_provider": "martian",
-    })
+    r = client.post(
+        "/cutmaster/analyze",
+        json={
+            "timeline_name": "T1",
+            "stt_provider": "martian",
+        },
+    )
     assert r.status_code == 422
 
 
 def test_project_info_returns_timelines_with_current_flag(
-    client: TestClient, monkeypatch,
+    client: TestClient,
+    monkeypatch,
 ):
     """v2-8: /cutmaster/project-info lists every timeline in the open project
     and marks which one is currently active in Resolve. Drives the Preset
@@ -682,7 +791,9 @@ def test_project_info_returns_timelines_with_current_flag(
     fake_current.GetName.return_value = "Timeline 2"
 
     fake_tls = [
-        MagicMock(), MagicMock(), MagicMock(),
+        MagicMock(),
+        MagicMock(),
+        MagicMock(),
     ]
     fake_tls[0].GetName.return_value = "Timeline 1"
     fake_tls[1].GetName.return_value = "Timeline 2"
@@ -694,14 +805,13 @@ def test_project_info_returns_timelines_with_current_flag(
     fake_project.GetName.return_value = "Wedding 2026"
     fake_project.GetCurrentTimeline.return_value = fake_current
     fake_project.GetTimelineCount.return_value = 3
-    fake_project.GetTimelineByIndex.side_effect = (
-        lambda i: fake_tls[i - 1] if 1 <= i <= 3 else None
-    )
+    fake_project.GetTimelineByIndex.side_effect = lambda i: fake_tls[i - 1] if 1 <= i <= 3 else None
 
     import celavii_resolve.resolve as resolve_mod
 
     monkeypatch.setattr(
-        resolve_mod, "_boilerplate",
+        resolve_mod,
+        "_boilerplate",
         lambda: (MagicMock(), fake_project, MagicMock()),
     )
 
@@ -716,7 +826,8 @@ def test_project_info_returns_timelines_with_current_flag(
 
 
 def test_project_info_503_when_resolve_unreachable(
-    client: TestClient, monkeypatch,
+    client: TestClient,
+    monkeypatch,
 ):
     import celavii_resolve.resolve as resolve_mod
 
@@ -743,14 +854,18 @@ def test_analyze_accepts_per_clip_stt_flag(client: TestClient, monkeypatch):
     # the fake is synchronous enough that we can just await it in the route.
     _ = pipeline_mod
 
-    r = client.post("/cutmaster/analyze", json={
-        "timeline_name": "T1",
-        "preset": "auto",
-        "per_clip_stt": True,
-    })
+    r = client.post(
+        "/cutmaster/analyze",
+        json={
+            "timeline_name": "T1",
+            "preset": "auto",
+            "per_clip_stt": True,
+        },
+    )
     assert r.status_code == 200
     # Let the scheduled task run.
     import time as _time
+
     for _ in range(10):
         if captured:
             break
@@ -769,13 +884,17 @@ def test_analyze_accepts_expected_speakers(client: TestClient, monkeypatch):
 
     monkeypatch.setattr(routes, "run_analyze", fake_run_analyze)
 
-    r = client.post("/cutmaster/analyze", json={
-        "timeline_name": "T1",
-        "per_clip_stt": True,
-        "expected_speakers": 2,
-    })
+    r = client.post(
+        "/cutmaster/analyze",
+        json={
+            "timeline_name": "T1",
+            "per_clip_stt": True,
+            "expected_speakers": 2,
+        },
+    )
     assert r.status_code == 200
     import time as _time
+
     for _ in range(10):
         if captured:
             break
@@ -787,9 +906,13 @@ def test_analyze_accepts_expected_speakers(client: TestClient, monkeypatch):
 def test_analyze_rejects_expected_speakers_out_of_range(client: TestClient):
     # 0 and 11 both fall outside the ge=1, le=10 constraint.
     for bad in (0, 11, -1):
-        r = client.post("/cutmaster/analyze", json={
-            "timeline_name": "T1", "expected_speakers": bad,
-        })
+        r = client.post(
+            "/cutmaster/analyze",
+            json={
+                "timeline_name": "T1",
+                "expected_speakers": bad,
+            },
+        )
         assert r.status_code == 422, f"expected 422 for {bad}, got {r.status_code}"
 
 
@@ -804,6 +927,7 @@ def test_analyze_per_clip_stt_defaults_to_false(client: TestClient, monkeypatch)
     r = client.post("/cutmaster/analyze", json={"timeline_name": "T1"})
     assert r.status_code == 200
     import time as _time
+
     for _ in range(10):
         if captured:
             break
@@ -812,7 +936,8 @@ def test_analyze_per_clip_stt_defaults_to_false(client: TestClient, monkeypatch)
 
 
 def test_speakers_endpoint_returns_roster_from_scrubbed(
-    client: TestClient, scrubbed_run,
+    client: TestClient,
+    scrubbed_run,
 ):
     """v2-5: /cutmaster/speakers/{run_id} must return unique speaker ids in
     first-appearance order, annotated with per-speaker word counts."""
@@ -839,7 +964,9 @@ def test_speakers_endpoint_404_on_unknown_run(client: TestClient):
 
 
 def test_build_plan_round_trips_speaker_labels(
-    client, monkeypatch, scrubbed_run,
+    client,
+    monkeypatch,
+    scrubbed_run,
 ):
     """v2-5: UserSettings.speaker_labels must persist through /build-plan
     and be reachable on the saved plan's user_settings."""
@@ -849,9 +976,7 @@ def test_build_plan_round_trips_speaker_labels(
         reasoning="",
     )
     monkeypatch.setattr(routes, "build_cut_plan", lambda *_a, **_k: plan)
-    monkeypatch.setattr(
-        routes, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[])
-    )
+    monkeypatch.setattr(routes, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
 
     fake_tl = MagicMock()
     fake_tl.GetSetting.return_value = "24"
@@ -860,11 +985,14 @@ def test_build_plan_round_trips_speaker_labels(
     import celavii_resolve.resolve as resolve_mod
 
     monkeypatch.setattr(
-        resolve_mod, "_boilerplate",
+        resolve_mod,
+        "_boilerplate",
         lambda: (MagicMock(), MagicMock(), MagicMock()),
     )
     monkeypatch.setattr(
-        pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl,
+        pipeline_mod,
+        "_find_timeline_by_name",
+        lambda _p, _n: fake_tl,
     )
     monkeypatch.setattr(routes, "resolve_segments", lambda _tl, _segs: [])
 
@@ -947,9 +1075,11 @@ def test_build_plan(client: TestClient, scrubbed_run, monkeypatch):
     monkeypatch.setattr(routes, "build_cut_plan", lambda *a, **k: director_plan)
 
     # Mock Marker
-    marker_plan = MarkerPlan(markers=[
-        MarkerSuggestion(at_s=1.2, name="B-Roll: target", note=""),
-    ])
+    marker_plan = MarkerPlan(
+        markers=[
+            MarkerSuggestion(at_s=1.2, name="B-Roll: target", note=""),
+        ]
+    )
     monkeypatch.setattr(routes, "suggest_markers", lambda *a, **k: marker_plan)
 
     # Mock Resolve + source-frame resolver
@@ -962,27 +1092,42 @@ def test_build_plan(client: TestClient, scrubbed_run, monkeypatch):
 
     # The route imports _boilerplate lazily from ..resolve — patch the source module
     import celavii_resolve.resolve as resolve_mod
+
     monkeypatch.setattr(resolve_mod, "_boilerplate", fake_boilerplate)
-    monkeypatch.setattr(routes, "_find_timeline_by_name",
-                        lambda _p, _n: fake_tl, raising=False)
+    monkeypatch.setattr(routes, "_find_timeline_by_name", lambda _p, _n: fake_tl, raising=False)
     # pipeline._find_timeline_by_name is what's actually called
     import celavii_resolve.cutmaster.pipeline as pipeline_mod
+
     monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl)
 
     resolved = [
         ResolvedCutSegment(
-            start_s=0.0, end_s=0.95, reason="opening",
-            source_item_id="UID1", source_item_name="clip.mov",
-            source_in_frame=0, source_out_frame=23,
-            timeline_start_frame=86400, timeline_end_frame=86423,
-            speed=1.0, speed_ramped=False, warnings=[],
+            start_s=0.0,
+            end_s=0.95,
+            reason="opening",
+            source_item_id="UID1",
+            source_item_name="clip.mov",
+            source_in_frame=0,
+            source_out_frame=23,
+            timeline_start_frame=86400,
+            timeline_end_frame=86423,
+            speed=1.0,
+            speed_ramped=False,
+            warnings=[],
         ),
         ResolvedCutSegment(
-            start_s=1.2, end_s=2.0, reason="payoff",
-            source_item_id="UID1", source_item_name="clip.mov",
-            source_in_frame=29, source_out_frame=48,
-            timeline_start_frame=86429, timeline_end_frame=86448,
-            speed=1.0, speed_ramped=False, warnings=[],
+            start_s=1.2,
+            end_s=2.0,
+            reason="payoff",
+            source_item_id="UID1",
+            source_item_name="clip.mov",
+            source_in_frame=29,
+            source_out_frame=48,
+            timeline_start_frame=86429,
+            timeline_end_frame=86448,
+            speed=1.0,
+            speed_ramped=False,
+            warnings=[],
         ),
     ]
     monkeypatch.setattr(routes, "resolve_segments", lambda _tl, _segs: resolved)

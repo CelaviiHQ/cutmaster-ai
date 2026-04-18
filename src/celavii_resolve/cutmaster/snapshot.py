@@ -50,9 +50,7 @@ def snapshot_project(
     if not pm.ExportProject(orig_name, str(out_path), False):
         raise RuntimeError(f"ExportProject returned False for '{orig_name}'.")
     if not out_path.exists():
-        raise RuntimeError(
-            f"ExportProject reported success but no file at {out_path}."
-        )
+        raise RuntimeError(f"ExportProject reported success but no file at {out_path}.")
 
     return {
         "path": str(out_path),

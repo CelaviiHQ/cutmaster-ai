@@ -18,8 +18,7 @@ try:
     from fastapi.staticfiles import StaticFiles
 except ImportError as exc:
     raise ImportError(
-        "celavii-resolve-panel requires FastAPI. "
-        "Install with: pip install 'celavii-resolve[panel]'"
+        "celavii-resolve-panel requires FastAPI. Install with: pip install 'celavii-resolve[panel]'"
     ) from exc
 
 from .. import __version__

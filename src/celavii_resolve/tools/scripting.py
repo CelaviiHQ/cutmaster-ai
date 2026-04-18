@@ -42,14 +42,34 @@ def celavii_execute_python(code: str) -> str:
         "tl": tl,
     }
 
+    import ast
+
     try:
         # Try as expression first (returns a value)
         result = eval(code, {"__builtins__": __builtins__}, scope)
         return str(result) if result is not None else "OK (no return value)"
     except SyntaxError:
-        # Fall back to exec for statements
-        exec(code, {"__builtins__": __builtins__}, scope)
-        return "OK"
+        pass
+
+    try:
+        # Multi-line code: if the last statement is an expression,
+        # compile it separately so we can capture its value.
+        tree = ast.parse(code)
+        last = tree.body[-1] if tree.body else None
+        if isinstance(last, ast.Expr):
+            # Split: exec all but last, then eval the last expression
+            stmts = ast.Module(body=tree.body[:-1], type_ignores=[])
+            expr = ast.Expression(body=last.value)
+            exec(compile(stmts, "<string>", "exec"), {"__builtins__": __builtins__}, scope)
+            result = eval(compile(expr, "<string>", "eval"), {"__builtins__": __builtins__}, scope)
+            return str(result) if result is not None else "OK (no return value)"
+        else:
+            # Last statement is not an expression (e.g. assignment),
+            # check for __result__ in scope after exec
+            exec(code, {"__builtins__": __builtins__}, scope)
+            if "__result__" in scope:
+                return str(scope["__result__"])
+            return "OK"
     except Exception as exc:
         return f"Error: {exc}"
 

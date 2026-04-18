@@ -52,21 +52,18 @@ class ClipAudioSpec:
     takes untouched.
     """
 
-    item_index: int          # 0-based within the audio track
-    source_name: str         # media-pool clip name (user-facing)
-    source_path: str         # absolute path to source file
-    source_in_frame: int     # inclusive start frame in source
-    source_out_frame: int    # exclusive end frame in source
+    item_index: int  # 0-based within the audio track
+    source_name: str  # media-pool clip name (user-facing)
+    source_path: str  # absolute path to source file
+    source_in_frame: int  # inclusive start frame in source
+    source_out_frame: int  # exclusive end frame in source
     timeline_offset_s: float  # timeline seconds where this clip starts
     duration_s: float
-    wav_path: str = ""       # filled by extract_per_clip_audio
+    wav_path: str = ""  # filled by extract_per_clip_audio
 
     @property
     def cache_key(self) -> str:
-        payload = (
-            f"{self.source_path}|{self.source_in_frame}|"
-            f"{self.source_out_frame}|v1"
-        )
+        payload = f"{self.source_path}|{self.source_in_frame}|{self.source_out_frame}|v1"
         return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
     def metadata(self) -> dict:
@@ -123,15 +120,17 @@ def build_clip_audio_specs(tl, track_index: int = 1) -> list[ClipAudioSpec]:
 
         timeline_offset_frame = item.GetStart() - tl_start
 
-        out.append(ClipAudioSpec(
-            item_index=idx,
-            source_name=str(mp_item.GetName() or f"item_{idx}"),
-            source_path=str(src_path),
-            source_in_frame=int(src_start),
-            source_out_frame=int(src_end),
-            timeline_offset_s=timeline_offset_frame / fps,
-            duration_s=duration_frames / fps,
-        ))
+        out.append(
+            ClipAudioSpec(
+                item_index=idx,
+                source_name=str(mp_item.GetName() or f"item_{idx}"),
+                source_path=str(src_path),
+                source_in_frame=int(src_start),
+                source_out_frame=int(src_end),
+                timeline_offset_s=timeline_offset_frame / fps,
+                duration_s=duration_frames / fps,
+            )
+        )
 
     return out
 
@@ -187,18 +186,29 @@ def extract_per_clip_audio(
 
         r = subprocess.run(
             [
-                "ffmpeg", "-y", "-loglevel", "error",
-                "-ss", f"{in_s:.3f}", "-to", f"{out_s:.3f}",
-                "-i", str(src),
-                "-vn", "-ac", str(channels), "-ar", str(sample_rate),
+                "ffmpeg",
+                "-y",
+                "-loglevel",
+                "error",
+                "-ss",
+                f"{in_s:.3f}",
+                "-to",
+                f"{out_s:.3f}",
+                "-i",
+                str(src),
+                "-vn",
+                "-ac",
+                str(channels),
+                "-ar",
+                str(sample_rate),
                 str(wav),
             ],
-            capture_output=True, text=True, check=False,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         if r.returncode != 0:
-            raise RuntimeError(
-                f"ffmpeg per-clip extract failed on {src.name}: {r.stderr.strip()}"
-            )
+            raise RuntimeError(f"ffmpeg per-clip extract failed on {src.name}: {r.stderr.strip()}")
         spec.wav_path = str(wav)
 
     return specs
@@ -214,12 +224,20 @@ def _probe_fps(src: Path) -> float:
         return 24.0
     r = subprocess.run(
         [
-            "ffprobe", "-v", "error",
-            "-select_streams", "v:0",
-            "-show_entries", "stream=r_frame_rate",
-            "-of", "json", str(src),
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=r_frame_rate",
+            "-of",
+            "json",
+            str(src),
         ],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if r.returncode != 0:
         return 24.0
@@ -304,14 +322,16 @@ def _stitch_one(spec: ClipAudioSpec, clip_words: list[dict]) -> list[dict]:
         if end > limit:
             continue
         start = float(w.get("start_time", 0.0))
-        stitched.append({
-            "word": w.get("word", ""),
-            "speaker_id": w.get("speaker_id", "S1"),
-            "start_time": round(start + offset, 3),
-            "end_time": round(end + offset, 3),
-            "clip_index": spec.item_index,
-            "clip_metadata": metadata,
-        })
+        stitched.append(
+            {
+                "word": w.get("word", ""),
+                "speaker_id": w.get("speaker_id", "S1"),
+                "start_time": round(start + offset, 3),
+                "end_time": round(end + offset, 3),
+                "clip_index": spec.item_index,
+                "clip_metadata": metadata,
+            }
+        )
     return stitched
 
 

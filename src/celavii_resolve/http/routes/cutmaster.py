@@ -119,8 +119,12 @@ async def analyze(body: AnalyzeRequest) -> AnalyzeResponse:
     run = state.new_run(body.timeline_name, body.preset)
     state.save(run)
 
-    log.info("Analyze run %s starting for timeline '%s' (preset=%s)",
-             run["run_id"], body.timeline_name, body.preset)
+    log.info(
+        "Analyze run %s starting for timeline '%s' (preset=%s)",
+        run["run_id"],
+        body.timeline_name,
+        body.preset,
+    )
 
     asyncio.create_task(
         run_analyze(
@@ -307,7 +311,9 @@ def _dump_director_prompt(run_id: str, prompt_text: str) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(prompt_text, encoding="utf-8")
     log.info(
-        "Director prompt (%d chars) written to %s", len(prompt_text), path,
+        "Director prompt (%d chars) written to %s",
+        len(prompt_text),
+        path,
     )
     return str(path)
 
@@ -381,11 +387,13 @@ async def project_info() -> ProjectInfoResponse:
             item_count = len(items)
         except Exception:
             item_count = 0
-        timelines.append(TimelineInfo(
-            name=name,
-            is_current=(name == current_name),
-            item_count=item_count,
-        ))
+        timelines.append(
+            TimelineInfo(
+                name=name,
+                is_current=(name == current_name),
+                item_count=item_count,
+            )
+        )
 
     return ProjectInfoResponse(project_name=project_name, timelines=timelines)
 
@@ -419,10 +427,7 @@ async def speakers(run_id: str) -> SpeakerRosterResponse:
     ids = detect_speakers(transcript)
     counts = speaker_stats(transcript)
     return SpeakerRosterResponse(
-        speakers=[
-            SpeakerRosterEntry(speaker_id=sid, word_count=counts.get(sid, 0))
-            for sid in ids
-        ],
+        speakers=[SpeakerRosterEntry(speaker_id=sid, word_count=counts.get(sid, 0)) for sid in ids],
     )
 
 
@@ -574,9 +579,7 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         # Long-source gate (proposal §4.7). Hard-block beyond v2's 60-min
         # ceiling; warn the user in the plan output between 15 min and the
         # ceiling so they can downsize if Director quality dips.
-        last_word_end = (
-            float(scrubbed[-1].get("end_time", 0.0)) if scrubbed else 0.0
-        )
+        last_word_end = float(scrubbed[-1].get("end_time", 0.0)) if scrubbed else 0.0
         if last_word_end > 60 * 60:
             raise HTTPException(
                 status_code=400,
@@ -600,22 +603,26 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         _dump_director_prompt(
             body.run_id,
             director_mod._clip_hunter_prompt(
-                preset, scrubbed, settings_dict,
-                target_clip_length_s, num_clips,
+                preset,
+                scrubbed,
+                settings_dict,
+                target_clip_length_s,
+                num_clips,
             ),
         )
 
         try:
             hunter_plan = await asyncio.to_thread(
                 build_clip_hunter_plan,
-                scrubbed, preset, settings_dict,
-                target_clip_length_s, num_clips,
+                scrubbed,
+                preset,
+                settings_dict,
+                target_clip_length_s,
+                num_clips,
             )
         except Exception as exc:
             log.exception("Clip Hunter Director failed for run %s", body.run_id)
-            raise HTTPException(
-                status_code=500, detail=f"Clip Hunter Director failed: {exc}"
-            )
+            raise HTTPException(status_code=500, detail=f"Clip Hunter Director failed: {exc}")
 
         from ...cutmaster.pipeline import _find_timeline_by_name
         from ...resolve import _boilerplate  # lazy
@@ -644,10 +651,12 @@ async def build_plan(body: BuildPlanRequest) -> dict:
                     status_code=400,
                     detail=f"clip [{cand.start_s:.2f},{cand.end_s:.2f}]: {exc}",
                 )
-            candidates_payload.append({
-                **cand.model_dump(),
-                "resolved_segments": [r.model_dump() for r in resolved],
-            })
+            candidates_payload.append(
+                {
+                    **cand.model_dump(),
+                    "resolved_segments": [r.model_dump() for r in resolved],
+                }
+            )
 
         # Default selection: top-ranked candidate (index 0). User overrides
         # via /execute's candidate_index.
@@ -819,9 +828,7 @@ async def build_plan(body: BuildPlanRequest) -> dict:
             )
         except Exception as exc:
             log.exception("Assembled Director failed for run %s", body.run_id)
-            raise HTTPException(
-                status_code=500, detail=f"Assembled Director failed: {exc}"
-            )
+            raise HTTPException(status_code=500, detail=f"Assembled Director failed: {exc}")
 
         selected_clips, hook_cut_index = expand_assembled_plan(assembled_plan, takes)
         plan = DirectorPlan(
@@ -836,9 +843,7 @@ async def build_plan(body: BuildPlanRequest) -> dict:
             director_mod._prompt(preset, scrubbed, settings_dict),
         )
         try:
-            plan = await asyncio.to_thread(
-                build_cut_plan, scrubbed, preset, settings_dict
-            )
+            plan = await asyncio.to_thread(build_cut_plan, scrubbed, preset, settings_dict)
         except Exception as exc:
             log.exception("Director failed for run %s", body.run_id)
             raise HTTPException(status_code=500, detail=f"Director agent failed: {exc}")
@@ -927,10 +932,7 @@ async def execute(body: ExecuteRequest) -> dict:
         if idx < 0 or idx >= len(cands):
             raise HTTPException(
                 status_code=400,
-                detail=(
-                    f"candidate_index {idx} out of range for "
-                    f"{len(cands)} candidate(s)"
-                ),
+                detail=(f"candidate_index {idx} out of range for {len(cands)} candidate(s)"),
             )
         chosen = cands[idx]
         run["plan"]["resolved_segments"] = chosen["resolved_segments"]
@@ -1011,5 +1013,8 @@ async def delete_cut(body: DeleteCutRequest) -> dict:
     run.pop("execute", None)
     state.save(run)
 
-    return {"deleted": bool(ok), "timeline": new_name,
-            "snapshot_preserved_at": exec_result.get("snapshot_path")}
+    return {
+        "deleted": bool(ok),
+        "timeline": new_name,
+        "snapshot_preserved_at": exec_result.get("snapshot_path"),
+    }

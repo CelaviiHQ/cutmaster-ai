@@ -12,6 +12,7 @@ src/celavii_resolve/http/static/*
 # CutMaster panel — node dependencies
 panel/node_modules/
 panel/dist/
+panel/.vite/
 
 # Python
 __pycache__/
@@ -22,6 +23,24 @@ dist/
 build/
 .eggs/
 *.egg
+
+# Tool caches
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+
+# Backup files
+*.backup
+*.bak
+
+# Local working area (scratch notes — never committed)
+/notes/
+/scratch/
+*.local.md
+*.local.json
+*.local.yaml
+*.local.yml
+*.local.toml
 
 # Virtual environments
 .venv/

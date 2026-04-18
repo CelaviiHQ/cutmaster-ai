@@ -8,9 +8,7 @@ from celavii_resolve.cutmaster.assembled import (
 
 
 def _item(idx: int, start: float, end: float, name: str = "clip.mov") -> ItemSummary:
-    return ItemSummary(
-        item_index=idx, source_name=name, start_s=start, end_s=end
-    )
+    return ItemSummary(item_index=idx, source_name=name, start_s=start, end_s=end)
 
 
 def _w(word: str, start: float, end: float) -> dict:

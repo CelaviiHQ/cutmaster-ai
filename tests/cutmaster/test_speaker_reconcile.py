@@ -69,7 +69,9 @@ def test_collect_samples_returns_one_row_per_unique_pair():
 def test_collect_samples_quotes_are_bounded():
     transcript = [_w(f"w{i}", 0, "S1", i) for i in range(50)]
     samples = _collect_local_samples(
-        transcript, max_samples_per_key=3, max_sample_words=12,
+        transcript,
+        max_samples_per_key=3,
+        max_sample_words=12,
     )
     assert len(samples) == 1
     assert len(samples[0]["quotes"]) == 3
@@ -120,8 +122,7 @@ def test_apply_mapping_passes_through_unmapped_words():
 def _plan(entries: list[tuple[int, str, str]], detected: int) -> SpeakerReconciliation:
     return SpeakerReconciliation(
         mapping=[
-            _ReconcileMapEntry(clip_index=c, local_id=lid, global_id=g)
-            for c, lid, g in entries
+            _ReconcileMapEntry(clip_index=c, local_id=lid, global_id=g) for c, lid, g in entries
         ],
         detected_speakers=detected,
     )
@@ -178,7 +179,9 @@ def test_reconcile_shortcuts_single_local_speaker():
         raise AssertionError("caller must not invoke the LLM")
 
     out, summary = reconcile_with_llm(
-        transcript, expected_speakers=2, caller=forbid,
+        transcript,
+        expected_speakers=2,
+        caller=forbid,
     )
     assert [w["speaker_id"] for w in out] == ["S1", "S1"]
     assert summary["detected_speakers"] == 1
@@ -190,11 +193,7 @@ def test_reconcile_merges_same_speaker_across_clips():
     it's actually one person. Expected count=1 isn't allowed here (use
     collapse_to_solo), so simulate with expected=2 and a caller that returns
     a merging mapping."""
-    transcript = (
-        [_w("a", 0, "S1", 0.0)]
-        + [_w("b", 1, "S2", 10.0)]
-        + [_w("c", 2, "S4", 20.0)]
-    )
+    transcript = [_w("a", 0, "S1", 0.0)] + [_w("b", 1, "S2", 10.0)] + [_w("c", 2, "S4", 20.0)]
 
     def fake_call() -> SpeakerReconciliation:
         return SpeakerReconciliation(
@@ -208,7 +207,9 @@ def test_reconcile_merges_same_speaker_across_clips():
         )
 
     out, summary = reconcile_with_llm(
-        transcript, expected_speakers=2, caller=fake_call,
+        transcript,
+        expected_speakers=2,
+        caller=fake_call,
     )
     assert [w["speaker_id"] for w in out] == ["S1", "S1", "S1"]
     assert summary["detected_speakers"] == 1
@@ -235,7 +236,9 @@ def test_reconcile_preserves_genuine_distinct_speakers():
         )
 
     out, summary = reconcile_with_llm(
-        transcript, expected_speakers=2, caller=fake_call,
+        transcript,
+        expected_speakers=2,
+        caller=fake_call,
     )
     ids = [w["speaker_id"] for w in out]
     assert ids == ["S1", "S2", "S1", "S2"]

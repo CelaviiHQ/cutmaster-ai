@@ -472,10 +472,10 @@ def _ser(obj):
     """Recursively convert Resolve API objects to JSON-safe values."""
     if obj is None:
         return None
-    if isinstance(obj, (str, int, float, bool)):
+    if isinstance(obj, str | int | float | bool):
         return obj
     if isinstance(obj, dict):
         return {k: _ser(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
+    if isinstance(obj, list | tuple):
         return [_ser(v) for v in obj]
     return str(obj)

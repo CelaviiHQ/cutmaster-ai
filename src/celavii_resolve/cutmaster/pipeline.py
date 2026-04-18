@@ -28,8 +28,12 @@ def _find_timeline_by_name(project, name: str):
 
 async def _vfr_check(tl, run, emit) -> bool:
     """Scan all V1 source files for VFR. Returns True on pass."""
-    await emit(run, stage="vfr_check", status="started",
-               message="Checking source media for variable frame rate")
+    await emit(
+        run,
+        stage="vfr_check",
+        status="started",
+        message="Checking source media for variable frame rate",
+    )
 
     from .vfr import detect_vfr  # lazy — avoids ffprobe requirement at import
 
@@ -53,38 +57,58 @@ async def _vfr_check(tl, run, emit) -> bool:
             problems.append(result)
 
     if problems:
-        await emit(run, stage="vfr_check", status="failed",
-                   message=f"{len(problems)} VFR file(s) detected — transcode to CFR first",
-                   data={"files": problems})
+        await emit(
+            run,
+            stage="vfr_check",
+            status="failed",
+            message=f"{len(problems)} VFR file(s) detected — transcode to CFR first",
+            data={"files": problems},
+        )
         return False
 
-    await emit(run, stage="vfr_check", status="complete",
-               message=f"Checked {len(seen)} unique source file(s), all CFR",
-               data={"checked": len(seen)})
+    await emit(
+        run,
+        stage="vfr_check",
+        status="complete",
+        message=f"Checked {len(seen)} unique source file(s), all CFR",
+        data={"checked": len(seen)},
+    )
     return True
 
 
 async def _extract_audio(tl, run, emit) -> tuple[Path, float] | None:
-    await emit(run, stage="audio_extract", status="started",
-               message="Reassembling timeline audio via ffmpeg")
+    await emit(
+        run,
+        stage="audio_extract",
+        status="started",
+        message="Reassembling timeline audio via ffmpeg",
+    )
     from .ffmpeg_audio import extract_timeline_audio  # lazy
 
     wav_path = state.audio_path_for(run["run_id"])
     try:
         result = await asyncio.to_thread(extract_timeline_audio, tl, wav_path)
     except Exception as exc:
-        await emit(run, stage="audio_extract", status="failed",
-                   message=f"ffmpeg extraction failed: {exc}")
+        await emit(
+            run, stage="audio_extract", status="failed", message=f"ffmpeg extraction failed: {exc}"
+        )
         return None
 
-    await emit(run, stage="audio_extract", status="complete",
-               message=f"Wrote {result['duration_s']:.1f}s WAV ({result['segments']} segment(s))",
-               data=result)
+    await emit(
+        run,
+        stage="audio_extract",
+        status="complete",
+        message=f"Wrote {result['duration_s']:.1f}s WAV ({result['segments']} segment(s))",
+        data=result,
+    )
     return wav_path, float(result["duration_s"])
 
 
 async def _transcribe_per_clip(
-    tl, run, emit, stt_provider: str | None = None,
+    tl,
+    run,
+    emit,
+    stt_provider: str | None = None,
 ) -> list[dict] | None:
     """v2-6: run STT per timeline audio item, stitch the results.
 
@@ -99,13 +123,21 @@ async def _transcribe_per_clip(
 
     # Per-clip mode still does audio extraction — emit the stage event so the
     # Analyze UI shows a green check instead of a perpetual pending spinner.
-    await emit(run, stage="audio_extract", status="started",
-               message="Extracting audio per timeline item (ffmpeg)")
+    await emit(
+        run,
+        stage="audio_extract",
+        status="started",
+        message="Extracting audio per timeline item (ffmpeg)",
+    )
 
     specs = build_clip_audio_specs(tl)
     if not specs:
-        await emit(run, stage="audio_extract", status="failed",
-                   message="no audio items with source backing for per-clip STT")
+        await emit(
+            run,
+            stage="audio_extract",
+            status="failed",
+            message="no audio items with source backing for per-clip STT",
+        )
         return None
 
     extract_dir = state.audio_path_for(run["run_id"]).parent / run["run_id"]
@@ -113,44 +145,52 @@ async def _transcribe_per_clip(
     try:
         specs = await asyncio.to_thread(extract_per_clip_audio, specs, extract_dir)
     except Exception as exc:
-        await emit(run, stage="audio_extract", status="failed",
-                   message=f"per-clip ffmpeg extract failed: {exc}")
+        await emit(
+            run,
+            stage="audio_extract",
+            status="failed",
+            message=f"per-clip ffmpeg extract failed: {exc}",
+        )
         return None
 
     total_duration = sum(s.duration_s for s in specs)
     await emit(
-        run, stage="audio_extract", status="complete",
-        message=(
-            f"Extracted {len(specs)} per-clip WAV(s) — "
-            f"{total_duration:.1f}s total"
-        ),
+        run,
+        stage="audio_extract",
+        status="complete",
+        message=(f"Extracted {len(specs)} per-clip WAV(s) — {total_duration:.1f}s total"),
         data={"clips": len(specs), "duration_s": total_duration, "mode": "per_clip"},
     )
 
     # Resolve the effective provider up front so cache isolation + the
     # event label both reflect what we're actually about to run.
     from .stt import DEFAULT_PROVIDER
+
     effective_provider = (stt_provider or DEFAULT_PROVIDER).lower()
     await emit(
-        run, stage="stt", status="started",
+        run,
+        stage="stt",
+        status="started",
         message=f"Transcribing per clip in parallel ({effective_provider})",
         data={"provider": effective_provider},
     )
 
     try:
         stitched, stats = await transcribe_per_clip(
-            specs, provider=effective_provider,
+            specs,
+            provider=effective_provider,
         )
     except Exception as exc:
-        await emit(run, stage="stt", status="failed",
-                   message=f"per-clip STT failed: {exc}")
+        await emit(run, stage="stt", status="failed", message=f"per-clip STT failed: {exc}")
         return None
 
     run["transcript"] = stitched
     state.save(run)
 
     await emit(
-        run, stage="stt", status="complete",
+        run,
+        stage="stt",
+        status="complete",
         message=(
             f"Transcribed {len(stitched)} words across {len(specs)} clips "
             f"via {effective_provider} "
@@ -205,8 +245,9 @@ async def _reconcile_speakers(
     )
 
     if expected_speakers == 1:
-        await emit(run, stage="speakers", status="started",
-                   message="Collapsing to single-speaker mode")
+        await emit(
+            run, stage="speakers", status="started", message="Collapsing to single-speaker mode"
+        )
         new_transcript = collapse_to_solo(transcript)
         run["transcript"] = new_transcript
         run["speaker_reconciliation"] = {
@@ -217,7 +258,9 @@ async def _reconcile_speakers(
         }
         state.save(run)
         await emit(
-            run, stage="speakers", status="complete",
+            run,
+            stage="speakers",
+            status="complete",
             message="Collapsed to a single speaker (S1)",
             data={"detected": 1, "roster": ["S1"]},
         )
@@ -241,32 +284,35 @@ async def _reconcile_speakers(
         }
         state.save(run)
         await emit(
-            run, stage="speakers", status="complete",
+            run,
+            stage="speakers",
+            status="complete",
             message=(
-                f"Concat STT: keeping Gemini's global IDs for up to "
-                f"{expected_speakers} speaker(s)"
+                f"Concat STT: keeping Gemini's global IDs for up to {expected_speakers} speaker(s)"
             ),
             data={"strategy": "skip_concat"},
         )
         return transcript
 
     await emit(
-        run, stage="speakers", status="started",
-        message=(
-            f"Reconciling cross-clip speaker IDs (target: {expected_speakers})"
-        ),
+        run,
+        stage="speakers",
+        status="started",
+        message=(f"Reconciling cross-clip speaker IDs (target: {expected_speakers})"),
     )
     try:
         new_transcript, summary = await asyncio.to_thread(
-            reconcile_with_llm, transcript, expected_speakers,
+            reconcile_with_llm,
+            transcript,
+            expected_speakers,
         )
     except Exception as exc:
         log.exception("Speaker reconciliation failed")
         await emit(
-            run, stage="speakers", status="failed",
-            message=(
-                f"reconciliation failed — keeping raw per-clip IDs: {exc}"
-            ),
+            run,
+            stage="speakers",
+            status="failed",
+            message=(f"reconciliation failed — keeping raw per-clip IDs: {exc}"),
         )
         return transcript
 
@@ -278,7 +324,9 @@ async def _reconcile_speakers(
     }
     state.save(run)
     await emit(
-        run, stage="speakers", status="complete",
+        run,
+        stage="speakers",
+        status="complete",
         message=(
             f"Reconciled to {summary['detected_speakers']} speaker(s): "
             f"{', '.join(summary['roster'])}"
@@ -299,20 +347,25 @@ async def _transcribe(
     stt_provider: str | None = None,
 ) -> list[dict] | None:
     from .stt import DEFAULT_PROVIDER, transcribe_audio  # lazy
+
     effective_provider = (stt_provider or DEFAULT_PROVIDER).lower()
     await emit(
-        run, stage="stt", status="started",
+        run,
+        stage="stt",
+        status="started",
         message=f"Transcribing with word-level timestamps ({effective_provider})",
         data={"provider": effective_provider},
     )
 
     try:
         transcript = await asyncio.to_thread(
-            transcribe_audio, wav_path, None, effective_provider,
+            transcribe_audio,
+            wav_path,
+            None,
+            effective_provider,
         )
     except Exception as exc:
-        await emit(run, stage="stt", status="failed",
-                   message=f"STT failed: {exc}")
+        await emit(run, stage="stt", status="failed", message=f"STT failed: {exc}")
         return None
 
     raw_words = [w.model_dump() for w in transcript.words]
@@ -330,31 +383,40 @@ async def _transcribe(
     msg = f"Transcribed {len(words)} words via {effective_provider}"
     if dropped:
         msg += f" (dropped {dropped} with timestamps past audio end of {audio_duration_s:.1f}s)"
-    await emit(run, stage="stt", status="complete",
-               message=msg,
-               data={
-                   "word_count": len(words),
-                   "dropped_out_of_range": dropped,
-                   "provider": effective_provider,
-               })
+    await emit(
+        run,
+        stage="stt",
+        status="complete",
+        message=msg,
+        data={
+            "word_count": len(words),
+            "dropped_out_of_range": dropped,
+            "provider": effective_provider,
+        },
+    )
     return words
 
 
 async def _scrub_stage(words: list[dict], params: ScrubParams, run, emit) -> list[dict]:
-    await emit(run, stage="scrub", status="started",
-               message="Removing fillers, dead air, and restarts")
+    await emit(
+        run, stage="scrub", status="started", message="Removing fillers, dead air, and restarts"
+    )
 
     result = await asyncio.to_thread(scrub, words, params)
     run["scrubbed"] = result.kept
     state.save(run)
 
-    await emit(run, stage="scrub", status="complete",
-               message=(
-                   f"Kept {result.kept_count}/{result.original_count} words "
-                   f"(removed {result.counts['filler']} filler, "
-                   f"{result.counts['restart']} restart)"
-               ),
-               data=result.model_dump(exclude={"kept", "removed"}))
+    await emit(
+        run,
+        stage="scrub",
+        status="complete",
+        message=(
+            f"Kept {result.kept_count}/{result.original_count} words "
+            f"(removed {result.counts['filler']} filler, "
+            f"{result.counts['restart']} restart)"
+        ),
+        data=result.model_dump(exclude={"kept", "removed"}),
+    )
     return result.kept
 
 
@@ -387,8 +449,12 @@ async def run_analyze(
         _, project, _ = _boilerplate()
         tl = _find_timeline_by_name(project, timeline_name)
         if tl is None:
-            await state.emit(run, stage="error", status="failed",
-                             message=f"Timeline '{timeline_name}' not found in project")
+            await state.emit(
+                run,
+                stage="error",
+                status="failed",
+                message=f"Timeline '{timeline_name}' not found in project",
+            )
             run["status"] = "failed"
             run["error"] = f"timeline '{timeline_name}' not found"
             state.save(run)
@@ -405,21 +471,28 @@ async def run_analyze(
             # v2-6: skip the global concat, run STT per timeline item, and
             # attach clip_index + clip_metadata to every word.
             words = await _transcribe_per_clip(
-                tl, run, state.emit, stt_provider=stt_provider,
+                tl,
+                run,
+                state.emit,
+                stt_provider=stt_provider,
             )
             if words is None:
                 run["status"] = "failed"
                 run["error"] = "per_clip_stt_failed"
                 state.save(run)
-                await state.emit(run, stage="done", status="failed",
-                                 message="halted on per-clip STT")
+                await state.emit(
+                    run, stage="done", status="failed", message="halted on per-clip STT"
+                )
                 return
             # Cross-clip speaker reconciliation — only runs when the user
             # supplied a count, so v2-6 legacy behaviour (raw per-clip IDs)
             # stays the default.
             if expected_speakers:
                 words = await _reconcile_speakers(
-                    words, expected_speakers, run, state.emit,
+                    words,
+                    expected_speakers,
+                    run,
+                    state.emit,
                 )
         else:
             audio_result = await _extract_audio(tl, run, state.emit)
@@ -427,12 +500,17 @@ async def run_analyze(
                 run["status"] = "failed"
                 run["error"] = "audio_extract_failed"
                 state.save(run)
-                await state.emit(run, stage="done", status="failed", message="halted on audio extract")
+                await state.emit(
+                    run, stage="done", status="failed", message="halted on audio extract"
+                )
                 return
             wav_path, audio_duration_s = audio_result
 
             words = await _transcribe(
-                wav_path, audio_duration_s, run, state.emit,
+                wav_path,
+                audio_duration_s,
+                run,
+                state.emit,
                 stt_provider=stt_provider,
             )
             if words is None:
@@ -446,15 +524,22 @@ async def run_analyze(
             # speaker hints are a no-op on concat STT (global IDs already).
             if expected_speakers:
                 words = await _reconcile_speakers(
-                    words, expected_speakers, run, state.emit,
+                    words,
+                    expected_speakers,
+                    run,
+                    state.emit,
                 )
 
         await _scrub_stage(words, scrub_params or ScrubParams(), run, state.emit)
 
         run["status"] = "done"
         state.save(run)
-        await state.emit(run, stage="done", status="complete",
-                         message="Analyze complete — ready for configure step")
+        await state.emit(
+            run,
+            stage="done",
+            status="complete",
+            message="Analyze complete — ready for configure step",
+        )
 
     except Exception as exc:
         log.exception("Pipeline crashed")

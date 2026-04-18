@@ -94,13 +94,26 @@ def extract_timeline_audio(
         seg_wavs: list[Path] = []
         for i, (src, in_s, out_s) in enumerate(segments):
             wav = tmp_dir / f"seg_{i:03d}.wav"
-            r = _run([
-                "ffmpeg", "-y", "-loglevel", "error",
-                "-ss", f"{in_s:.3f}", "-to", f"{out_s:.3f}",
-                "-i", str(src),
-                "-vn", "-ac", str(channels), "-ar", str(sample_rate),
-                str(wav),
-            ])
+            r = _run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-loglevel",
+                    "error",
+                    "-ss",
+                    f"{in_s:.3f}",
+                    "-to",
+                    f"{out_s:.3f}",
+                    "-i",
+                    str(src),
+                    "-vn",
+                    "-ac",
+                    str(channels),
+                    "-ar",
+                    str(sample_rate),
+                    str(wav),
+                ]
+            )
             if r.returncode != 0:
                 raise RuntimeError(f"ffmpeg extract failed on {src.name}: {r.stderr.strip()}")
             seg_wavs.append(wav)
@@ -108,11 +121,23 @@ def extract_timeline_audio(
         concat_list = tmp_dir / "concat.txt"
         concat_list.write_text("".join(f"file '{w}'\n" for w in seg_wavs))
 
-        r = _run([
-            "ffmpeg", "-y", "-loglevel", "error",
-            "-f", "concat", "-safe", "0", "-i", str(concat_list),
-            "-c", "copy", str(out_path),
-        ])
+        r = _run(
+            [
+                "ffmpeg",
+                "-y",
+                "-loglevel",
+                "error",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(concat_list),
+                "-c",
+                "copy",
+                str(out_path),
+            ]
+        )
         if r.returncode != 0:
             raise RuntimeError(f"ffmpeg concat failed: {r.stderr.strip()}")
 
@@ -167,6 +192,7 @@ def celavii_extract_timeline_audio(
         extract_dir.mkdir(parents=True, exist_ok=True)
         out_path = str(extract_dir / f"{tl.GetName()}_{ts}.wav")
 
-    result = extract_timeline_audio(tl, Path(out_path), int(track_index),
-                                    int(sample_rate), int(channels))
+    result = extract_timeline_audio(
+        tl, Path(out_path), int(track_index), int(sample_rate), int(channels)
+    )
     return json.dumps(result)

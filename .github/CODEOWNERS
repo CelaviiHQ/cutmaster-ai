@@ -1,0 +1,11 @@
+# Default owners — any PR gets reviewed by core
+*                         @CelaviiHQ/core
+
+# Sensitive paths — require explicit review
+/.github/workflows/       @CelaviiHQ/core
+/.pre-commit-config.yaml  @CelaviiHQ/core
+/pyproject.toml           @CelaviiHQ/core
+/scripts/                 @CelaviiHQ/core
+/SECURITY.md              @CelaviiHQ/core
+/.mcp.json                @CelaviiHQ/core
+/install.py               @CelaviiHQ/core

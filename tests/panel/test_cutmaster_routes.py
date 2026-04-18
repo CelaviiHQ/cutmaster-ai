@@ -33,8 +33,9 @@ def client(monkeypatch) -> TestClient:
         if run is None:
             return
         await state.emit(run, stage="vfr_check", status="complete", message="stub pass")
-        await state.emit(run, stage="done", status="complete",
-                         message=f"stubbed pipeline for {timeline_name}")
+        await state.emit(
+            run, stage="done", status="complete", message=f"stubbed pipeline for {timeline_name}"
+        )
         run["status"] = "done"
         state.save(run)
 
@@ -43,8 +44,7 @@ def client(monkeypatch) -> TestClient:
 
 
 def test_analyze_returns_run_id(client: TestClient):
-    r = client.post("/cutmaster/analyze",
-                    json={"timeline_name": "Timeline 1", "preset": "vlog"})
+    r = client.post("/cutmaster/analyze", json={"timeline_name": "Timeline 1", "preset": "vlog"})
     assert r.status_code == 200
     body = r.json()
     assert "run_id" in body
@@ -115,5 +115,5 @@ def test_events_replay_persisted_events(client: TestClient):
     # The data: lines are JSON — find at least one and parse it
     data_lines = [line for line in body.splitlines() if line.startswith("data:")]
     assert data_lines
-    payload = json.loads(data_lines[0][len("data: "):])
+    payload = json.loads(data_lines[0][len("data: ") :])
     assert "stage" in payload

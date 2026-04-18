@@ -55,9 +55,7 @@ def transcribe(
     """Deepgram-backed implementation of :func:`stt.transcribe_audio`."""
     api_key = os.environ.get("DEEPGRAM_API_KEY")
     if not api_key:
-        raise ValueError(
-            "DEEPGRAM_API_KEY not set. Add it to .env or the environment."
-        )
+        raise ValueError("DEEPGRAM_API_KEY not set. Add it to .env or the environment.")
 
     import httpx  # deferred — kept out of module import for lightweight CLI use
 
@@ -65,7 +63,10 @@ def transcribe(
     used_language = language or DEFAULT_LANGUAGE
     log.info(
         "Sending %s to Deepgram (%s, lang=%s, diarize=%s)",
-        audio_path.name, used_model, used_language, diarize,
+        audio_path.name,
+        used_model,
+        used_language,
+        diarize,
     )
 
     params: dict[str, str] = {
@@ -97,9 +98,7 @@ def transcribe(
     if response.status_code >= 400:
         # Deepgram returns JSON error bodies that are concise and user-
         # facing — surface the message verbatim.
-        raise RuntimeError(
-            f"Deepgram {response.status_code}: {response.text.strip()[:500]}"
-        )
+        raise RuntimeError(f"Deepgram {response.status_code}: {response.text.strip()[:500]}")
 
     try:
         payload = response.json()
@@ -175,10 +174,12 @@ def _map_deepgram_words(payload: dict) -> list[TranscriptWord]:
             continue
         if end <= start:
             continue
-        out.append(TranscriptWord(
-            word=spoken,
-            speaker_id=speaker_id,
-            start_time=start,
-            end_time=end,
-        ))
+        out.append(
+            TranscriptWord(
+                word=spoken,
+                speaker_id=speaker_id,
+                start_time=start,
+                end_time=end,
+            )
+        )
     return out

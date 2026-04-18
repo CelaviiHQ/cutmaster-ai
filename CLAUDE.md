@@ -23,6 +23,17 @@ src/celavii_resolve/
 └── utils/            Platform detection, path safety, serialisation
 ```
 
+## Claude Code integration: `.claude/` vs top-level
+
+Two distinct roles, by design:
+
+| Location | Role | Consumer |
+|---|---|---|
+| `.claude/skills/`, `.claude/settings.json` | **Dev-only** — loaded when you open this repo in Claude Code to work on it | Contributors |
+| `agents/`, `skills/`, `hooks/` (top-level) | **Plugin distribution** — shipped when users install the Claude Code plugin (see `.claude-plugin/plugin.json`) | End users |
+
+`.claude/agents/` is intentionally **absent** — the colorist/editor/etc. agents are for end-user video work, not Python development. If you need a dev-facing agent, add it to `.claude/agents/` (not the top-level `agents/`).
+
 ## Two consumers, one codebase
 
 | Entry point | Transport | Consumer | Install |

@@ -1,0 +1,35 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: detect-private-key
+      - id: detect-aws-credentials
+        args: [--allow-missing-credentials]
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: block-local-paths
+        name: Block hardcoded /Users/ and /home/ paths
+        entry: '(/Users/[a-z][a-z0-9_-]+/|/home/[a-z][a-z0-9_-]+/)'
+        language: pygrep
+        types: [text]
+        exclude: '\.(md|lock)$|\.gitignore$|\.pre-commit-config\.yaml$|Implementation/|docs/internal/|\.venv/|^tests/'
+
+      - id: block-api-keys
+        name: Block common API key patterns
+        entry: '(sk-[a-zA-Z0-9]{20,}|AIza[0-9A-Za-z_-]{35}|ghp_[a-zA-Z0-9]{36}|xoxb-[a-zA-Z0-9-]+)'
+        language: pygrep
+        types: [text]
+        exclude: '\.(md|lock)$|\.pre-commit-config\.yaml$'

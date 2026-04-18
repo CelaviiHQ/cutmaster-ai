@@ -24,8 +24,7 @@ class PresetRecommendation(BaseModel):
 
 def _prompt(transcript: list[dict]) -> str:
     choices = "\n".join(
-        f"  - {key}: {bundle.label} — {bundle.role}"
-        for key, bundle in PRESETS.items()
+        f"  - {key}: {bundle.label} — {bundle.role}" for key, bundle in PRESETS.items()
     )
     # Truncate — only need the first window_seconds of audio, stripped to words only
     head = [

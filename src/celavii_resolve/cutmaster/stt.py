@@ -29,7 +29,24 @@ from pydantic import BaseModel, Field
 log = logging.getLogger("celavii-resolve.cutmaster.stt")
 
 
-DEFAULT_PROVIDER = os.environ.get("CELAVII_STT_PROVIDER", "gemini").lower()
+def _resolve_default_provider() -> str:
+    """Pick the default STT provider.
+
+    Order:
+      1. ``CELAVII_STT_PROVIDER`` env var (explicit opt-in wins).
+      2. Deepgram if ``DEEPGRAM_API_KEY`` is set — empirically gives
+         better long-form transcripts than Gemini STT.
+      3. Gemini as the universal fallback.
+    """
+    explicit = os.environ.get("CELAVII_STT_PROVIDER")
+    if explicit:
+        return explicit.lower()
+    if os.environ.get("DEEPGRAM_API_KEY"):
+        return "deepgram"
+    return "gemini"
+
+
+DEFAULT_PROVIDER = _resolve_default_provider()
 
 
 # ---------------------------------------------------------------------------
@@ -81,13 +98,13 @@ def transcribe_audio(
     chosen = (provider or DEFAULT_PROVIDER).lower()
     if chosen == "gemini":
         from .stt_gemini import transcribe as _gemini_transcribe
+
         return _gemini_transcribe(audio_path, model)
     if chosen == "deepgram":
         from .stt_deepgram import transcribe as _deepgram_transcribe
+
         return _deepgram_transcribe(audio_path, model)
-    raise ValueError(
-        f"unknown STT provider '{chosen}'. Valid: 'gemini', 'deepgram'."
-    )
+    raise ValueError(f"unknown STT provider '{chosen}'. Valid: 'gemini', 'deepgram'.")
 
 
 def available_providers() -> dict[str, bool]:
@@ -99,11 +116,13 @@ def available_providers() -> dict[str, bool]:
     status: dict[str, bool] = {}
     try:
         from .stt_gemini import is_configured as _gemini_ok
+
         status["gemini"] = _gemini_ok()
     except Exception:
         status["gemini"] = False
     try:
         from .stt_deepgram import is_configured as _deepgram_ok
+
         status["deepgram"] = _deepgram_ok()
     except Exception:
         status["deepgram"] = False

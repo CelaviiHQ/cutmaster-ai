@@ -9,8 +9,14 @@ from celavii_resolve.cutmaster.presets import PRESETS, all_presets, get_preset
 # about. Workflow presets (v2-3's tightener) skip the LLMs entirely and
 # are exempt from those invariants.
 CONTENT_TYPE_PRESETS = {
-    "vlog", "product_demo", "wedding", "interview",
-    "tutorial", "podcast", "reaction", "clip_hunter",
+    "vlog",
+    "product_demo",
+    "wedding",
+    "interview",
+    "tutorial",
+    "podcast",
+    "reaction",
+    "clip_hunter",
 }
 WORKFLOW_PRESETS = {"tightener"}
 

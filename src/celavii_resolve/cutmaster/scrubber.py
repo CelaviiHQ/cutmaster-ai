@@ -14,10 +14,21 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 # Sensible defaults — vlog-style.
-DEFAULT_FILLERS = frozenset({
-    "um", "uh", "ah", "er", "erm", "uhh", "umm", "uhm",
-    "hmm", "mhm", "mmm",
-})
+DEFAULT_FILLERS = frozenset(
+    {
+        "um",
+        "uh",
+        "ah",
+        "er",
+        "erm",
+        "uhh",
+        "umm",
+        "uhm",
+        "hmm",
+        "mhm",
+        "mmm",
+    }
+)
 
 DEFAULT_DEAD_AIR_S = 0.7
 
@@ -31,14 +42,14 @@ class ScrubParams(BaseModel):
     remove_dead_air: bool = True
     dead_air_threshold_s: float = DEFAULT_DEAD_AIR_S
     collapse_restarts: bool = True
-    restart_min_run: int = 3         # min consecutive tokens to treat as a restart prefix
-    restart_window_s: float = 3.0    # repeat must start within this much of the discarded end
+    restart_min_run: int = 3  # min consecutive tokens to treat as a restart prefix
+    restart_window_s: float = 3.0  # repeat must start within this much of the discarded end
 
 
 class ScrubResult(BaseModel):
     kept: list[dict]
-    removed: list[dict]           # each removed word has _reason
-    counts: dict[str, int]        # {"filler": n, "dead_air": n, "restart": n}
+    removed: list[dict]  # each removed word has _reason
+    counts: dict[str, int]  # {"filler": n, "dead_air": n, "restart": n}
     original_count: int
     kept_count: int
 
@@ -120,11 +131,7 @@ def scrub(words: list[dict], params: ScrubParams | None = None) -> ScrubResult:
 
     counts = {"filler": 0, "dead_air": 0, "restart": 0}
 
-    dead_air_idx = (
-        _mark_dead_air(words, p.dead_air_threshold_s)
-        if p.remove_dead_air
-        else set()
-    )
+    dead_air_idx = _mark_dead_air(words, p.dead_air_threshold_s) if p.remove_dead_air else set()
     restart_idx = (
         _find_restart_runs(words, p.restart_min_run, p.restart_window_s)
         if p.collapse_restarts

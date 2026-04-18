@@ -100,30 +100,63 @@ def _write_captions_file(
 def _populate_subtitle_track(media_pool, new_tl, srt_path: str) -> dict[str, Any]:
     """Best-effort: import the SRT and drop it onto a new subtitle track.
 
-    Resolve's scripting surface for subtitle tracks is inconsistent across
-    versions (20+ exposes ``ImportSubtitlesFromFile`` on some builds). We
-    try the most-likely method and report success/failure; a missing
-    subtitle track doesn't fail the whole run — the SRT on disk is the
-    authoritative artefact.
+    Resolve 21's scripting README exposes no ``Timeline.ImportSubtitles*``
+    method, so we route through the MediaPool: ``ImportMedia`` accepts .srt
+    paths (Resolve treats them as subtitle-typed MediaPoolItems) and
+    ``AppendToTimeline`` with an explicit ``trackIndex`` drops the clip onto
+    the subtitle track we just added. Older builds occasionally exposed
+    ``ImportSubtitlesFromFile`` on the Timeline — we probe for those too,
+    just in case.
+
+    A missing subtitle track doesn't fail the whole run: the SRT on disk
+    remains the authoritative artefact.
     """
-    # Try to add a subtitle track so the import has somewhere to land.
     try:
-        new_tl.AddTrack("subtitle")
+        added = new_tl.AddTrack("subtitle")
     except Exception as exc:  # pragma: no cover — API quirk
         return {"ok": False, "reason": f"AddTrack('subtitle') raised: {exc}"}
+    if not added:
+        return {"ok": False, "reason": "AddTrack('subtitle') returned False"}
 
+    # Legacy Timeline-level probe first — if a build happens to expose it,
+    # it's the cleanest path.
     for method_name in ("ImportSubtitlesFromFile", "ImportSubtitles"):
         method = getattr(new_tl, method_name, None)
         if callable(method):
             try:
                 ok = method(srt_path)
-                return {"ok": bool(ok), "method": method_name}
+                if ok:
+                    return {"ok": True, "method": method_name}
             except Exception as exc:  # pragma: no cover — API quirk
-                return {"ok": False, "method": method_name, "error": str(exc)}
-    return {
-        "ok": False,
-        "reason": "no ImportSubtitles* method on Timeline — SRT on disk is authoritative",
-    }
+                log.info("execute: %s raised (%s); falling back", method_name, exc)
+
+    # MediaPool path (the documented Resolve 21 route).
+    try:
+        items = media_pool.ImportMedia([srt_path]) or []
+    except Exception as exc:  # pragma: no cover — API quirk
+        return {"ok": False, "reason": f"ImportMedia([srt]) raised: {exc}"}
+    if not items:
+        return {"ok": False, "reason": "ImportMedia returned no MediaPoolItems for SRT"}
+
+    sub_idx = 0
+    try:
+        sub_idx = int(new_tl.GetTrackCount("subtitle") or 0)
+    except Exception:  # pragma: no cover
+        sub_idx = 0
+
+    clip_info: dict[str, Any] = {"mediaPoolItem": items[0]}
+    if sub_idx:
+        clip_info["trackIndex"] = sub_idx
+    try:
+        appended = media_pool.AppendToTimeline([clip_info]) or []
+    except Exception as exc:  # pragma: no cover — API quirk
+        return {"ok": False, "reason": f"AppendToTimeline(srt) raised: {exc}"}
+    if not appended:
+        return {
+            "ok": False,
+            "reason": "AppendToTimeline returned no items for SRT MediaPoolItem",
+        }
+    return {"ok": True, "method": "MediaPool.ImportMedia+AppendToTimeline"}
 
 
 def _drop_safe_zones(new_tl, spec: FormatSpec) -> dict[str, Any]:
@@ -202,9 +235,7 @@ def execute_plan(run: dict, name_suffix: str = "_AI_Cut") -> dict:
 
     # 2. Snapshot (before any mutation)
     log.info("execute: snapshotting project before build")
-    snap = snapshot_project(
-        resolve, project, label=f"pre_cutmaster_{run['run_id']}"
-    )
+    snap = snapshot_project(resolve, project, label=f"pre_cutmaster_{run['run_id']}")
 
     # 3. Create new timeline
     new_name = _unique_timeline_name(project, f"{run['timeline_name']}{name_suffix}")
@@ -229,13 +260,15 @@ def execute_plan(run: dict, name_suffix: str = "_AI_Cut") -> dict:
     # 4. Append segments in order — linked audio follows by default
     segments_payload: list[dict] = []
     for piece in resolved:
-        segments_payload.append({
-            "source_item_id": piece["source_item_id"],
-            "start_frame": piece["source_in_frame"],
-            "end_frame": piece["source_out_frame"],
-            "track_index": 1,
-            "media_type": "both",
-        })
+        segments_payload.append(
+            {
+                "source_item_id": piece["source_item_id"],
+                "start_frame": piece["source_in_frame"],
+                "end_frame": piece["source_out_frame"],
+                "track_index": 1,
+                "media_type": "both",
+            }
+        )
 
     append_result = append_subclips_with_ranges(project, media_pool, segments_payload)
     if append_result["appended"] == 0:
@@ -258,11 +291,13 @@ def execute_plan(run: dict, name_suffix: str = "_AI_Cut") -> dict:
         at_s = float(marker.get("at_s", 0.0))
         new_pos_s = map_source_to_new_timeline(resolved, at_s)
         if new_pos_s is None:
-            markers_skipped.append({
-                "name": marker.get("name"),
-                "original_at_s": at_s,
-                "reason": "falls between selected segments (cut out)",
-            })
+            markers_skipped.append(
+                {
+                    "name": marker.get("name"),
+                    "original_at_s": at_s,
+                    "reason": "falls between selected segments (cut out)",
+                }
+            )
             continue
 
         new_frame = round(new_pos_s * new_fps)  # relative, not absolute
@@ -276,12 +311,14 @@ def execute_plan(run: dict, name_suffix: str = "_AI_Cut") -> dict:
         if ok:
             markers_added += 1
         else:
-            markers_skipped.append({
-                "name": marker.get("name"),
-                "original_at_s": at_s,
-                "new_frame": new_frame,
-                "reason": "AddMarker returned False (duplicate frame?)",
-            })
+            markers_skipped.append(
+                {
+                    "name": marker.get("name"),
+                    "original_at_s": at_s,
+                    "new_frame": new_frame,
+                    "reason": "AddMarker returned False (duplicate frame?)",
+                }
+            )
 
     # 6. Captions (v2-10). Build caption lines from the transcript the
     # Director saw, restricted to words that survived the cut, then write
@@ -298,9 +335,7 @@ def execute_plan(run: dict, name_suffix: str = "_AI_Cut") -> dict:
             else run.get("scrubbed")
         ) or []
         kept_words = remap_words_to_new_timeline(transcript_basis, resolved)
-        caption_info["basis"] = (
-            "raw" if user_settings.get("takes_already_scrubbed") else "scrubbed"
-        )
+        caption_info["basis"] = "raw" if user_settings.get("takes_already_scrubbed") else "scrubbed"
         caption_info.update(_write_captions_file(kept_words, snap["path"]))
         if caption_info.get("path"):
             caption_info["subtitle_track"] = _populate_subtitle_track(

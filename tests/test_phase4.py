@@ -120,9 +120,7 @@ class TestAgents:
         for line in frontmatter.splitlines():
             if line.strip().startswith("name:"):
                 name_val = line.split(":", 1)[1].strip()
-                assert name_val == agent, (
-                    f"Agent name '{name_val}' doesn't match file '{agent}.md'"
-                )
+                assert name_val == agent, f"Agent name '{name_val}' doesn't match file '{agent}.md'"
                 break
 
 
