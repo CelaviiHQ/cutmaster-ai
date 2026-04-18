@@ -8,6 +8,11 @@ Welcome — and thanks for the interest. This guide gets you from clone to first
 git clone https://github.com/CelaviiHQ/celavii-davinci-resolve-mcp.git
 cd celavii-davinci-resolve-mcp
 
+# 0. Install uv (REQUIRED — the committed .mcp.json uses `uv run`)
+brew install uv                                        # macOS
+# OR: curl -LsSf https://astral.sh/uv/install.sh | sh  # Linux
+# OR: irm https://astral.sh/uv/install.ps1 | iex       # Windows (PowerShell)
+
 # 1. Python side
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[all,dev]"
@@ -19,6 +24,8 @@ pre-commit run --all-files   # baseline check
 # 3. Optional: frontend panel
 cd apps/panel && npm install && cd -
 ```
+
+> **Why uv?** The committed `.mcp.json` invokes the MCP server as `uv run python -m celavii_resolve`. Without `uv` on PATH, Claude Code / Desktop can't start the server. This is intentional — `uv run` handles virtual-env activation automatically so contributors don't have to edit `.mcp.json` with machine-specific paths.
 
 ## Responsibility model — where does your feature go?
 

@@ -36,7 +36,7 @@ This guide covers everything from first clone to a fully working MCP server with
 | **Python** | 3.11 or 3.12 (3.13+ has ABI issues with Resolve's fusionscript) |
 | **External Scripting** | Must be enabled: Resolve > Preferences > System > General > External scripting using: **Local** |
 | **Gemini API Key** (optional) | For AI tools only. Get one at [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
-| **uv** (recommended) | Fast Python package manager. Install: `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+| **uv** (**required**) | Fast Python package manager. Committed `.mcp.json` uses `uv run` to invoke the server — Claude Code / Desktop won't start the MCP without it. Install: `brew install uv` (macOS) / `curl -LsSf https://astral.sh/uv/install.sh \| sh` (Linux) |
 
 ### Verify Resolve Studio
 

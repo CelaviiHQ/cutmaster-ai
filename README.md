@@ -134,6 +134,12 @@ Creates `celavii-resolve-v0.1.0.zip` — the recipient runs `bash scripts/setup.
 - **DaVinci Resolve Studio 18.5+** — [purchase](https://www.blackmagicdesign.com/products/davinciresolve/studio) ($295)
 - **External scripting enabled** — Preferences > System > General > External scripting: **Local**
 - **Python 3.11+**
+- **[uv](https://docs.astral.sh/uv/)** — fast Python package manager. The committed `.mcp.json` invokes the MCP server via `uv run`, so **Claude Code / Desktop won't connect without it.** Install:
+  ```bash
+  brew install uv                              # macOS
+  curl -LsSf https://astral.sh/uv/install.sh | sh   # Linux
+  powershell -c "irm https://astral.sh/uv/install.ps1 | iex"   # Windows
+  ```
 - **GEMINI_API_KEY** (optional, for AI-powered tools)
 
 ## Tool Categories
