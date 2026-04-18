@@ -62,12 +62,12 @@ git clone https://github.com/CelaviiHQ/celavii-davinci-resolve-mcp.git
 cd celavii-davinci-resolve-mcp
 
 # Run the universal installer (interactive)
-python3 install.py
+python3 scripts/install.py
 
 # Or non-interactive for specific clients
-python3 install.py --clients claude-desktop
-python3 install.py --clients claude-desktop,claude-code,cursor
-python3 install.py --clients all
+python3 scripts/install.py --clients claude-desktop
+python3 scripts/install.py --clients claude-desktop,claude-code,cursor
+python3 scripts/install.py --clients all
 ```
 
 ### One-Command Setup (macOS)
@@ -126,7 +126,7 @@ Claude Desktop reads its MCP server config from a JSON file. This gives you all 
 **Option A — Automatic (via installer):**
 
 ```bash
-python3 install.py --clients claude-desktop
+python3 scripts/install.py --clients claude-desktop
 ```
 
 **Option B — Manual configuration:**
@@ -399,13 +399,13 @@ Celavii-Resolve can be packaged as a **Claude Code plugin** — a self-contained
 
 ```bash
 # Full plugin with MCP server + skills
-bash build-plugin.sh
+bash scripts/build-plugin.sh
 
 # Skills-only (no MCP server — useful for sharing with team)
-bash build-plugin.sh --skills-only
+bash scripts/build-plugin.sh --skills-only
 
 # Specify venv path and output directory
-bash build-plugin.sh --venv /path/to/.venv --output ~/Desktop
+bash scripts/build-plugin.sh --venv /path/to/.venv --output ~/Desktop
 ```
 
 This creates `celavii-resolve-plugin-v0.1.0.zip` containing:
@@ -471,7 +471,7 @@ bash scripts/setup.sh --launchagent
 1. **Copy the plist template:**
 
 ```bash
-cp launchd/com.celavii.resolve-mcp.plist ~/Library/LaunchAgents/
+cp scripts/launchd/com.celavii.resolve-mcp.plist ~/Library/LaunchAgents/
 ```
 
 2. **Edit the plist** to set your actual paths:
@@ -550,13 +550,14 @@ celavii-resolve-v0.1.0.zip
 ├── agents/                 # 7 domain agents
 ├── hooks/                  # Safety hooks
 ├── scripts/
+│   ├── install.py         # Universal installer
+│   ├── build-plugin.sh    # Build Claude Code plugin ZIP
 │   ├── setup.sh           # One-command setup
-│   └── package.sh         # Creates this zip
-├── launchd/
-│   └── com.celavii.resolve-mcp.plist
+│   ├── package.sh         # Creates this zip
+│   └── launchd/
+│       └── com.celavii.resolve-mcp.plist
 ├── docs/
 │   └── SETUP.md           # This guide
-├── install.py             # Universal installer
 ├── pyproject.toml         # Package config
 ├── .mcp.json              # Claude Code config
 ├── .env.example           # Environment template

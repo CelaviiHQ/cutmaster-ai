@@ -55,5 +55,5 @@ from .cutmaster import auto_detect  # noqa: F401, E402
 from .cutmaster import themes as cutmaster_themes  # noqa: F401, E402
 from .cutmaster import resolve_segments  # noqa: F401, E402
 from .cutmaster import execute as cutmaster_execute  # noqa: F401, E402
-from . import lut_registry  # noqa: F401, E402
+from .tools import lut_registry  # noqa: F401, E402
 from . import resources  # noqa: F401, E402

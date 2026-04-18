@@ -32,6 +32,7 @@ TOOL_MODULES = [
     "celavii_resolve.tools.graph",
     "celavii_resolve.tools.scripting",
     "celavii_resolve.tools.interchange",
+    "celavii_resolve.tools.lut_registry",
     "celavii_resolve.workflows.ingest",
     "celavii_resolve.workflows.assembly",
     "celavii_resolve.workflows.delivery",

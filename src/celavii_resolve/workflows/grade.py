@@ -8,8 +8,8 @@ import os
 
 from ..config import mcp
 from ..errors import safe_resolve_call
-from ..lut_registry import get_cst_lut_for_camera
 from ..resolve import _boilerplate
+from ..tools.lut_registry import get_cst_lut_for_camera
 
 # ---------------------------------------------------------------------------
 # Camera format → built-in Resolve CST LUT mapping

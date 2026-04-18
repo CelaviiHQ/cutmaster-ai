@@ -22,7 +22,7 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 VENV_DIR="$PROJECT_DIR/.venv"
 SRC_DIR="$PROJECT_DIR/src"
 SERVER_MODULE="celavii_resolve"
-PLIST_TEMPLATE="$PROJECT_DIR/launchd/com.celavii.resolve-mcp.plist"
+PLIST_TEMPLATE="$PROJECT_DIR/scripts/launchd/com.celavii.resolve-mcp.plist"
 PLIST_DEST="$HOME/Library/LaunchAgents/com.celavii.resolve-mcp.plist"
 
 # Claude paths

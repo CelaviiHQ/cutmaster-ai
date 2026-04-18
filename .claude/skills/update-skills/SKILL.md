@@ -46,7 +46,7 @@ Instructions for Claude Code when this skill is invoked...
 2. Check which MCP tools it references — verify they still exist in `src/celavii_resolve/`
 3. Update tool names, parameters, or workflows as needed
 4. Keep the YAML frontmatter intact
-5. Rebuild the plugin if distributing: `bash build-plugin.sh`
+5. Rebuild the plugin if distributing: `bash scripts/build-plugin.sh`
 
 ## Adding a new user-facing skill
 

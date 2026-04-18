@@ -42,7 +42,7 @@ bash scripts/setup.sh --all
 ```bash
 git clone https://github.com/CelaviiHQ/celavii-davinci-resolve-mcp.git
 cd celavii-davinci-resolve-mcp
-python3 install.py
+python3 scripts/install.py
 ```
 
 ### Manual Install
@@ -75,7 +75,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 }
 ```
 
-Or run `python3 install.py --clients claude-desktop` to configure automatically.
+Or run `python3 scripts/install.py --clients claude-desktop` to configure automatically.
 
 ### Claude Code
 
@@ -113,7 +113,7 @@ This installs a LaunchAgent at `~/Library/LaunchAgents/com.celavii.resolve-mcp.p
 Build and install as a Claude Code plugin:
 
 ```bash
-bash build-plugin.sh
+bash scripts/build-plugin.sh
 claude plugin install ./celavii-resolve-plugin-v0.1.0.zip
 ```
 
@@ -254,27 +254,28 @@ celavii-davinci-resolve-mcp/
 │   ├── resolve.py         # Connection management, helpers
 │   ├── errors.py          # Exception hierarchy, @safe_resolve_call
 │   ├── constants.py       # API constants (colors, modes, types)
-│   ├── lut_registry.py    # LUT library, camera registry, installer
 │   ├── resources.py       # 5 MCP resources
-│   ├── tools/             # 16 modules, 203 granular tools
-│   ├── workflows/         # 5 modules, 19 workflow tools
-│   ├── ai/                # 3 modules, 10 AI tools
+│   ├── tools/             # 17 modules (incl. lut_registry), granular tools
+│   ├── workflows/         # 6 modules, compound workflow tools
+│   ├── ai/                # 3 modules, AI-powered tools
+│   ├── cutmaster/         # CutMaster AI product (panel + MCP)
+│   ├── http/              # FastAPI backend for the panel
 │   └── utils/             # Platform, media, path helpers
 ├── .claude-plugin/
 │   └── plugin.json        # Claude Code plugin manifest
-├── skills/                # 9 Claude Code skills
-├── agents/                # 7 domain agents
-├── hooks/                 # Safety hooks
+├── skills/                # Claude Code skills (plugin distribution)
+├── agents/                # Domain agents (plugin distribution)
+├── hooks/                 # Safety hooks (plugin distribution)
 ├── scripts/
+│   ├── install.py         # Universal installer (10 MCP clients)
+│   ├── build-plugin.sh    # Build Claude Code plugin ZIP
 │   ├── setup.sh           # One-command setup (macOS/Linux)
-│   └── package.sh         # Create distributable zip
-├── build-plugin.sh        # Build Claude Code plugin ZIP
-├── launchd/
-│   └── com.celavii.resolve-mcp.plist  # macOS auto-start
+│   ├── package.sh         # Create distributable zip
+│   └── launchd/
+│       └── com.celavii.resolve-mcp.plist  # macOS auto-start
 ├── docs/
 │   └── SETUP.md           # Complete setup guide
-├── tests/                 # 197 tests
-├── install.py             # Universal installer (10 MCP clients)
+├── tests/                 # Test suite
 ├── .mcp.json              # Claude Code project config
 └── pyproject.toml         # Package config
 ```

@@ -29,7 +29,7 @@ from pathlib import Path
 
 VERSION = "0.1.0"
 SERVER_NAME = "celavii-resolve"
-PROJECT_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = Path(__file__).resolve().parent.parent
 SRC_DIR = PROJECT_DIR / "src"
 SERVER_MODULE = "celavii_resolve"
 SYSTEM = platform.system()

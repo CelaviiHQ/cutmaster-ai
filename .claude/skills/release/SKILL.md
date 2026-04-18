@@ -25,7 +25,7 @@ uv run pytest tests/ -v
 
 4. **Build the plugin ZIP:**
 ```bash
-bash build-plugin.sh --skills-only
+bash scripts/build-plugin.sh --skills-only
 ```
 
 5. **Commit and tag:**
