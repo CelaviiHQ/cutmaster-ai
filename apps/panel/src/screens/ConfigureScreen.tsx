@@ -786,8 +786,8 @@ export default function ConfigureScreen({
             {err && <div className="error-box">{err}</div>}
 
             <div className="row between">
-                <button className="secondary" onClick={onBack}>← Back</button>
-                <button onClick={onNext}>Build plan →</button>
+                <button className="secondary" onClick={onBack} data-hotkey="back">← Back</button>
+                <button onClick={onNext} data-hotkey="primary">Build plan →</button>
             </div>
         </div>
     );

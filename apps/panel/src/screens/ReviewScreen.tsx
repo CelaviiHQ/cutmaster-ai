@@ -14,6 +14,8 @@ interface Props {
     settings: UserSettings;
     onBack: () => void;
     onReset: () => void;
+    // v3-5.4 — let the app header show the current clip count.
+    onClipCount?: (n: number | null) => void;
 }
 
 export default function ReviewScreen({
@@ -22,6 +24,7 @@ export default function ReviewScreen({
     settings,
     onBack,
     onReset,
+    onClipCount,
 }: Props) {
     const [plan, setPlan] = useState<BuildPlanResult | null>(null);
     const [bundle, setBundle] = useState<PresetBundle | null>(null);
@@ -34,6 +37,25 @@ export default function ReviewScreen({
     const [buildErr, setBuildErr] = useState<string | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [selectedCandidate, setSelectedCandidate] = useState(0);
+
+    // v3-5.4 — emit current clip count to the app header for the step indicator.
+    useEffect(() => {
+        if (!plan) {
+            onClipCount?.(null);
+            return;
+        }
+        const ch = plan.clip_hunter;
+        const cand = ch?.candidates[selectedCandidate];
+        // Short Generator candidate has `spans[]`; Clip Hunter candidate is a
+        // single span (resolved_segments[]). Fall back to the director's
+        // selected_clips when the candidate shape doesn't carry a count.
+        const n = cand?.spans
+            ? cand.spans.length
+            : cand?.resolved_segments
+                ? cand.resolved_segments.length
+                : plan.director.selected_clips.length;
+        onClipCount?.(n);
+    }, [plan, selectedCandidate, onClipCount]);
 
     useEffect(() => {
         let cancelled = false;
@@ -77,7 +99,7 @@ export default function ReviewScreen({
             <div>
                 <div className="error-box">{err}</div>
                 <div className="row between">
-                    <button className="secondary" onClick={onBack}>← Back</button>
+                    <button className="secondary" onClick={onBack} data-hotkey="back">← Back</button>
                     <button className="secondary" onClick={onReset}>Start over</button>
                 </div>
             </div>
@@ -503,7 +525,7 @@ export default function ReviewScreen({
 
             {!buildResult && buildAllResults.length === 0 && (
                 <div className="row between">
-                    <button className="secondary" onClick={onBack} disabled={building}>
+                    <button className="secondary" onClick={onBack} disabled={building} data-hotkey="back">
                         ← Back
                     </button>
                     <div className="row">
@@ -547,6 +569,7 @@ export default function ReviewScreen({
                         )}
                         <button
                             disabled={building}
+                            data-hotkey="primary"
                             onClick={async () => {
                                 setBuilding(true);
                                 setBuildErr(null);

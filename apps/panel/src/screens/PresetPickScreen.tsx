@@ -569,7 +569,11 @@ export default function PresetPickScreen({
                     Preset: <code>{preset}</code> &nbsp;·&nbsp; Timeline:{" "}
                     <code>{timelineName}</code>
                 </span>
-                <button disabled={loading || !timelineName.trim()} onClick={submit}>
+                <button
+                    disabled={loading || !timelineName.trim()}
+                    onClick={submit}
+                    data-hotkey="primary"
+                >
                     {loading ? "Starting…" : "Analyze →"}
                 </button>
             </div>

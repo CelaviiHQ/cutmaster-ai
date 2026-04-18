@@ -3,7 +3,9 @@ import { useSSE } from "../useSSE";
 
 interface Props {
     runId: string;
-    onDone: () => void;
+    // Caller receives the total transcribed audio duration (seconds) on success,
+    // so the step indicator can show "2. Transcribed · 441s".
+    onDone: (durationS?: number) => void;
     onReset: () => void;
 }
 
@@ -104,7 +106,21 @@ export default function AnalyzeScreen({ runId, onDone, onReset }: Props) {
 
             <div className="row between">
                 <button className="secondary" onClick={onReset}>← Start over</button>
-                <button disabled={!done} onClick={onDone}>
+                <button
+                    disabled={!done}
+                    data-hotkey="primary"
+                    onClick={() => {
+                        // Pull audio-duration hint from the STT event's data if present.
+                        const sttData = byStage["stt"]?.data as
+                            | { duration_s?: number; durationSeconds?: number }
+                            | undefined;
+                        const duration =
+                            sttData?.duration_s ??
+                            sttData?.durationSeconds ??
+                            undefined;
+                        onDone(duration);
+                    }}
+                >
                     {done ? "Configure →" : "Waiting…"}
                 </button>
             </div>

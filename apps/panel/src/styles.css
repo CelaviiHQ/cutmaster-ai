@@ -29,10 +29,87 @@ html, body, #root {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
+    gap: var(--s-3);
     margin-bottom: 20px;
 }
 .hdr h1 { font-size: 20px; margin: 0; }
 .hdr .sub { color: var(--text-tertiary); font-size: var(--fs-2); }
+.hdr-version { font-family: var(--font-mono); margin-left: var(--s-2); }
+.hdr-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+}
+.hdr-saved {
+    font-size: var(--fs-2);
+    color: var(--text-tertiary);
+}
+.hdr-chip {
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: var(--border-thin);
+    font-size: var(--fs-1);
+    font-family: var(--font-mono);
+    color: var(--text-tertiary);
+    background: var(--surface-1);
+}
+.hdr-chip.ok { color: var(--ok); border-color: rgba(50, 215, 75, 0.3); }
+.hdr-chip.err { color: var(--err); border-color: rgba(255, 69, 58, 0.4); }
+.hdr-help {
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    min-width: 0;
+    border-radius: 50%;
+    font-weight: 700;
+}
+
+/* Keyboard shortcuts popover (v3-5.2) */
+.shortcuts-popover {
+    position: fixed;
+    top: 64px;
+    right: calc(max(0px, 50vw - 480px) + var(--s-5));
+    background: var(--surface-2);
+    border: var(--border-thin);
+    border-radius: var(--radius-lg);
+    padding: var(--s-4);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+    z-index: 50;
+    min-width: 280px;
+}
+.shortcuts-popover h3 {
+    margin: 0 0 var(--s-3);
+    font-size: var(--fs-4);
+}
+.shortcuts-popover dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: var(--s-2) var(--s-3);
+    margin: 0;
+}
+.shortcuts-popover dt {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+.shortcuts-popover dd {
+    margin: 0;
+    align-self: center;
+    color: var(--text-secondary);
+    font-size: var(--fs-2);
+}
+kbd {
+    display: inline-block;
+    padding: 1px 6px;
+    background: var(--surface-3);
+    border: var(--border-thin);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: var(--fs-1);
+    color: var(--text-primary);
+    min-width: 18px;
+    text-align: center;
+}
 
 .steps {
     display: flex;
@@ -268,4 +345,32 @@ code {
     border-radius: var(--radius-sm);
     font-family: var(--font-mono);
     font-size: var(--fs-2);
+}
+
+/* v3-5.5 — Responsive breakpoint for docked / narrow panels */
+@media (max-width: 480px) {
+    .app {
+        padding: var(--s-3);
+    }
+    .grid-presets {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .hdr {
+        flex-wrap: wrap;
+    }
+    .hdr-meta {
+        gap: var(--s-2);
+    }
+    .steps {
+        flex-wrap: wrap;
+    }
+    /* Timeline-state 2×2 grid collapses to 1 column so cards don't crush */
+    .card > div[style*="grid-template-columns: repeat(2, 1fr)"] {
+        grid-template-columns: 1fr !important;
+    }
+    .shortcuts-popover {
+        right: var(--s-3);
+        left: var(--s-3);
+        min-width: 0;
+    }
 }

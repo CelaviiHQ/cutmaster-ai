@@ -6,7 +6,13 @@ import ConfigureScreen from "./screens/ConfigureScreen";
 import ReviewScreen from "./screens/ReviewScreen";
 import TokensGate from "./screens/TokensGate";
 import { api } from "./api";
-import { clearSession, loadSession, saveSession } from "./persist";
+import {
+    clearSession,
+    formatRelativeTime,
+    loadSavedAt,
+    loadSession,
+    saveSession,
+} from "./persist";
 
 // v3-0 gate page — bypass the main flow when `?gate=tokens` is in the URL.
 const GATE_MODE =
@@ -15,14 +21,16 @@ const GATE_MODE =
 
 type Step = "preset" | "analyze" | "configure" | "review";
 
-const STEP_LABEL: Record<Step, string> = {
+const STEPS: Step[] = ["preset", "analyze", "configure", "review"];
+
+// Base step labels — context suffix (e.g. "clip_hunter", "3 clips") is appended
+// at render time based on the current state machine.
+const STEP_BASE: Record<Step, string> = {
     preset: "Preset",
     analyze: "Analyze",
     configure: "Configure",
     review: "Review",
 };
-
-const STEPS: Step[] = ["preset", "analyze", "configure", "review"];
 
 interface ResumeInfo {
     runId: string;
@@ -60,6 +68,13 @@ export default function App() {
     const [perClipStt, setPerClipStt] = useState(false);
     const [expectedSpeakers, setExpectedSpeakers] = useState<number | null>(null);
     const [sttProvider, setSttProvider] = useState<SttProviderKey | null>(null);
+    const [showShortcuts, setShowShortcuts] = useState(false);
+    // Live per-stage context for the step indicator.
+    const [analyzeDurationS, setAnalyzeDurationS] = useState<number | null>(null);
+    const [reviewClipCount, setReviewClipCount] = useState<number | null>(null);
+    // v3-5.3 Saved chip — relative time, refreshed every 30s.
+    const [savedAt, setSavedAt] = useState<number | null>(null);
+    const [tick, setTick] = useState(0);
 
     // Ping + resume check on mount
     useEffect(() => {
@@ -78,6 +93,7 @@ export default function App() {
                 setResumeChecked(true);
                 return;
             }
+            setSavedAt(loadSavedAt());
             try {
                 const state = await api.getState(session.runId);
                 const resumeAt: Step = state.plan
@@ -102,11 +118,69 @@ export default function App() {
         })();
     }, []);
 
+    // v3-5.3 — refresh relative time every 30s; pause when tab hidden.
+    useEffect(() => {
+        const onVis = () => {
+            if (document.visibilityState === "visible") setTick((t) => t + 1);
+        };
+        document.addEventListener("visibilitychange", onVis);
+        const id = window.setInterval(() => {
+            if (document.visibilityState === "visible") setTick((t) => t + 1);
+        }, 30_000);
+        return () => {
+            window.clearInterval(id);
+            document.removeEventListener("visibilitychange", onVis);
+        };
+    }, []);
+
+    // v3-5.2 — global keyboard shortcuts.
+    // Cmd/Ctrl+Enter → click the "primary" button (marked data-hotkey="primary").
+    // Cmd/Ctrl+Backspace → "back" (data-hotkey="back").
+    // Esc → dismiss: close the shortcuts popover first, else close the error box.
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            const mod = e.metaKey || e.ctrlKey;
+            if (mod && e.key === "Enter") {
+                const btn = document.querySelector<HTMLButtonElement>(
+                    'button[data-hotkey="primary"]:not(:disabled)',
+                );
+                if (btn) {
+                    e.preventDefault();
+                    btn.click();
+                }
+            } else if (mod && e.key === "Backspace") {
+                const btn = document.querySelector<HTMLButtonElement>(
+                    'button[data-hotkey="back"]:not(:disabled)',
+                );
+                if (btn) {
+                    e.preventDefault();
+                    btn.click();
+                }
+            } else if (e.key === "Escape") {
+                if (showShortcuts) {
+                    setShowShortcuts(false);
+                    return;
+                }
+                const errBox = document.querySelector<HTMLElement>(".error-box");
+                if (errBox) {
+                    errBox.style.display = "none";
+                }
+            } else if (e.key === "?" && !mod && !isInputTarget(e.target)) {
+                setShowShortcuts((v) => !v);
+            }
+        };
+        document.addEventListener("keydown", onKey);
+        return () => document.removeEventListener("keydown", onKey);
+    }, [showShortcuts]);
+
     const reset = () => {
         clearSession();
         setStep("preset");
         setRunId(null);
         setResume(null);
+        setSavedAt(null);
+        setAnalyzeDurationS(null);
+        setReviewClipCount(null);
         setUserSettings({
             target_length_s: null,
             themes: [],
@@ -133,23 +207,98 @@ export default function App() {
 
     const currentIndex = STEPS.indexOf(step);
 
+    // v3-5.4 — per-step context labels.
+    const stepLabel = (s: Step, idx: number): string => {
+        const base = `${idx + 1}. ${STEP_BASE[s]}`;
+        switch (s) {
+            case "preset":
+                return preset !== "auto" && idx <= currentIndex
+                    ? `${idx + 1}. ${preset}`
+                    : base;
+            case "analyze":
+                return analyzeDurationS !== null && idx < currentIndex
+                    ? `${idx + 1}. Transcribed · ${Math.round(analyzeDurationS)}s`
+                    : base;
+            case "review":
+                return reviewClipCount !== null && s === step
+                    ? `${idx + 1}. Reviewing · ${reviewClipCount} clip${reviewClipCount === 1 ? "" : "s"}`
+                    : base;
+            default:
+                return base;
+        }
+    };
+
+    // Suppress unused-var warnings while keeping tick in the dep graph.
+    void tick;
+
     return (
         <div className="app">
             <header className="hdr">
                 <h1>
-                    CutMaster AI <span className="sub">— phase 6</span>
+                    CutMaster AI{" "}
+                    <span className="sub hdr-version">v{__APP_VERSION__}</span>
                 </h1>
-                <div className="sub">
-                    {backendOk === null
-                        ? "…"
-                        : backendOk
-                            ? "backend: connected"
-                            : "backend: unreachable — start celavii-resolve-panel"}
+                <div className="hdr-meta">
+                    {savedAt !== null && (
+                        <span
+                            className="muted hdr-saved"
+                            title={`Session saved ${new Date(savedAt).toLocaleString()}`}
+                        >
+                            ● Saved {formatRelativeTime(savedAt)}
+                        </span>
+                    )}
+                    <span
+                        className={`hdr-chip ${backendOk === false ? "err" : backendOk ? "ok" : ""}`}
+                        title={
+                            backendOk === null
+                                ? "pinging backend…"
+                                : backendOk
+                                    ? "backend: connected"
+                                    : "backend: unreachable — start celavii-resolve-panel"
+                        }
+                    >
+                        backend: {backendOk === null ? "…" : backendOk ? "✓" : "✗"}
+                    </span>
+                    <button
+                        className="btn-ghost hdr-help"
+                        onClick={() => setShowShortcuts((v) => !v)}
+                        aria-label="Keyboard shortcuts"
+                        title="Keyboard shortcuts"
+                    >
+                        ?
+                    </button>
                 </div>
             </header>
 
+            {showShortcuts && (
+                <div className="shortcuts-popover" role="dialog" aria-label="Keyboard shortcuts">
+                    <h3>Keyboard shortcuts</h3>
+                    <dl>
+                        <dt>
+                            <kbd>⌘</kbd> <kbd>Enter</kbd>
+                        </dt>
+                        <dd>Continue / Build (primary action)</dd>
+                        <dt>
+                            <kbd>⌘</kbd> <kbd>Backspace</kbd>
+                        </dt>
+                        <dd>Back to previous step</dd>
+                        <dt>
+                            <kbd>Esc</kbd>
+                        </dt>
+                        <dd>Close this popover or dismiss an error</dd>
+                        <dt>
+                            <kbd>?</kbd>
+                        </dt>
+                        <dd>Toggle this popover</dd>
+                    </dl>
+                    <p className="muted" style={{ fontSize: "var(--fs-2)", marginTop: "var(--s-3)" }}>
+                        On Windows / Linux use <kbd>Ctrl</kbd> instead of <kbd>⌘</kbd>.
+                    </p>
+                </div>
+            )}
+
             {resumeChecked && resume && step === "preset" && (
-                <div className="card" style={{ borderColor: "var(--accent)" }}>
+                <div className="card" style={{ borderColor: "var(--accent-blue)" }}>
                     <h2>Resume last run?</h2>
                     <p>
                         Timeline <code>{resume.timelineName}</code>,
@@ -160,10 +309,10 @@ export default function App() {
                     </p>
                     <p className="muted">
                         Skips re-analyze + re-Director. Jumps straight to{" "}
-                        <strong>{STEP_LABEL[resume.resumeAt]}</strong>.
+                        <strong>{STEP_BASE[resume.resumeAt]}</strong>.
                     </p>
                     <div className="row">
-                        <button onClick={acceptResume}>Resume →</button>
+                        <button onClick={acceptResume} data-hotkey="primary">Resume →</button>
                         <button className="secondary" onClick={() => { clearSession(); setResume(null); }}>
                             Start fresh
                         </button>
@@ -177,7 +326,7 @@ export default function App() {
                         i < currentIndex ? "done" : i === currentIndex ? "active" : "";
                     return (
                         <div key={s} className={`step ${cls}`}>
-                            {i + 1}. {STEP_LABEL[s]}
+                            {stepLabel(s, i)}
                         </div>
                     );
                 })}
@@ -219,6 +368,7 @@ export default function App() {
                             preset,
                             timelineName,
                         });
+                        setSavedAt(Date.now());
                         setStep("analyze");
                     }}
                 />
@@ -227,7 +377,10 @@ export default function App() {
             {step === "analyze" && runId && (
                 <AnalyzeScreen
                     runId={runId}
-                    onDone={() => setStep("configure")}
+                    onDone={(durationS) => {
+                        if (typeof durationS === "number") setAnalyzeDurationS(durationS);
+                        setStep("configure");
+                    }}
                     onReset={reset}
                 />
             )}
@@ -239,6 +392,7 @@ export default function App() {
                     onPresetChange={(p) => {
                         setPreset(p);
                         saveSession({ runId, preset: p, timelineName });
+                        setSavedAt(Date.now());
                     }}
                     settings={userSettings}
                     onSettingsChange={setUserSettings}
@@ -254,8 +408,17 @@ export default function App() {
                     settings={userSettings}
                     onBack={() => setStep("configure")}
                     onReset={reset}
+                    onClipCount={setReviewClipCount}
                 />
             )}
         </div>
     );
+}
+
+function isInputTarget(target: EventTarget | null): boolean {
+    const el = target as HTMLElement | null;
+    if (!el) return false;
+    if (el.isContentEditable) return true;
+    const tag = el.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
 }
