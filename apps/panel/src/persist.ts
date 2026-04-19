@@ -1,34 +1,26 @@
-/** Tiny localStorage wrapper for remembering the last run across reloads. */
+/** localStorage-backed "session pointer".
+ *
+ * We only persist the run_id + a savedAt timestamp. Everything else
+ * (preset, timeline_name, user_settings, review_state) lives on the
+ * server under /cutmaster/state/{run_id} and is hydrated on mount.
+ * That keeps the browser's view consistent with the server's view.
+ */
 
 const KEY_RUN_ID = "celavii.cutmaster.lastRunId";
-const KEY_PRESET = "celavii.cutmaster.lastPreset";
-const KEY_TIMELINE = "celavii.cutmaster.lastTimeline";
 const KEY_SAVED_AT = "celavii.cutmaster.savedAt";
 
-export interface PersistedSession {
-    runId: string;
-    preset: string;
-    timelineName: string;
-}
-
-export function saveSession(s: PersistedSession) {
+export function saveRunPointer(runId: string) {
     try {
-        localStorage.setItem(KEY_RUN_ID, s.runId);
-        localStorage.setItem(KEY_PRESET, s.preset);
-        localStorage.setItem(KEY_TIMELINE, s.timelineName);
+        localStorage.setItem(KEY_RUN_ID, runId);
         localStorage.setItem(KEY_SAVED_AT, String(Date.now()));
-    } catch { /* private mode / disabled storage */ }
+    } catch {
+        /* private mode / disabled storage */
+    }
 }
 
-export function loadSession(): PersistedSession | null {
+export function loadRunId(): string | null {
     try {
-        const runId = localStorage.getItem(KEY_RUN_ID);
-        if (!runId) return null;
-        return {
-            runId,
-            preset: localStorage.getItem(KEY_PRESET) || "auto",
-            timelineName: localStorage.getItem(KEY_TIMELINE) || "Timeline 1",
-        };
+        return localStorage.getItem(KEY_RUN_ID);
     } catch {
         return null;
     }
@@ -43,13 +35,23 @@ export function loadSavedAt(): number | null {
     }
 }
 
+/** Bump the savedAt timestamp without changing run_id — used as the
+ *  auto-save signal from settings/build/SSE-complete triggers. */
+export function touchSavedAt() {
+    try {
+        localStorage.setItem(KEY_SAVED_AT, String(Date.now()));
+    } catch {
+        /* ignore */
+    }
+}
+
 export function clearSession() {
     try {
         localStorage.removeItem(KEY_RUN_ID);
-        localStorage.removeItem(KEY_PRESET);
-        localStorage.removeItem(KEY_TIMELINE);
         localStorage.removeItem(KEY_SAVED_AT);
-    } catch { /* ignore */ }
+    } catch {
+        /* ignore */
+    }
 }
 
 export function formatRelativeTime(ts: number, now: number = Date.now()): string {

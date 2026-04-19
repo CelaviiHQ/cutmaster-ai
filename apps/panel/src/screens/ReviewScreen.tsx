@@ -23,6 +23,9 @@ interface Props {
     timelineName: string;
     // User-picked cut name (lives in the app header).
     cutName: string;
+    // Optional: fired once per successful build so the app shell can
+    // refresh its Saved chip without waiting on the settings debounce.
+    onBuildSuccess?: () => void;
 }
 
 export default function ReviewScreen({
@@ -35,6 +38,7 @@ export default function ReviewScreen({
     onClipCount,
     timelineName,
     cutName,
+    onBuildSuccess,
 }: Props) {
     const [analysis, setAnalysis] = useState<StoryAnalysis | null>(null);
     const [regenerating, setRegenerating] = useState(false);
@@ -788,10 +792,12 @@ export default function ReviewScreen({
                                             results.push(res);
                                         }
                                         setBuildAllResults(results);
+                                        if (results.length > 0) onBuildSuccess?.();
                                     } catch (e) {
                                         setBuildErr(String(e));
                                         if (results.length > 0) {
                                             setBuildAllResults(results);
+                                            onBuildSuccess?.();
                                         }
                                     } finally {
                                         setBuilding(false);
@@ -821,6 +827,7 @@ export default function ReviewScreen({
                                     );
                                     setBuildResult(res);
                                     refreshTimelineNames();
+                                    onBuildSuccess?.();
                                 } catch (e) {
                                     setBuildErr(String(e));
                                 } finally {

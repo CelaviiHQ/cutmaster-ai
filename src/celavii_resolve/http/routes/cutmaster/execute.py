@@ -161,12 +161,20 @@ async def execute(body: ExecuteRequest) -> dict:
     # /cancel landing mid-build; this final write runs only after a
     # successful build, so overwriting status is safe.
     plan_after_swap = run.get("plan")
+    review_state = {
+        "selected_candidate": body.candidate_index,
+        "custom_name": body.custom_name,
+        "replace_existing": body.replace_existing,
+    }
 
     def _mutate(d: dict) -> None:
         if plan_after_swap is not None:
             d["plan"] = plan_after_swap
         d["execute"] = result
         d.setdefault("execute_history", []).append(history_entry)
+        # Persist Review-screen state so a reloaded panel can restore the
+        # candidate/name/replace choices the user picked.
+        d["review_state"] = review_state
         d["status"] = "done"
 
     await state.update(body.run_id, _mutate)

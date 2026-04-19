@@ -211,3 +211,24 @@ def test_clone_run_sets_status_pending_when_no_scrubbed(client: TestClient):
 def test_clone_run_returns_404_for_unknown_id(client: TestClient):
     r = client.post("/cutmaster/clone-run", json={"run_id": "nonexistent"})
     assert r.status_code == 404
+
+
+def test_clone_run_preserves_top_level_user_settings(client: TestClient):
+    """The top-level user_settings mirror (written at /build-plan time)
+    must survive cloning — even though the plan itself is dropped.
+    """
+    src = _make_run("T1")
+    src_reloaded = state.load(src["run_id"])
+    src_reloaded["user_settings"] = {
+        "target_length_s": 120,
+        "themes": ["product"],
+        "format": "vertical_short",
+        "captions_enabled": True,
+    }
+    state.save(src_reloaded)
+
+    r = client.post("/cutmaster/clone-run", json={"run_id": src["run_id"]})
+    assert r.status_code == 200
+    cloned = state.load(r.json()["run_id"])
+    assert cloned["user_settings"] == src_reloaded["user_settings"]
+    assert "plan" not in cloned

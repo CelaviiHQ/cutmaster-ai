@@ -375,6 +375,9 @@ _CLONE_FIELDS = (
     "scrubbed",
     "story_analysis",
     "speaker_reconciliation",
+    # Persisted Configure choices (mirrored up from plan.user_settings on
+    # /build-plan) so a clone lands with the editor's last settings intact.
+    "user_settings",
 )
 
 

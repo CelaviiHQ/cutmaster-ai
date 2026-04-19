@@ -70,10 +70,18 @@ router = APIRouter()
 
 
 async def _persist_plan(run_id: str, plan: dict) -> None:
-    """Atomically write ``run['plan']`` under the per-run lock."""
+    """Atomically write ``run['plan']`` and mirror user_settings up one level.
+
+    The top-level ``run['user_settings']`` mirror survives clone-run (which
+    drops the plan) so the cloned run lands at Configure with the editor's
+    last choices pre-populated.
+    """
 
     def _apply(d: dict) -> None:
         d["plan"] = plan
+        settings = plan.get("user_settings")
+        if settings is not None:
+            d["user_settings"] = settings
 
     await state.update(run_id, _apply)
 

@@ -8,6 +8,10 @@ interface Props {
     // so the step indicator can show "2. Transcribed · 441s".
     onDone: (durationS?: number) => void;
     onReset: () => void;
+    // Optional fire-once callback when the SSE stream closes with a
+    // terminal 'done' status. Used by the app shell to update the Saved
+    // chip as soon as the run completes, before the user clicks Configure.
+    onComplete?: () => void;
 }
 
 const STAGES = [
@@ -23,7 +27,7 @@ const PROVIDER_LABELS: Record<string, string> = {
     deepgram: "Deepgram",
 };
 
-export default function AnalyzeScreen({ runId, onDone, onReset }: Props) {
+export default function AnalyzeScreen({ runId, onDone, onReset, onComplete }: Props) {
     const { events, terminal } = useSSE(runId);
     const [cancelling, setCancelling] = useState(false);
     const [cancelled, setCancelled] = useState(false);
@@ -44,8 +48,11 @@ export default function AnalyzeScreen({ runId, onDone, onReset }: Props) {
     // video ends so the card isn't dominated by a frozen elephant.
     const [showCelebrate, setShowCelebrate] = useState(false);
     useEffect(() => {
-        if (done) setShowCelebrate(true);
-    }, [done]);
+        if (done) {
+            setShowCelebrate(true);
+            onComplete?.();
+        }
+    }, [done, onComplete]);
 
     const vfrFail = byStage["vfr_check"]?.status === "failed";
 

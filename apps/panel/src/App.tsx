@@ -15,9 +15,10 @@ import { api } from "./api";
 import {
     clearSession,
     formatRelativeTime,
+    loadRunId,
     loadSavedAt,
-    loadSession,
-    saveSession,
+    saveRunPointer,
+    touchSavedAt,
 } from "./persist";
 
 // v3-0 gate page — bypass the main flow when `?gate=tokens` is in the URL.
@@ -98,23 +99,26 @@ export default function App() {
                 return;
             }
 
-            const session = loadSession();
-            if (!session) {
+            const storedRunId = loadRunId();
+            if (!storedRunId) {
                 setResumeChecked(true);
                 return;
             }
             setSavedAt(loadSavedAt());
             try {
-                const state = await api.getState(session.runId);
+                // Hydrate preset + timeline_name from the server — the
+                // browser only stores a run_id pointer. Anything derivable
+                // from /state stays on the server so the two can't diverge.
+                const state = await api.getState(storedRunId);
                 const resumeAt: Step = state.plan
                     ? "review"
                     : (state.scrubbed && state.scrubbed.length > 0)
                         ? "configure"
                         : "analyze";
                 setResume({
-                    runId: session.runId,
-                    preset: session.preset as PresetKey,
-                    timelineName: session.timelineName,
+                    runId: storedRunId,
+                    preset: state.preset as PresetKey,
+                    timelineName: state.timeline_name,
                     resumeAt,
                     status: state.status,
                     hasPlan: Boolean(state.plan),
@@ -127,6 +131,20 @@ export default function App() {
             }
         })();
     }, []);
+
+    // Auto-save: whenever userSettings or cutName change on an active run,
+    // debounce-bump savedAt so the header chip reflects that the in-memory
+    // state matches the run_id pointer in localStorage. The server-side
+    // state is the source of truth for those settings (persisted at
+    // /build-plan time), so this is just a UX signal.
+    useEffect(() => {
+        if (!runId) return;
+        const t = window.setTimeout(() => {
+            touchSavedAt();
+            setSavedAt(Date.now());
+        }, 750);
+        return () => window.clearTimeout(t);
+    }, [runId, userSettings, cutName]);
 
     // v3-5.3 — refresh relative time every 30s; pause when tab hidden.
     useEffect(() => {
@@ -212,7 +230,7 @@ export default function App() {
     // banner so the user can pick up exactly where they left off.
     const saveAndExit = () => {
         if (runId) {
-            saveSession({ runId, preset, timelineName });
+            saveRunPointer(runId);
             setSavedAt(Date.now());
         }
         window.location.reload();
@@ -451,11 +469,7 @@ export default function App() {
                             sttProvider,
                         });
                         setRunId(r.run_id);
-                        saveSession({
-                            runId: r.run_id,
-                            preset,
-                            timelineName,
-                        });
+                        saveRunPointer(r.run_id);
                         setSavedAt(Date.now());
                         setStep("analyze");
                     }}
@@ -470,6 +484,10 @@ export default function App() {
                         setStep("configure");
                     }}
                     onReset={reset}
+                    onComplete={() => {
+                        touchSavedAt();
+                        setSavedAt(Date.now());
+                    }}
                 />
             )}
 
@@ -479,7 +497,8 @@ export default function App() {
                     preset={preset}
                     onPresetChange={(p) => {
                         setPreset(p);
-                        saveSession({ runId, preset: p, timelineName });
+                        // Preset is served by /state — just touch savedAt.
+                        touchSavedAt();
                         setSavedAt(Date.now());
                     }}
                     settings={userSettings}
@@ -500,6 +519,10 @@ export default function App() {
                     onClipCount={setReviewClipCount}
                     timelineName={timelineName}
                     cutName={cutName}
+                    onBuildSuccess={() => {
+                        touchSavedAt();
+                        setSavedAt(Date.now());
+                    }}
                 />
             )}
         </div>
