@@ -259,11 +259,46 @@ export interface RunState {
   timeline_name: string;
   preset: string;
   created_at: string;
-  status: "pending" | "running" | "done" | "failed";
+  status: "pending" | "running" | "done" | "failed" | "cancelled";
   stages: Record<string, Partial<PipelineEvent>>;
   events: PipelineEvent[];
   transcript: TranscriptWord[];
   scrubbed: TranscriptWord[];
   plan?: BuildPlanResult;
+  user_settings?: UserSettings;
+  review_state?: {
+    selected_candidate?: number | null;
+    custom_name?: string | null;
+    replace_existing?: boolean;
+  };
+  execute_history?: ExecuteHistoryEntry[];
   error: string | null;
+}
+
+export interface ExecuteHistoryEntry {
+  new_timeline_name: string | null;
+  custom_name: string | null;
+  replaced_timelines?: string[];
+  snapshot_path?: string | null;
+  at: number;
+  aborted?: boolean;
+}
+
+export interface RunSummary {
+  run_id: string;
+  created_at: string | null;
+  timeline_name: string;
+  preset: string;
+  status: string;
+  has_transcript: boolean;
+  has_plan: boolean;
+  execute_history: ExecuteHistoryEntry[];
+  size_kb: number;
+  last_modified: number;
+}
+
+export interface RunListResponse {
+  runs: RunSummary[];
+  total: number;
+  truncated: boolean;
 }

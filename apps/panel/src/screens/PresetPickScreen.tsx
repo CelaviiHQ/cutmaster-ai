@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
+import RunsDrawer from "./RunsDrawer";
 import TimelineDropdown from "./TimelineDropdown";
 import type {
     PresetBundle,
@@ -24,6 +25,8 @@ interface Props {
     sttProvider: SttProviderKey | null;
     onSttProviderChange: (v: SttProviderKey | null) => void;
     onNext: () => void | Promise<void>;
+    /** Jump to an existing run — hydrates state + navigates to resumeAt. */
+    onReopenRun: (runId: string) => void | Promise<void>;
 }
 
 const TIMELINE_MODE_INFO: Record<TimelineMode, { title: string; blurb: string }> = {
@@ -59,6 +62,7 @@ export default function PresetPickScreen({
     sttProvider,
     onSttProviderChange,
     onNext,
+    onReopenRun,
 }: Props) {
     const [presets, setPresets] = useState<PresetBundle[]>([]);
     const [loading, setLoading] = useState(false);
@@ -561,6 +565,8 @@ export default function PresetPickScreen({
                     </div>
                 </div>
             </details>
+
+            <RunsDrawer onReopen={onReopenRun} />
 
             {err && <div className="error-box">{err}</div>}
 

@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { ExecuteResult } from "../api";
 import MascotLoading from "./MascotLoading";
+import { formatRelativeTime } from "../persist";
 import type {
     BuildPlanResult,
+    ExecuteHistoryEntry,
     PresetBundle,
     PresetKey,
     StoryAnalysis,
@@ -26,6 +28,9 @@ interface Props {
     // Optional: fired once per successful build so the app shell can
     // refresh its Saved chip without waiting on the settings debounce.
     onBuildSuccess?: () => void;
+    // Updates the cutName in the app header — used by the Rebuild action
+    // in the execute_history panel to prefill a unique name.
+    onCutNameChange?: (name: string) => void;
 }
 
 export default function ReviewScreen({
@@ -39,6 +44,7 @@ export default function ReviewScreen({
     timelineName,
     cutName,
     onBuildSuccess,
+    onCutNameChange,
 }: Props) {
     const [analysis, setAnalysis] = useState<StoryAnalysis | null>(null);
     const [regenerating, setRegenerating] = useState(false);
@@ -55,6 +61,17 @@ export default function ReviewScreen({
     const [selectedCandidate, setSelectedCandidate] = useState(0);
     const [replaceExisting, setReplaceExisting] = useState(false);
     const [existingNames, setExistingNames] = useState<Set<string>>(new Set());
+    const [executeHistory, setExecuteHistory] = useState<ExecuteHistoryEntry[]>([]);
+
+    const refreshHistory = async () => {
+        try {
+            const state = await api.getState(runId);
+            setExecuteHistory(state.execute_history ?? []);
+        } catch {
+            // /state unreachable — hide the history panel rather than error out.
+            setExecuteHistory([]);
+        }
+    };
 
     // Refresh the known timeline-name list. Called on mount and after every
     // successful build so the collision warning stays accurate.
@@ -70,6 +87,8 @@ export default function ReviewScreen({
 
     useEffect(() => {
         refreshTimelineNames();
+        refreshHistory();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // v3-5.4 — emit current clip count to the app header for the step indicator.
@@ -652,6 +671,7 @@ export default function ReviewScreen({
                                     await api.deleteCut(runId);
                                     setBuildResult(null);
                                     refreshTimelineNames();
+                                    refreshHistory();
                                 } catch (e) {
                                     setBuildErr(String(e));
                                 } finally {
@@ -675,6 +695,7 @@ export default function ReviewScreen({
                                     setBuildResult(null);
                                     setBuildAllResults([]);
                                     refreshTimelineNames();
+                                    refreshHistory();
                                 } catch (e) {
                                     setBuildErr(String(e));
                                 } finally {
@@ -710,6 +731,97 @@ export default function ReviewScreen({
                         <button onClick={onReset}>Start a new run →</button>
                     </div>
                 </div>
+            )}
+
+            {executeHistory.length > 0 && !buildResult && buildAllResults.length === 0 && (
+                <details className="card">
+                    <summary>
+                        <span>
+                            Previous cuts from this run{" "}
+                            <span className="muted" style={{ fontSize: "var(--fs-2)" }}>
+                                · {executeHistory.filter((h) => !h.aborted).length}
+                            </span>
+                        </span>
+                    </summary>
+                    <div className="card-body">
+                        <ul
+                            style={{
+                                listStyle: "none",
+                                padding: 0,
+                                margin: 0,
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "var(--s-2)",
+                            }}
+                        >
+                            {executeHistory.map((h, i) => {
+                                const name = h.new_timeline_name ?? "(aborted build)";
+                                const age = formatRelativeTime(h.at * 1000);
+                                return (
+                                    <li
+                                        key={`${name}-${h.at}`}
+                                        className="row between"
+                                        style={{
+                                            padding: "var(--s-2) var(--s-3)",
+                                            border: "1px solid var(--border)",
+                                            borderRadius: "var(--radius-sm)",
+                                            gap: "var(--s-3)",
+                                            flexWrap: "wrap",
+                                        }}
+                                    >
+                                        <div style={{ minWidth: 0, flex: 1 }}>
+                                            <div style={{ fontWeight: 500 }}>
+                                                Cut {i + 1}: <code>{name}</code>
+                                                {h.aborted && (
+                                                    <span
+                                                        className="muted"
+                                                        style={{
+                                                            marginLeft: "var(--s-2)",
+                                                            fontSize: "var(--fs-2)",
+                                                        }}
+                                                    >
+                                                        aborted
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div
+                                                className="muted"
+                                                style={{ fontSize: "var(--fs-2)" }}
+                                                title={h.snapshot_path ?? undefined}
+                                            >
+                                                {age}
+                                                {h.snapshot_path && (
+                                                    <>
+                                                        {" · "}
+                                                        snapshot on disk
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                        {!h.aborted && onCutNameChange && (
+                                            <button
+                                                className="secondary"
+                                                disabled={building}
+                                                onClick={() => {
+                                                    // Seed the header cutName with a
+                                                    // unique-ish variant so the next
+                                                    // Build creates a sibling timeline
+                                                    // rather than colliding. User can
+                                                    // tweak before hitting Build.
+                                                    const base = h.custom_name ?? name;
+                                                    onCutNameChange(`${base}_v${i + 2}`);
+                                                }}
+                                                title="Fill the Cut name with a fresh variant so the next build is a sibling"
+                                            >
+                                                Rebuild…
+                                            </button>
+                                        )}
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    </div>
+                </details>
             )}
 
             {!buildResult && buildAllResults.length === 0 && (() => {
@@ -803,6 +915,7 @@ export default function ReviewScreen({
                                         setBuilding(false);
                                         setBuildProgress(null);
                                         refreshTimelineNames();
+                                        refreshHistory();
                                     }
                                 }}
                                 title="Build every candidate into its own timeline"
@@ -827,6 +940,7 @@ export default function ReviewScreen({
                                     );
                                     setBuildResult(res);
                                     refreshTimelineNames();
+                                    refreshHistory();
                                     onBuildSuccess?.();
                                 } catch (e) {
                                     setBuildErr(String(e));

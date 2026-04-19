@@ -257,6 +257,41 @@ export default function App() {
         setResume(null);
     };
 
+    /**
+     * Reopen a run picked from the RunsDrawer. Hydrates from /state so
+     * preset, timeline_name, user_settings, review_state all survive a
+     * browser reload. Persists the new pointer to localStorage so a
+     * subsequent reload stays on this run.
+     */
+    const reopenRun = async (targetRunId: string) => {
+        try {
+            const state = await api.getState(targetRunId);
+            const resumeAt: Step = state.plan
+                ? "review"
+                : (state.scrubbed && state.scrubbed.length > 0)
+                    ? "configure"
+                    : "analyze";
+            setRunId(targetRunId);
+            setPreset(state.preset as PresetKey);
+            setTimelineName(state.timeline_name);
+            // Hydrate Configure choices if the run was persisted after
+            // /build-plan. Older runs without this top-level mirror just
+            // keep the panel defaults.
+            if (state.user_settings) {
+                setUserSettings((prev) => ({ ...prev, ...state.user_settings! }));
+            }
+            // Restore cut-name from the last /execute if we have one; the
+            // Review screen surfaces execute_history as its own panel.
+            setCutName(state.review_state?.custom_name ?? "");
+            saveRunPointer(targetRunId);
+            setSavedAt(Date.now());
+            setResume(null);
+            setStep(resumeAt);
+        } catch (e) {
+            window.alert(`Couldn't reopen run: ${String(e)}`);
+        }
+    };
+
     const currentIndex = STEPS.indexOf(step);
 
     // v3-5.4 — per-step context labels.
@@ -473,6 +508,7 @@ export default function App() {
                         setSavedAt(Date.now());
                         setStep("analyze");
                     }}
+                    onReopenRun={reopenRun}
                 />
             )}
 
@@ -523,6 +559,7 @@ export default function App() {
                         touchSavedAt();
                         setSavedAt(Date.now());
                     }}
+                    onCutNameChange={setCutName}
                 />
             )}
         </div>

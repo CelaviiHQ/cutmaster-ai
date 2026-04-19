@@ -6,6 +6,7 @@ import type {
   PresetBundle,
   PresetRecommendation,
   ProjectInfo,
+  RunListResponse,
   RunState,
   SpeakerRosterEntry,
   SttProviderKey,
@@ -144,6 +145,34 @@ export const api = {
 
   deleteAllCuts: (runId: string) =>
     http<{ deleted: string[]; skipped: string[] }>("/cutmaster/delete-all-cuts", {
+      method: "POST",
+      body: JSON.stringify({ run_id: runId }),
+    }),
+
+  listRuns: (opts?: { limit?: number; status?: string; timeline?: string }) => {
+    const params = new URLSearchParams();
+    if (opts?.limit != null) params.set("limit", String(opts.limit));
+    if (opts?.status) params.set("status", opts.status);
+    if (opts?.timeline) params.set("timeline", opts.timeline);
+    const qs = params.toString();
+    return http<RunListResponse>(`/cutmaster/runs${qs ? `?${qs}` : ""}`);
+  },
+
+  deleteRun: (runId: string) =>
+    http<{ run_id: string; removed: string[] }>("/cutmaster/delete-run", {
+      method: "POST",
+      body: JSON.stringify({ run_id: runId }),
+    }),
+
+  cloneRun: (runId: string) =>
+    http<{
+      run_id: string;
+      cloned_from: string;
+      timeline_name: string;
+      preset: string;
+      status: string;
+      has_transcript: boolean;
+    }>("/cutmaster/clone-run", {
       method: "POST",
       body: JSON.stringify({ run_id: runId }),
     }),
