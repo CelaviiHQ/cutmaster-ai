@@ -19,6 +19,10 @@ interface Props {
     onReset: () => void;
     // v3-5.4 — let the app header show the current clip count.
     onClipCount?: (n: number | null) => void;
+    // Source timeline name — used to compute the default "Cut name" input.
+    timelineName: string;
+    // User-picked cut name (lives in the app header).
+    cutName: string;
 }
 
 export default function ReviewScreen({
@@ -29,6 +33,8 @@ export default function ReviewScreen({
     onBack,
     onReset,
     onClipCount,
+    timelineName,
+    cutName,
 }: Props) {
     const [analysis, setAnalysis] = useState<StoryAnalysis | null>(null);
     const [regenerating, setRegenerating] = useState(false);
@@ -43,6 +49,24 @@ export default function ReviewScreen({
     const [buildErr, setBuildErr] = useState<string | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [selectedCandidate, setSelectedCandidate] = useState(0);
+    const [replaceExisting, setReplaceExisting] = useState(false);
+    const [existingNames, setExistingNames] = useState<Set<string>>(new Set());
+
+    // Refresh the known timeline-name list. Called on mount and after every
+    // successful build so the collision warning stays accurate.
+    const refreshTimelineNames = async () => {
+        try {
+            const info = await api.projectInfo();
+            setExistingNames(new Set(info.timelines.map((t) => t.name)));
+        } catch {
+            // Resolve unreachable — leave the set empty; we fall back to the
+            // backend's existing _unique_timeline_name safety net.
+        }
+    };
+
+    useEffect(() => {
+        refreshTimelineNames();
+    }, []);
 
     // v3-5.4 — emit current clip count to the app header for the step indicator.
     useEffect(() => {
@@ -593,6 +617,17 @@ export default function ReviewScreen({
                         Snapshot: <code>{buildResult.snapshot_path}</code>&nbsp;
                         ({buildResult.snapshot_size_kb.toFixed(1)} KB)
                     </p>
+                    {buildResult.replaced_timelines && buildResult.replaced_timelines.length > 0 && (
+                        <p className="muted">
+                            Replaced {buildResult.replaced_timelines.length} prior timeline(s):{" "}
+                            {buildResult.replaced_timelines.map((n, i) => (
+                                <span key={n}>
+                                    {i > 0 && ", "}
+                                    <code>{n}</code>
+                                </span>
+                            ))}
+                        </p>
+                    )}
                     {buildResult.append_errors.length > 0 && (
                         <p className="muted" style={{ color: "var(--warn)" }}>
                             {buildResult.append_errors.length} append warning(s) — check backend log.
@@ -612,6 +647,7 @@ export default function ReviewScreen({
                                 try {
                                     await api.deleteCut(runId);
                                     setBuildResult(null);
+                                    refreshTimelineNames();
                                 } catch (e) {
                                     setBuildErr(String(e));
                                 } finally {
@@ -620,6 +656,30 @@ export default function ReviewScreen({
                             }}
                         >
                             {deleting ? "Deleting…" : "Delete this cut"}
+                        </button>
+                        <button
+                            className="secondary"
+                            disabled={deleting}
+                            onClick={async () => {
+                                if (!confirm(
+                                    "Delete every timeline this run has built?\n" +
+                                    "(Snapshots stay on disk.)",
+                                )) return;
+                                setDeleting(true);
+                                try {
+                                    await api.deleteAllCuts(runId);
+                                    setBuildResult(null);
+                                    setBuildAllResults([]);
+                                    refreshTimelineNames();
+                                } catch (e) {
+                                    setBuildErr(String(e));
+                                } finally {
+                                    setDeleting(false);
+                                }
+                            }}
+                            title="Remove every cut this run has built"
+                        >
+                            Delete all cuts from this run
                         </button>
                         <button onClick={onReset}>Start a new run →</button>
                     </div>
@@ -648,7 +708,55 @@ export default function ReviewScreen({
                 </div>
             )}
 
-            {!buildResult && buildAllResults.length === 0 && (
+            {!buildResult && buildAllResults.length === 0 && (() => {
+                const base = cutName.trim() || `${timelineName}_AI_Cut`;
+                const defaultSuffix = clipHunter
+                    ? `_${selectedCandidate + 1}`
+                    : "";
+                // For clip-hunter the backend appends `_{n}` to the custom
+                // name; for a single build it uses the name as-is.
+                const projectedBase = cutName.trim()
+                    ? (clipHunter ? `${base}${defaultSuffix}` : base)
+                    : (clipHunter
+                          ? `${timelineName}_AI_${clipHunter.mode === "short_generator" ? "Short" : "Clip"}_${selectedCandidate + 1}`
+                          : `${timelineName}_AI_Cut`);
+                const willCollide = existingNames.has(projectedBase);
+                return (
+                    <>
+                    {willCollide && (
+                        <div
+                            className="card"
+                            style={{
+                                borderColor: "var(--warn)",
+                                background: "rgba(255, 159, 10, 0.08)",
+                            }}
+                        >
+                            <p style={{ margin: 0 }}>
+                                ⚠ Timeline <code>{projectedBase}</code> already exists in this project.
+                            </p>
+                            <p className="muted" style={{ marginTop: 6 }}>
+                                {replaceExisting
+                                    ? "The existing timeline will be deleted after the new build succeeds. Snapshot is preserved."
+                                    : <>A suffix (e.g. <code>{projectedBase}_2</code>) will be appended so nothing is overwritten.</>}
+                            </p>
+                            <label
+                                style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 8,
+                                    marginTop: 8,
+                                    cursor: "pointer",
+                                }}
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={replaceExisting}
+                                    onChange={(e) => setReplaceExisting(e.target.checked)}
+                                />
+                                <span>Replace the existing timeline</span>
+                            </label>
+                        </div>
+                    )}
                 <div className="row between">
                     <button className="secondary" onClick={onBack} disabled={building} data-hotkey="back">
                         ← Back
@@ -671,7 +779,12 @@ export default function ReviewScreen({
                                             setBuildProgress(
                                                 `Building clip ${i + 1} of ${clipHunter.candidates.length}…`,
                                             );
-                                            const res = await api.execute(runId, i);
+                                            const res = await api.execute(
+                                                runId,
+                                                i,
+                                                cutName,
+                                                replaceExisting,
+                                            );
                                             results.push(res);
                                         }
                                         setBuildAllResults(results);
@@ -683,6 +796,7 @@ export default function ReviewScreen({
                                     } finally {
                                         setBuilding(false);
                                         setBuildProgress(null);
+                                        refreshTimelineNames();
                                     }
                                 }}
                                 title="Build every candidate into its own timeline"
@@ -702,8 +816,11 @@ export default function ReviewScreen({
                                     const res = await api.execute(
                                         runId,
                                         clipHunter ? selectedCandidate : undefined,
+                                        cutName,
+                                        replaceExisting,
                                     );
                                     setBuildResult(res);
+                                    refreshTimelineNames();
                                 } catch (e) {
                                     setBuildErr(String(e));
                                 } finally {
@@ -719,7 +836,9 @@ export default function ReviewScreen({
                         </button>
                     </div>
                 </div>
-            )}
+                </>
+                );
+            })()}
         </div>
     );
 }

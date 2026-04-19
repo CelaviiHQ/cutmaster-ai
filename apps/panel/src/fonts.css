@@ -1,0 +1,21 @@
+/*
+ * Geist variable fonts — imported directly from the `geist` npm package's
+ * .woff2 files. We skip the Next.js loader (geist/font) because this panel
+ * is a Vite app; Vite resolves the asset URLs via `url(...)` at build time.
+ */
+
+@font-face {
+    font-family: "Geist";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url("../node_modules/geist/dist/fonts/geist-sans/Geist-Variable.woff2") format("woff2-variations");
+}
+
+@font-face {
+    font-family: "Geist Mono";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url("../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2") format("woff2-variations");
+}

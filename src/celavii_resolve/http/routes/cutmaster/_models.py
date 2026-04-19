@@ -199,7 +199,28 @@ class ExecuteRequest(BaseModel):
             "the top-ranked candidate (index 0) when omitted."
         ),
     )
+    custom_name: str | None = Field(
+        default=None,
+        description=(
+            "Optional user-supplied name for the new timeline. When set, "
+            "replaces the auto '<source>_AI_Cut' naming. Still uniqueified "
+            "to avoid clobbering an existing timeline."
+        ),
+    )
+    replace_existing: bool = Field(
+        default=False,
+        description=(
+            "When true, after the new timeline builds successfully, delete "
+            "any pre-existing timeline in the project with the same base "
+            "name. Safer than overwrite: the new timeline is verified first, "
+            "and the .drp snapshot is preserved either way."
+        ),
+    )
 
 
 class DeleteCutRequest(BaseModel):
+    run_id: str
+
+
+class DeleteAllCutsRequest(BaseModel):
     run_id: str

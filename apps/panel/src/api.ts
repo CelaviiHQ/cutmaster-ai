@@ -120,17 +120,30 @@ export const api = {
       }),
     }),
 
-  execute: (runId: string, candidateIndex?: number) =>
+  execute: (
+    runId: string,
+    candidateIndex?: number,
+    customName?: string | null,
+    replaceExisting: boolean = false,
+  ) =>
     http<ExecuteResult>("/cutmaster/execute", {
       method: "POST",
       body: JSON.stringify({
         run_id: runId,
         ...(candidateIndex != null ? { candidate_index: candidateIndex } : {}),
+        ...(customName && customName.trim() ? { custom_name: customName.trim() } : {}),
+        ...(replaceExisting ? { replace_existing: true } : {}),
       }),
     }),
 
   deleteCut: (runId: string) =>
     http<DeleteCutResult>("/cutmaster/delete-cut", {
+      method: "POST",
+      body: JSON.stringify({ run_id: runId }),
+    }),
+
+  deleteAllCuts: (runId: string) =>
+    http<{ deleted: string[]; skipped: string[] }>("/cutmaster/delete-all-cuts", {
       method: "POST",
       body: JSON.stringify({ run_id: runId }),
     }),
@@ -152,6 +165,7 @@ export interface ExecuteResult {
     subtitle_track?: { ok: boolean; method?: string; reason?: string; error?: string };
   };
   safe_zones?: { enabled: boolean; added?: number; reason?: string };
+  replaced_timelines?: string[];
 }
 
 export interface DeleteCutResult {

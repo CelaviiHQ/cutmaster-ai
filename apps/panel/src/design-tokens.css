@@ -4,6 +4,10 @@
  * DaVinci-native palette: near-black chrome, muted blues, amber warnings,
  * thin dividers. Consumed by styles.css and the screens/ components.
  *
+ * CutMaster brand identity is a violet accent — distinct from the parent
+ * Celavii indigo/orange. Used sparingly (wordmark, brand moments); the
+ * Resolve-native blue keeps driving UI focus/selection.
+ *
  * Legacy aliases (--bg, --panel, --accent, etc.) are kept at the bottom so
  * pre-v3 CSS keeps rendering while phases v3-1…v3-8 migrate to the new
  * token names one screen at a time.
@@ -22,6 +26,13 @@
     --accent-blue: #4a9eff;       /* Resolve timeline-hover blue */
     --accent-blue-dim: #2f6bb8;   /* borders / low-weight accents */
     --accent-blue-tint: rgba(74, 158, 255, 0.10);  /* selected-card fill */
+
+    /* ── Brand (CutMaster) ────────────────────────────────────────────── */
+    --brand: #a855f7;                            /* violet-500 — wordmark */
+    --brand-bright: #c084fc;                     /* violet-400 — gradient hi */
+    --brand-dim: #7e22ce;                        /* violet-700 — borders */
+    --brand-tint: rgba(168, 85, 247, 0.12);      /* hover / subtle fills */
+    --brand-gradient: linear-gradient(135deg, var(--brand) 0%, var(--brand-bright) 100%);
 
     /* ── Status ───────────────────────────────────────────────────────── */
     --ok: #32d74b;
@@ -43,8 +54,8 @@
     --s-6: 32px;
 
     /* ── Typography ───────────────────────────────────────────────────── */
-    --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --font-body: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     --fs-1: 11px;   /* caption / tiny */
     --fs-2: 12px;   /* secondary body */
     --fs-3: 13px;   /* body — app default */

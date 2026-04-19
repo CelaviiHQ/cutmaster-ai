@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
 from fastapi import APIRouter, HTTPException
 
 from ....cutmaster.core import state
 from ....cutmaster.core.execute import ExecuteError, execute_plan
-from ._models import DeleteCutRequest, ExecuteRequest
+from ._models import DeleteAllCutsRequest, DeleteCutRequest, ExecuteRequest
 
 log = logging.getLogger("celavii-resolve.http.cutmaster")
 
@@ -70,19 +71,84 @@ async def execute(body: ExecuteRequest) -> dict:
         prefix = "Short" if mode == "short_generator" else "Clip"
         name_suffix = f"_AI_{prefix}_{sel_idx + 1}"
 
+    # User-supplied name overrides the auto-suffix. For candidate builds we
+    # still append the index so "Build all" doesn't collide.
+    custom_name: str | None = None
+    if body.custom_name and body.custom_name.strip():
+        base = body.custom_name.strip()
+        if clip_hunter:
+            sel_idx = clip_hunter.get("selected_index", 0)
+            custom_name = f"{base}_{sel_idx + 1}"
+        else:
+            custom_name = base
+
     try:
-        result = await asyncio.to_thread(execute_plan, run, name_suffix)
+        result = await asyncio.to_thread(execute_plan, run, name_suffix, custom_name)
     except ExecuteError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         log.exception("execute crashed for run %s", body.run_id)
         raise HTTPException(status_code=500, detail=f"execute failed: {exc}")
 
+    new_name = result.get("new_timeline_name")
+
+    # Replace-existing: remove prior timelines that share the requested base
+    # name, but only after the new build succeeded. We never delete the cut
+    # we just created. Records the removals so the UI can report them.
+    replaced: list[str] = []
+    if body.replace_existing and new_name and custom_name and custom_name.strip():
+        desired = custom_name.strip()
+        if new_name != desired:
+            replaced = await asyncio.to_thread(
+                _delete_timelines_by_name,
+                desired,
+                new_name,
+            )
+            result["replaced_timelines"] = replaced
+
     run["execute"] = result
+    history: list[dict] = run.setdefault("execute_history", [])
+    history.append(
+        {
+            "new_timeline_name": new_name,
+            "custom_name": custom_name,
+            "replaced_timelines": replaced,
+            "snapshot_path": result.get("snapshot_path"),
+            "at": time.time(),
+        }
+    )
     run["status"] = "done"
     state.save(run)
 
     return result
+
+
+def _delete_timelines_by_name(target_name: str, keep_name: str) -> list[str]:
+    """Delete every timeline matching ``target_name`` except ``keep_name``.
+
+    Runs inside ``asyncio.to_thread`` so the Resolve calls don't block the
+    event loop. Returns the names actually removed.
+    """
+    from ....resolve import _boilerplate  # lazy
+
+    _, project, media_pool = _boilerplate()
+    removed: list[str] = []
+    # Snapshot the timeline list first — DeleteTimelines reshuffles indices.
+    to_delete = []
+    for i in range(1, project.GetTimelineCount() + 1):
+        tl = project.GetTimelineByIndex(i)
+        if not tl:
+            continue
+        name = tl.GetName()
+        if name == target_name and name != keep_name:
+            to_delete.append((name, tl))
+    for name, tl in to_delete:
+        try:
+            if media_pool.DeleteTimelines([tl]):
+                removed.append(name)
+        except Exception:
+            log.exception("failed to delete prior timeline %s", name)
+    return removed
 
 
 @router.post("/delete-cut")
@@ -124,10 +190,64 @@ async def delete_cut(body: DeleteCutRequest) -> dict:
 
     ok = media_pool.DeleteTimelines([target])
     run.pop("execute", None)
+    # Also drop the matching history entry so the UI history stays truthful.
+    history = run.get("execute_history") or []
+    run["execute_history"] = [h for h in history if h.get("new_timeline_name") != new_name]
     state.save(run)
 
     return {
         "deleted": bool(ok),
         "timeline": new_name,
         "snapshot_preserved_at": exec_result.get("snapshot_path"),
+    }
+
+
+@router.post("/delete-all-cuts")
+async def delete_all_cuts(body: DeleteAllCutsRequest) -> dict:
+    """Delete every timeline this run has ever built.
+
+    Walks ``run['execute_history']`` and deletes any matching timeline still
+    present in the project. Missing timelines (already deleted by hand) are
+    skipped without error. The .drp snapshot from each build stays on disk.
+    """
+    run = state.load(body.run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"run {body.run_id} not found")
+
+    history: list[dict] = run.get("execute_history") or []
+    if not history:
+        raise HTTPException(
+            status_code=400,
+            detail="no cut history recorded for this run",
+        )
+
+    from ....resolve import _boilerplate  # lazy
+
+    try:
+        _, project, media_pool = _boilerplate()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Resolve unreachable: {exc}")
+
+    wanted = {h.get("new_timeline_name") for h in history if h.get("new_timeline_name")}
+    to_delete = []
+    for i in range(1, project.GetTimelineCount() + 1):
+        tl = project.GetTimelineByIndex(i)
+        if tl and tl.GetName() in wanted:
+            to_delete.append((tl.GetName(), tl))
+
+    removed: list[str] = []
+    for name, tl in to_delete:
+        try:
+            if media_pool.DeleteTimelines([tl]):
+                removed.append(name)
+        except Exception:
+            log.exception("failed to delete timeline %s", name)
+
+    run.pop("execute", None)
+    run["execute_history"] = []
+    state.save(run)
+
+    return {
+        "deleted": removed,
+        "skipped": sorted(wanted - set(removed)),
     }

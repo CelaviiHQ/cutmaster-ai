@@ -1,4 +1,10 @@
 import { useEffect, useState } from "react";
+import {
+    HelpCircle,
+    RotateCcw,
+    Save,
+    Scissors,
+} from "lucide-react";
 import type { PresetKey, SttProviderKey, UserSettings } from "./types";
 import PresetPickScreen from "./screens/PresetPickScreen";
 import AnalyzeScreen from "./screens/AnalyzeScreen";
@@ -75,6 +81,10 @@ export default function App() {
     // v3-5.3 Saved chip — relative time, refreshed every 30s.
     const [savedAt, setSavedAt] = useState<number | null>(null);
     const [tick, setTick] = useState(0);
+    // User-picked name for the built timeline — lives in the header so it's
+    // editable from any step once a run exists. Passed into ReviewScreen at
+    // build time.
+    const [cutName, setCutName] = useState("");
 
     // Ping + resume check on mount
     useEffect(() => {
@@ -181,6 +191,7 @@ export default function App() {
         setSavedAt(null);
         setAnalyzeDurationS(null);
         setReviewClipCount(null);
+        setCutName("");
         setUserSettings({
             target_length_s: null,
             themes: [],
@@ -195,6 +206,29 @@ export default function App() {
             num_clips: 3,
         });
     };
+
+    // Save & Exit — persist the current session and return to the home
+    // (preset) screen. Reloading the panel later will surface the resume
+    // banner so the user can pick up exactly where they left off.
+    const saveAndExit = () => {
+        if (runId) {
+            saveSession({ runId, preset, timelineName });
+            setSavedAt(Date.now());
+        }
+        window.location.reload();
+    };
+
+    // Restart — clear persisted state and drop back to the home screen.
+    // Destructive, so confirm first.
+    const restart = () => {
+        const ok = window.confirm(
+            "Restart? This clears the saved session and drops you back at the preset screen.",
+        );
+        if (!ok) return;
+        reset();
+    };
+
+    const hasActiveRun = runId !== null || step !== "preset";
 
     const acceptResume = () => {
         if (!resume) return;
@@ -234,21 +268,54 @@ export default function App() {
     return (
         <div className="app">
             <header className="hdr">
-                <h1>
-                    CutMaster AI{" "}
-                    <span className="sub hdr-version">v{__APP_VERSION__}</span>
-                </h1>
-                <div className="hdr-meta">
+                <div className="hdr-brand">
+                    <h1 className="hdr-title">
+                        CutMaster <span className="hdr-title-ai">AI</span>
+                    </h1>
+                    <span className="hdr-version" title={`v${__APP_VERSION__}`}>
+                        v{__APP_VERSION__}
+                    </span>
+                </div>
+
+                {hasActiveRun && (
+                    <label className="hdr-cut" title="Name for the new timeline (blank = auto)">
+                        <Scissors size={14} className="hdr-cut-icon" aria-hidden />
+                        <input
+                            type="text"
+                            className="hdr-cut-input"
+                            value={cutName}
+                            placeholder={`${timelineName}_AI_Cut`}
+                            onChange={(e) => setCutName(e.target.value)}
+                            aria-label="Cut name"
+                        />
+                    </label>
+                )}
+
+                <div className="hdr-status">
                     {savedAt !== null && (
                         <span
-                            className="muted hdr-saved"
+                            className="hdr-saved"
                             title={`Session saved ${new Date(savedAt).toLocaleString()}`}
                         >
-                            ● Saved {formatRelativeTime(savedAt)}
+                            Saved {formatRelativeTime(savedAt)}
                         </span>
                     )}
                     <span
-                        className={`hdr-chip ${backendOk === false ? "err" : backendOk ? "ok" : ""}`}
+                        className={`hdr-dot ${
+                            backendOk === false
+                                ? "err"
+                                : backendOk
+                                    ? "ok"
+                                    : "pending"
+                        }`}
+                        role="status"
+                        aria-label={
+                            backendOk === null
+                                ? "backend: pinging"
+                                : backendOk
+                                    ? "backend: connected"
+                                    : "backend: unreachable"
+                        }
                         title={
                             backendOk === null
                                 ? "pinging backend…"
@@ -256,16 +323,37 @@ export default function App() {
                                     ? "backend: connected"
                                     : "backend: unreachable — start celavii-resolve-panel"
                         }
-                    >
-                        backend: {backendOk === null ? "…" : backendOk ? "✓" : "✗"}
-                    </span>
+                    />
+                </div>
+
+                <div className="hdr-actions">
+                    {hasActiveRun && (
+                        <>
+                            <button
+                                className="btn-ghost hdr-action"
+                                onClick={saveAndExit}
+                                title="Save session and return to the home screen"
+                            >
+                                <Save size={14} aria-hidden />
+                                <span>Save</span>
+                            </button>
+                            <button
+                                className="btn-ghost hdr-action hdr-action--danger"
+                                onClick={restart}
+                                title="Clear session and return to the home screen"
+                            >
+                                <RotateCcw size={14} aria-hidden />
+                                <span>Restart</span>
+                            </button>
+                        </>
+                    )}
                     <button
-                        className="btn-ghost hdr-help"
+                        className="btn-ghost hdr-icon-btn"
                         onClick={() => setShowShortcuts((v) => !v)}
                         aria-label="Keyboard shortcuts"
                         title="Keyboard shortcuts"
                     >
-                        ?
+                        <HelpCircle size={16} aria-hidden />
                     </button>
                 </div>
             </header>
@@ -410,6 +498,8 @@ export default function App() {
                     onBack={() => setStep("configure")}
                     onReset={reset}
                     onClipCount={setReviewClipCount}
+                    timelineName={timelineName}
+                    cutName={cutName}
                 />
             )}
         </div>
