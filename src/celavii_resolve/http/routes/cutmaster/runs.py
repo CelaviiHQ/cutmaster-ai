@@ -13,6 +13,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Query
 
 from ....cutmaster.core import state
+from ....logging_setup import with_run_id
 from ._models import (
     CloneRunRequest,
     DeleteRunRequest,
@@ -67,12 +68,13 @@ async def delete_run(body: DeleteRunRequest) -> dict:
     the project. Use /cutmaster/delete-cut or /delete-all-cuts first if
     you also want to remove the rendered timelines.
     """
-    if state.load(body.run_id) is None:
-        raise HTTPException(status_code=404, detail=f"run {body.run_id} not found")
+    with with_run_id(body.run_id):
+        if state.load(body.run_id) is None:
+            raise HTTPException(status_code=404, detail=f"run {body.run_id} not found")
 
-    result = state.delete_run(body.run_id)
-    log.info("Deleted run %s — removed %d file(s)", body.run_id, len(result["removed"]))
-    return result
+        result = state.delete_run(body.run_id)
+        log.info("Deleted run — removed %d file(s)", len(result["removed"]))
+        return result
 
 
 @router.post("/clone-run")
@@ -84,17 +86,21 @@ async def clone_run(body: CloneRunRequest) -> dict:
     the clone starts fresh at the Configure step — STT never re-runs.
     The original run is untouched.
     """
-    cloned = state.clone_run(body.run_id)
-    if cloned is None:
-        raise HTTPException(status_code=404, detail=f"run {body.run_id} not found")
+    with with_run_id(body.run_id):
+        cloned = state.clone_run(body.run_id)
+        if cloned is None:
+            raise HTTPException(status_code=404, detail=f"run {body.run_id} not found")
 
-    log.info(
-        "Cloned run %s → %s (timeline=%s preset=%s)",
-        body.run_id,
-        cloned["run_id"],
-        cloned.get("timeline_name"),
-        cloned.get("preset"),
-    )
+        log.info(
+            "Cloned run → %s (timeline=%s preset=%s)",
+            cloned["run_id"],
+            cloned.get("timeline_name"),
+            cloned.get("preset"),
+            extra={
+                "timeline_name": cloned.get("timeline_name"),
+                "preset": cloned.get("preset"),
+            },
+        )
     return {
         "run_id": cloned["run_id"],
         "cloned_from": body.run_id,

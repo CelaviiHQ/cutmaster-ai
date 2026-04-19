@@ -11,6 +11,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from ....cutmaster.core import state
 from ....cutmaster.core.pipeline import run_analyze
+from ....logging_setup import with_run_id
 from ._models import AnalyzeRequest, AnalyzeResponse
 
 log = logging.getLogger("celavii-resolve.http.cutmaster")
@@ -36,17 +37,21 @@ async def analyze(body: AnalyzeRequest) -> AnalyzeResponse:
         body.preset,
     )
 
-    task = asyncio.create_task(
-        run_analyze(
-            run_id=run["run_id"],
-            timeline_name=body.timeline_name,
-            preset=body.preset,
-            scrub_params=body.scrub_params,
-            per_clip_stt=body.per_clip_stt,
-            expected_speakers=body.expected_speakers,
-            stt_provider=body.stt_provider,
-        )
-    )
+    async def _run_with_ctx(run_id: str) -> None:
+        # Bind run_id for structured logs inside this task. ContextVars
+        # are asyncio-aware so awaits inside run_analyze inherit the id.
+        with with_run_id(run_id):
+            await run_analyze(
+                run_id=run_id,
+                timeline_name=body.timeline_name,
+                preset=body.preset,
+                scrub_params=body.scrub_params,
+                per_clip_stt=body.per_clip_stt,
+                expected_speakers=body.expected_speakers,
+                stt_provider=body.stt_provider,
+            )
+
+    task = asyncio.create_task(_run_with_ctx(run["run_id"]))
     # Register so /cancel can .cancel() the in-flight task.
     state.set_task(run["run_id"], task)
 

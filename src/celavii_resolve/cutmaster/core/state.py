@@ -239,18 +239,38 @@ async def emit(
     the in-memory dict before saving — otherwise the pipeline would
     silently overwrite the cancel flag on its next stage transition.
 
+    Also emits a structured log record tagged with the stage/status and,
+    on started→complete/failed transitions, ``elapsed_ms``. Readable in
+    JSON log mode (``CELAVII_LOG_FORMAT=json``).
+
     Returns the event dict so callers can include it in logs / test assertions.
     """
+    # Lazy import so the logging module can depend on state-adjacent code
+    # without creating a cycle via ``configure_logging``.
+    from ...logging_setup import stage_elapsed_ms, stage_started
+
+    run_id = state["run_id"]
     event = make_event(stage, status, message, data)
-    async with get_lock(state["run_id"]):
-        persisted = load(state["run_id"])
+    async with get_lock(run_id):
+        persisted = load(run_id)
         if persisted and persisted.get("status") == "cancelled":
             state["status"] = "cancelled"
             if "cancelled_at" in persisted:
                 state["cancelled_at"] = persisted["cancelled_at"]
         append_event(state, event)
         save(state)
-    await get_queue(state["run_id"]).put(event)
+    await get_queue(run_id).put(event)
+
+    elapsed_ms: int | None = None
+    if status == "started":
+        stage_started(run_id, stage)
+    elif status in {"complete", "failed"}:
+        elapsed_ms = stage_elapsed_ms(run_id, stage)
+
+    extra: dict[str, Any] = {"stage": stage, "status": status}
+    if elapsed_ms is not None:
+        extra["elapsed_ms"] = elapsed_ms
+    log.info("stage %s → %s", stage, status, extra=extra)
     return event
 
 

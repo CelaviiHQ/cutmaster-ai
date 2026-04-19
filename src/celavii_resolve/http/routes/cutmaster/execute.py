@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 
 from ....cutmaster.core import state
 from ....cutmaster.core.execute import ExecuteCancelled, ExecuteError, execute_plan
+from ....logging_setup import with_run_id
 from ._models import DeleteAllCutsRequest, DeleteCutRequest, ExecuteRequest
 
 log = logging.getLogger("celavii-resolve.http.cutmaster")
@@ -24,6 +25,11 @@ async def execute(body: ExecuteRequest) -> dict:
     Pre-flight checks + project snapshot to ``.drp`` run before any mutation.
     Never edits the source timeline in place.
     """
+    with with_run_id(body.run_id):
+        return await _execute_impl(body)
+
+
+async def _execute_impl(body: ExecuteRequest) -> dict:
     run = state.load(body.run_id)
     if run is None:
         raise HTTPException(status_code=404, detail=f"run {body.run_id} not found")

@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 
 try:
-    from fastapi import FastAPI
+    from fastapi import FastAPI, Request
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.staticfiles import StaticFiles
 except ImportError as exc:
@@ -22,6 +23,7 @@ except ImportError as exc:
     ) from exc
 
 from .. import __version__
+from ..logging_setup import configure_logging
 from .routes import cutmaster as cutmaster_routes
 
 log = logging.getLogger("celavii-resolve-panel")
@@ -48,6 +50,33 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
         allow_credentials=False,
     )
+
+    access_log = logging.getLogger("celavii-resolve.http.access")
+
+    @app.middleware("http")
+    async def access_log_middleware(request: Request, call_next):
+        """Emit one structured record per HTTP request.
+
+        Stays lightweight: method, path, status, duration_ms. The run_id
+        ContextVar (if set by the route handler) is attached by the
+        logging filter automatically.
+        """
+        start = time.perf_counter()
+        response = await call_next(request)
+        duration_ms = int((time.perf_counter() - start) * 1000)
+        access_log.info(
+            "%s %s → %d",
+            request.method,
+            request.url.path,
+            response.status_code,
+            extra={
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": response.status_code,
+                "duration_ms": duration_ms,
+            },
+        )
+        return response
 
     @app.get("/ping")
     def ping() -> dict:
@@ -76,7 +105,7 @@ def main() -> None:
     host = os.environ.get("CELAVII_PANEL_HOST", "127.0.0.1")
     port = int(os.environ.get("CELAVII_PANEL_PORT", "8765"))
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-7s %(message)s")
+    configure_logging()
     log.info("Starting celavii-resolve-panel on http://%s:%d", host, port)
 
     uvicorn.run(

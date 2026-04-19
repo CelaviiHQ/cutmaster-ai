@@ -23,7 +23,7 @@ from ..stt.speakers import apply_speaker_labels, detect_speakers, speaker_stats
 if TYPE_CHECKING:
     from ..data.presets import PresetBundle
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("celavii-resolve.cutmaster.director")
 
 
 # ---------------------------------------------------------------------------
