@@ -6,6 +6,7 @@ Each sub-module owns one slice of the panel's backend:
     info.py      — read-only source/project/speakers/director-prompt endpoints
     build.py     — POST /build-plan (Director + Marker + source-frame map)
     execute.py   — POST /execute (materialise in Resolve) + POST /delete-cut
+    runs.py      — GET /runs + POST /delete-run + POST /clone-run
 
 Module-level aliases ``auto_detect_mod`` and ``themes_mod`` are re-exported
 so existing tests that monkey-patch the old flat module keep working.
@@ -18,7 +19,7 @@ from fastapi import APIRouter
 # Re-exports for test-suite monkeypatching (kept intentionally).
 from ....cutmaster.analysis import auto_detect as auto_detect_mod  # noqa: F401
 from ....cutmaster.analysis import themes as themes_mod  # noqa: F401
-from . import analyze, build, execute, info, presets
+from . import analyze, build, execute, info, presets, runs
 
 router = APIRouter(prefix="/cutmaster", tags=["cutmaster"])
 router.include_router(analyze.router)
@@ -26,5 +27,6 @@ router.include_router(presets.router)
 router.include_router(info.router)
 router.include_router(build.router)
 router.include_router(execute.router)
+router.include_router(runs.router)
 
 __all__ = ["router", "auto_detect_mod", "themes_mod"]

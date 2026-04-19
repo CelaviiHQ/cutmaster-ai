@@ -224,3 +224,37 @@ class DeleteCutRequest(BaseModel):
 
 class DeleteAllCutsRequest(BaseModel):
     run_id: str
+
+
+class DeleteRunRequest(BaseModel):
+    run_id: str
+
+
+class CloneRunRequest(BaseModel):
+    run_id: str
+
+
+class RunSummary(BaseModel):
+    """Compact metadata for one run, suitable for list views.
+
+    ``execute_history`` is intentionally included verbatim (not a count)
+    so the panel can render per-cut badges without a second round-trip.
+    It's already small — one dict per build.
+    """
+
+    run_id: str
+    created_at: str | None = None
+    timeline_name: str
+    preset: str
+    status: str
+    has_transcript: bool
+    has_plan: bool
+    execute_history: list[dict] = Field(default_factory=list)
+    size_kb: float
+    last_modified: float
+
+
+class RunListResponse(BaseModel):
+    runs: list[RunSummary]
+    total: int
+    truncated: bool

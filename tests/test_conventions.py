@@ -76,6 +76,10 @@ TOOL_MODULES = [
     "celavii_resolve.cutmaster.core.timeouts",
 ]
 
+# Route modules aren't tool modules — the TOOL_MODULES guard doesn't cover
+# them. The route submodule `runs.py` is imported by the cutmaster router
+# __init__ so tests exercise it via TestClient in test_runs_endpoints.
+
 
 def _collect_tool_functions() -> list[tuple[str, str]]:
     """Walk tool and workflow module ASTs and return (module, func_name) for every

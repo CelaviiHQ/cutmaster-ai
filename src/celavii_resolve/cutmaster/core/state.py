@@ -262,3 +262,141 @@ async def emit(
 def audio_path_for(run_id: str) -> Path:
     EXTRACT_ROOT.mkdir(parents=True, exist_ok=True)
     return EXTRACT_ROOT / f"{run_id}.wav"
+
+
+# ---------------------------------------------------------------------------
+# Run listing / deletion / cloning (Batch 3)
+# ---------------------------------------------------------------------------
+
+
+def _summarise(run: dict, path: Path) -> dict:
+    """Return a compact summary dict for a loaded run record."""
+    try:
+        stat = path.stat()
+    except OSError:
+        stat = None  # type: ignore[assignment]
+    return {
+        "run_id": run.get("run_id", path.stem),
+        "created_at": run.get("created_at"),
+        "timeline_name": run.get("timeline_name", ""),
+        "preset": run.get("preset", "auto"),
+        "status": run.get("status", "unknown"),
+        "has_transcript": bool(run.get("transcript") or run.get("scrubbed")),
+        "has_plan": bool(run.get("plan")),
+        "execute_history": run.get("execute_history") or [],
+        "size_kb": (stat.st_size / 1024.0) if stat else 0.0,
+        "last_modified": stat.st_mtime if stat else 0.0,
+    }
+
+
+def list_runs() -> list[dict]:
+    """Scan RUN_ROOT and return one summary dict per run file.
+
+    Sorted by ``last_modified`` descending. Unreadable / malformed run
+    files are skipped (never crash the listing).
+    """
+    if not RUN_ROOT.is_dir():
+        return []
+    summaries: list[dict] = []
+    for path in RUN_ROOT.glob("*.json"):
+        if path.suffix == ".tmp":
+            continue
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            log.warning("Skipping unreadable run file %s: %s", path, exc)
+            continue
+        summaries.append(_summarise(data, path))
+    summaries.sort(key=lambda s: s["last_modified"], reverse=True)
+    return summaries
+
+
+def delete_run(run_id: str) -> dict:
+    """Remove a run's state JSON and any cached audio.
+
+    Does not touch Resolve timelines or the .drp snapshot — the snapshot
+    is the user's rollback path and stays on disk. Returns a dict listing
+    the paths actually removed so the caller can report them.
+
+    Also clears the in-memory queue / lock / task entries for the run so
+    stale references don't leak across process lifetime.
+    """
+    removed: list[str] = []
+
+    # Run JSON.
+    path = run_path(run_id)
+    if path.exists():
+        try:
+            path.unlink()
+            removed.append(str(path))
+        except OSError as exc:
+            log.warning("Failed to unlink %s: %s", path, exc)
+
+    # Concatenated-audio WAV.
+    wav = EXTRACT_ROOT / f"{run_id}.wav"
+    if wav.exists():
+        try:
+            wav.unlink()
+            removed.append(str(wav))
+        except OSError as exc:
+            log.warning("Failed to unlink %s: %s", wav, exc)
+
+    # Per-clip audio directory (created by the per_clip_stt path).
+    per_clip_dir = EXTRACT_ROOT / run_id
+    if per_clip_dir.is_dir():
+        for child in per_clip_dir.iterdir():
+            try:
+                child.unlink()
+            except OSError as exc:
+                log.warning("Failed to unlink %s: %s", child, exc)
+        try:
+            per_clip_dir.rmdir()
+            removed.append(str(per_clip_dir))
+        except OSError as exc:
+            log.warning("Failed to rmdir %s: %s", per_clip_dir, exc)
+
+    # In-memory bookkeeping.
+    _QUEUES.pop(run_id, None)
+    _LOCKS.pop(run_id, None)
+    task = _TASKS.pop(run_id, None)
+    if task is not None and not task.done():
+        task.cancel()
+
+    return {"run_id": run_id, "removed": removed}
+
+
+# Fields carried over when cloning. Everything else (events, stages,
+# plan, execute, execute_history, error, cancelled_at, status) resets
+# so the cloned run lands fresh in the Configure stage.
+_CLONE_FIELDS = (
+    "timeline_name",
+    "preset",
+    "transcript",
+    "scrubbed",
+    "story_analysis",
+    "speaker_reconciliation",
+)
+
+
+def clone_run(source_run_id: str) -> dict | None:
+    """Deep-copy a run's analysis state into a new run_id.
+
+    Returns the newly-saved run dict, or ``None`` if the source doesn't
+    exist. The clone keeps transcript + scrubbed words (so STT never
+    re-runs) and source metadata; it drops everything tied to a specific
+    build — plan, execute, history, events.
+    """
+    import copy
+
+    src = load(source_run_id)
+    if src is None:
+        return None
+
+    new = new_run(src.get("timeline_name", ""), preset=src.get("preset", "auto"))
+    for field in _CLONE_FIELDS:
+        if field in src:
+            new[field] = copy.deepcopy(src[field])
+    new["status"] = "done" if new.get("scrubbed") else "pending"
+    new["cloned_from"] = source_run_id
+    save(new)
+    return new
