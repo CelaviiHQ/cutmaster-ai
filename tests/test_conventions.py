@@ -73,6 +73,7 @@ TOOL_MODULES = [
     "celavii_resolve.cutmaster.analysis.themes",
     "celavii_resolve.cutmaster.resolve_ops.segments",
     "celavii_resolve.cutmaster.core.execute",
+    "celavii_resolve.cutmaster.core.timeouts",
 ]
 
 

@@ -14,6 +14,7 @@ from pathlib import Path
 
 from ..analysis.scrubber import ScrubParams, scrub
 from . import state
+from .timeouts import MARKER_TIMEOUT_S, STT_TIMEOUT_S, with_timeout
 
 log = logging.getLogger("celavii-resolve.cutmaster.pipeline")
 
@@ -176,9 +177,13 @@ async def _transcribe_per_clip(
     )
 
     try:
-        stitched, stats = await transcribe_per_clip(
-            specs,
-            provider=effective_provider,
+        stitched, stats = await with_timeout(
+            transcribe_per_clip(
+                specs,
+                provider=effective_provider,
+            ),
+            STT_TIMEOUT_S,
+            f"per-clip STT ({effective_provider})",
         )
     except Exception as exc:
         await emit(run, stage="stt", status="failed", message=f"per-clip STT failed: {exc}")
@@ -301,10 +306,14 @@ async def _reconcile_speakers(
         message=(f"Reconciling cross-clip speaker IDs (target: {expected_speakers})"),
     )
     try:
-        new_transcript, summary = await asyncio.to_thread(
-            reconcile_with_llm,
-            transcript,
-            expected_speakers,
+        new_transcript, summary = await with_timeout(
+            asyncio.to_thread(
+                reconcile_with_llm,
+                transcript,
+                expected_speakers,
+            ),
+            MARKER_TIMEOUT_S,
+            "speaker reconciliation",
         )
     except Exception as exc:
         log.exception("Speaker reconciliation failed")
@@ -358,11 +367,15 @@ async def _transcribe(
     )
 
     try:
-        transcript = await asyncio.to_thread(
-            transcribe_audio,
-            wav_path,
-            None,
-            effective_provider,
+        transcript = await with_timeout(
+            asyncio.to_thread(
+                transcribe_audio,
+                wav_path,
+                None,
+                effective_provider,
+            ),
+            STT_TIMEOUT_S,
+            f"STT ({effective_provider})",
         )
     except Exception as exc:
         await emit(run, stage="stt", status="failed", message=f"STT failed: {exc}")
@@ -551,10 +564,22 @@ async def run_analyze(
         )
 
     except asyncio.CancelledError:
-        # User cancelled via /cancel — the cancelled status + terminal event
-        # were already written by the endpoint. Exit cleanly without an
-        # "error" event so the SSE stream doesn't double-report.
+        # User cancelled via /cancel. The endpoint already pushed a
+        # `cancelled` event and wrote status=cancelled. Emit one more
+        # terminal event here so SSE clients that resume mid-run get a
+        # clean stage=cancelled terminator even if the endpoint's
+        # queue.put raced with their subscribe. emit() is idempotent
+        # enough — it appends to events and persists under the lock.
         log.info("Pipeline cancelled for run %s", run_id)
+        try:
+            await state.emit(
+                run,
+                stage="cancelled",
+                status="cancelled",
+                message="pipeline exited on cancel",
+            )
+        except Exception:  # pragma: no cover — best-effort
+            log.exception("Failed to emit terminal cancelled event for %s", run_id)
         raise
     except Exception as exc:
         log.exception("Pipeline crashed")

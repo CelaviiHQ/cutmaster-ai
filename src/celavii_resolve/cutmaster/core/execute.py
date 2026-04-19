@@ -21,6 +21,7 @@ lands at different clock times).
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +38,20 @@ log = logging.getLogger("celavii-resolve.cutmaster.execute")
 
 class ExecuteError(RuntimeError):
     """Raised when execute fails pre-flight or mid-build."""
+
+
+class ExecuteCancelled(RuntimeError):
+    """Raised when the user cancelled mid-build via /cancel.
+
+    The partially-assembled timeline (if any) has already been deleted by
+    ``execute_plan`` before this is raised; the snapshot is preserved.
+    """
+
+
+def _check_cancel(cancel_check: Callable[[], bool] | None, stage: str) -> None:
+    """Raise :class:`ExecuteCancelled` if the caller's flag is set."""
+    if cancel_check is not None and cancel_check():
+        raise ExecuteCancelled(f"execute cancelled during {stage}")
 
 
 def _unique_timeline_name(project, base: str) -> str:
@@ -198,6 +213,7 @@ def execute_plan(
     run: dict,
     name_suffix: str = "_AI_Cut",
     custom_name: str | None = None,
+    cancel_check: Callable[[], bool] | None = None,
 ) -> dict:
     """Build the cut timeline in Resolve. Returns a summary dict.
 
@@ -210,7 +226,14 @@ def execute_plan(
     name collision with an existing timeline gets a numeric suffix instead
     of failing.
 
-    Raises :class:`ExecuteError` on any pre-flight or build failure.
+    ``cancel_check`` — optional zero-arg callable returning True when the
+    caller has requested cancellation. Polled between major steps. On
+    True, any partially-assembled timeline is deleted and
+    :class:`ExecuteCancelled` is raised. The .drp snapshot is preserved
+    either way.
+
+    Raises :class:`ExecuteError` on any pre-flight or build failure, or
+    :class:`ExecuteCancelled` if ``cancel_check`` returned True.
     """
     plan = run.get("plan")
     if not plan:
@@ -242,9 +265,13 @@ def execute_plan(
 
     source_fps = float(source_tl.GetSetting("timelineFrameRate"))
 
+    _check_cancel(cancel_check, "pre-snapshot")
+
     # 2. Snapshot (before any mutation)
     log.info("execute: snapshotting project before build")
     snap = snapshot_project(resolve, project, label=f"pre_cutmaster_{run['run_id']}")
+
+    _check_cancel(cancel_check, "post-snapshot")
 
     # 3. Create new timeline
     base_name = (
@@ -271,6 +298,12 @@ def execute_plan(
     format_info = _apply_format(new_tl, fmt_spec)
     project.SetCurrentTimeline(new_tl)
 
+    try:
+        _check_cancel(cancel_check, "pre-append")
+    except ExecuteCancelled:
+        media_pool.DeleteTimelines([new_tl])
+        raise
+
     # 4. Append segments in order — linked audio follows by default
     segments_payload: list[dict] = []
     for piece in resolved:
@@ -290,6 +323,12 @@ def execute_plan(
         raise ExecuteError(
             f"AppendToTimeline returned 0 items. errors={append_result.get('errors')}"
         )
+
+    try:
+        _check_cancel(cancel_check, "post-append")
+    except ExecuteCancelled:
+        media_pool.DeleteTimelines([new_tl])
+        raise
 
     # 5. Drop markers mapped to the new timeline's time domain.
     #

@@ -552,7 +552,7 @@ def test_execute_clip_hunter_swaps_resolved_segments_to_selected_candidate(
 
     captured: dict = {}
 
-    def fake_execute_plan(run_arg, name_suffix="_AI_Cut"):
+    def fake_execute_plan(run_arg, name_suffix="_AI_Cut", custom_name=None, cancel_check=None):
         captured["resolved_segments"] = run_arg["plan"]["resolved_segments"]
         captured["name_suffix"] = name_suffix
         return {

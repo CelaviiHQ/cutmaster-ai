@@ -37,6 +37,11 @@ from ....cutmaster.core.director import (
     expand_curated_plan,
     short_candidate_to_segments,
 )
+from ....cutmaster.core.timeouts import (
+    DIRECTOR_TIMEOUT_S,
+    MARKER_TIMEOUT_S,
+    with_timeout,
+)
 from ....cutmaster.data.presets import (
     PRESETS,
     get_preset,
@@ -65,7 +70,7 @@ router = APIRouter()
 
 
 async def _persist_plan(run_id: str, plan: dict) -> None:
-    """Atomically write ``run['plan']`` under the per-run lock (Batch 1a)."""
+    """Atomically write ``run['plan']`` under the per-run lock."""
 
     def _apply(d: dict) -> None:
         d["plan"] = plan
@@ -186,13 +191,17 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         )
 
         try:
-            hunter_plan = await asyncio.to_thread(
-                build_clip_hunter_plan,
-                scrubbed,
-                preset,
-                settings_dict,
-                target_clip_length_s,
-                num_clips,
+            hunter_plan = await with_timeout(
+                asyncio.to_thread(
+                    build_clip_hunter_plan,
+                    scrubbed,
+                    preset,
+                    settings_dict,
+                    target_clip_length_s,
+                    num_clips,
+                ),
+                DIRECTOR_TIMEOUT_S,
+                "Clip Hunter Director",
             )
         except Exception as exc:
             log.exception("Clip Hunter Director failed for run %s", body.run_id)
@@ -304,13 +313,17 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         )
 
         try:
-            short_plan = await asyncio.to_thread(
-                build_short_generator_plan,
-                scrubbed,
-                preset,
-                settings_dict,
-                target_short_length_s,
-                num_shorts,
+            short_plan = await with_timeout(
+                asyncio.to_thread(
+                    build_short_generator_plan,
+                    scrubbed,
+                    preset,
+                    settings_dict,
+                    target_short_length_s,
+                    num_shorts,
+                ),
+                DIRECTOR_TIMEOUT_S,
+                "Short Generator Director",
             )
         except Exception as exc:
             log.exception("Short Generator Director failed for run %s", body.run_id)
@@ -537,8 +550,10 @@ async def build_plan(body: BuildPlanRequest) -> dict:
                 director_mod._rough_cut_prompt(preset, takes, groups, settings_dict),
             )
             try:
-                curated_plan = await asyncio.to_thread(
-                    build_rough_cut_plan, takes, groups, preset, settings_dict
+                curated_plan = await with_timeout(
+                    asyncio.to_thread(build_rough_cut_plan, takes, groups, preset, settings_dict),
+                    DIRECTOR_TIMEOUT_S,
+                    "Rough cut Director",
                 )
             except Exception as exc:
                 log.exception("Rough cut Director failed for run %s", body.run_id)
@@ -551,8 +566,10 @@ async def build_plan(body: BuildPlanRequest) -> dict:
                 director_mod._curated_prompt(preset, takes, settings_dict),
             )
             try:
-                curated_plan = await asyncio.to_thread(
-                    build_curated_cut_plan, takes, preset, settings_dict
+                curated_plan = await with_timeout(
+                    asyncio.to_thread(build_curated_cut_plan, takes, preset, settings_dict),
+                    DIRECTOR_TIMEOUT_S,
+                    "Curated Director",
                 )
             except Exception as exc:
                 log.exception("Curated Director failed for run %s", body.run_id)
@@ -618,8 +635,10 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         )
 
         try:
-            assembled_plan = await asyncio.to_thread(
-                build_assembled_cut_plan, takes, preset, settings_dict
+            assembled_plan = await with_timeout(
+                asyncio.to_thread(build_assembled_cut_plan, takes, preset, settings_dict),
+                DIRECTOR_TIMEOUT_S,
+                "Assembled Director",
             )
         except Exception as exc:
             log.exception("Assembled Director failed for run %s", body.run_id)
@@ -643,7 +662,11 @@ async def build_plan(body: BuildPlanRequest) -> dict:
             director_mod._prompt(preset, scrubbed, settings_dict),
         )
         try:
-            plan = await asyncio.to_thread(build_cut_plan, scrubbed, preset, settings_dict)
+            plan = await with_timeout(
+                asyncio.to_thread(build_cut_plan, scrubbed, preset, settings_dict),
+                DIRECTOR_TIMEOUT_S,
+                "Director",
+            )
         except Exception as exc:
             log.exception("Director failed for run %s", body.run_id)
             raise HTTPException(status_code=500, detail=f"Director agent failed: {exc}")
@@ -665,8 +688,10 @@ async def build_plan(body: BuildPlanRequest) -> dict:
 
     # Marker agent runs against the flat CutSegment list in both modes.
     try:
-        markers: MarkerPlan = await asyncio.to_thread(
-            suggest_markers, plan, scrubbed, preset, settings_dict
+        markers: MarkerPlan = await with_timeout(
+            asyncio.to_thread(suggest_markers, plan, scrubbed, preset, settings_dict),
+            MARKER_TIMEOUT_S,
+            "Marker agent",
         )
     except Exception as exc:
         log.exception("Marker agent failed for run %s", body.run_id)

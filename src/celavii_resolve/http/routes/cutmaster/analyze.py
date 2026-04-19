@@ -47,7 +47,7 @@ async def analyze(body: AnalyzeRequest) -> AnalyzeResponse:
             stt_provider=body.stt_provider,
         )
     )
-    # Register so /cancel can .cancel() the in-flight task (Batch 1b).
+    # Register so /cancel can .cancel() the in-flight task.
     state.set_task(run["run_id"], task)
 
     return AnalyzeResponse(run_id=run["run_id"], status="pending")
@@ -64,6 +64,10 @@ async def events(run_id: str):
 
     queue = state.get_queue(run_id)
 
+    # Close on "cancelled" too so clients that cancel mid-run get a clean
+    # terminal event instead of waiting on the keepalive.
+    _TERMINAL_STAGES = {"done", "error", "cancelled"}
+
     async def gen():
         # Replay any events that already fired before the subscriber arrived.
         # Only send the historical ones; live events continue from the queue.
@@ -73,7 +77,7 @@ async def events(run_id: str):
                 "event": past.get("stage", "event"),
                 "data": json.dumps(past),
             }
-            if past.get("stage") in {"done", "error"}:
+            if past.get("stage") in _TERMINAL_STAGES:
                 return
 
         while True:
@@ -87,7 +91,7 @@ async def events(run_id: str):
                 "event": event.get("stage", "event"),
                 "data": json.dumps(event),
             }
-            if event.get("stage") in {"done", "error"}:
+            if event.get("stage") in _TERMINAL_STAGES:
                 state.drop_queue(run_id)
                 return
 
@@ -120,11 +124,27 @@ async def cancel(run_id: str) -> dict:
         "data": None,
     }
 
+    # Track what the mutator observed so we can report dispatch outcome.
+    dispatched: dict[str, bool] = {"noop": False, "execute_running": False}
+
     def _mutate(data: dict) -> None:
-        if data.get("status") in {"complete", "failed", "cancelled", "done"}:
-            # Short-circuit handled below by the caller via the sentinel.
-            data["_cancel_noop"] = True
+        execute = data.get("execute") or {}
+        exec_running = execute.get("status") == "running"
+        # Top-level 'done' is not terminal: an execute can still fire from
+        # a done analyze. Only 'failed' and 'cancelled' are fully terminal
+        # — and even then, an in-flight execute wins over the terminal
+        # status (rare but possible if something raced).
+        top_terminal = data.get("status") in {"failed", "cancelled"}
+        if top_terminal and not exec_running:
+            dispatched["noop"] = True
             return
+        if exec_running:
+            # Signal execute_plan's cancel_check to abort at its next
+            # checkpoint. The /execute handler then deletes any partially
+            # built timeline before returning 409.
+            execute["cancel_requested"] = True
+            data["execute"] = execute
+            dispatched["execute_running"] = True
         data["status"] = "cancelled"
         data["cancelled_at"] = state._now_iso()  # type: ignore[attr-defined]
         state.append_event(data, cancel_event)
@@ -133,13 +153,13 @@ async def cancel(run_id: str) -> dict:
     if updated is None:
         raise HTTPException(status_code=404, detail=f"run {run_id} not found")
 
-    if updated.pop("_cancel_noop", False):
+    if dispatched["noop"]:
         return {"run_id": run_id, "status": updated["status"], "noop": True}
 
-    # Interrupt the in-flight analyze task at its next await point (Batch 1b).
-    # The cooperative raise_if_cancelled checkpoints in the pipeline also
-    # catch workers mid-`asyncio.to_thread` between stages.
-    state.cancel_run_task(run_id)
+    # Interrupt the in-flight analyze task at its next await point.
+    # cancel_run_task returns False if nothing's registered (e.g. analyze
+    # already finished or this run is past build-plan).
+    analyze_cancelled = state.cancel_run_task(run_id)
 
     queue = state.get_queue(run_id)
     try:
@@ -147,5 +167,16 @@ async def cancel(run_id: str) -> dict:
     except asyncio.QueueFull:  # pragma: no cover — queue is unbounded in practice
         pass
 
-    log.info("Run %s marked as cancelled via /cancel", run_id)
-    return {"run_id": run_id, "status": "cancelled", "noop": False}
+    log.info(
+        "Run %s cancelled: analyze_task=%s execute_running=%s",
+        run_id,
+        analyze_cancelled,
+        dispatched["execute_running"],
+    )
+    return {
+        "run_id": run_id,
+        "status": "cancelled",
+        "noop": False,
+        "analyze_task_cancelled": analyze_cancelled,
+        "execute_running": dispatched["execute_running"],
+    }

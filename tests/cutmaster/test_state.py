@@ -95,7 +95,7 @@ def test_state_file_is_valid_json(isolated_run_root):
 
 
 # ---------------------------------------------------------------------------
-# Batch 1 — state.update, task registry, cooperative cancel
+# state.update, task registry, cooperative cancel
 # ---------------------------------------------------------------------------
 
 
@@ -127,7 +127,7 @@ async def test_update_missing_run_returns_none(isolated_run_root):
 async def test_emit_preserves_external_cancel(isolated_run_root):
     """A /cancel that lands between stages must survive the next emit.
 
-    Reproduces the Batch 1 race: pipeline holds an in-memory dict with
+    Reproduces the race: pipeline holds an in-memory dict with
     status='running'; /cancel writes status='cancelled' to disk; pipeline
     then emits the next stage event. The lock + disk-merge in emit() must
     not let the pipeline overwrite the cancel.

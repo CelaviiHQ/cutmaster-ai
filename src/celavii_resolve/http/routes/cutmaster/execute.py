@@ -9,7 +9,7 @@ import time
 from fastapi import APIRouter, HTTPException
 
 from ....cutmaster.core import state
-from ....cutmaster.core.execute import ExecuteError, execute_plan
+from ....cutmaster.core.execute import ExecuteCancelled, ExecuteError, execute_plan
 from ._models import DeleteAllCutsRequest, DeleteCutRequest, ExecuteRequest
 
 log = logging.getLogger("celavii-resolve.http.cutmaster")
@@ -82,12 +82,52 @@ async def execute(body: ExecuteRequest) -> dict:
         else:
             custom_name = base
 
+    # Mark execute as in-flight so /cancel can target it. The marker is a
+    # dict so we can attach ``cancel_requested`` from /cancel without
+    # clobbering it. Success path overwrites this with the real execute
+    # result below.
+    def _mark_running(d: dict) -> None:
+        d["execute"] = {"status": "running", "started_at": time.time()}
+
+    await state.update(body.run_id, _mark_running)
+
+    def _cancel_check() -> bool:
+        # Disk read per checkpoint (~5 per build). Cheap enough and avoids
+        # plumbing a shared in-memory flag across the thread boundary.
+        cur = state.load(body.run_id)
+        if cur is None:
+            return False
+        return bool((cur.get("execute") or {}).get("cancel_requested"))
+
     try:
-        result = await asyncio.to_thread(execute_plan, run, name_suffix, custom_name)
+        result = await asyncio.to_thread(execute_plan, run, name_suffix, custom_name, _cancel_check)
+    except ExecuteCancelled as exc:
+        log.info("execute cancelled for run %s: %s", body.run_id, exc)
+
+        def _record_abort(d: dict) -> None:
+            d.pop("execute", None)
+            d.setdefault("execute_history", []).append(
+                {
+                    "new_timeline_name": None,
+                    "custom_name": custom_name,
+                    "aborted": True,
+                    "at": time.time(),
+                }
+            )
+            # /cancel already set status=cancelled; leave it.
+
+        await state.update(body.run_id, _record_abort)
+        raise HTTPException(
+            status_code=409,
+            detail={"cancelled": True, "reason": str(exc)},
+        )
     except ExecuteError as exc:
+        # Clear the in-progress marker so the run can be retried.
+        await state.update(body.run_id, lambda d: d.pop("execute", None))
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         log.exception("execute crashed for run %s", body.run_id)
+        await state.update(body.run_id, lambda d: d.pop("execute", None))
         raise HTTPException(status_code=500, detail=f"execute failed: {exc}")
 
     new_name = result.get("new_timeline_name")
@@ -117,9 +157,9 @@ async def execute(body: ExecuteRequest) -> dict:
     # Atomic final write. We also persist the Clip Hunter candidate swap
     # (``plan.resolved_segments`` + selected_index) that this handler made
     # in memory earlier — apply it to the fresh on-disk dict so concurrent
-    # writers (e.g. /cancel) don't see a stale snapshot. Execute-level
-    # cancellation is Batch 2; for Batch 1 we accept that a /cancel landing
-    # mid-build gets overwritten to "done".
+    # writers don't see a stale snapshot. The cancel_check above catches
+    # /cancel landing mid-build; this final write runs only after a
+    # successful build, so overwriting status is safe.
     plan_after_swap = run.get("plan")
 
     def _mutate(d: dict) -> None:
