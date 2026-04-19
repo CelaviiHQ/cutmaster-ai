@@ -12,10 +12,14 @@ from celavii_resolve.cutmaster.core import state
 def isolated_run_root(tmp_path, monkeypatch):
     monkeypatch.setattr(state, "RUN_ROOT", tmp_path / "runs")
     monkeypatch.setattr(state, "EXTRACT_ROOT", tmp_path / "audio")
-    # clear any leaked queues between tests
+    # clear any leaked queues / locks / tasks between tests
     state._QUEUES.clear()
+    state._LOCKS.clear()
+    state._TASKS.clear()
     yield tmp_path
     state._QUEUES.clear()
+    state._LOCKS.clear()
+    state._TASKS.clear()
 
 
 def test_new_run_has_expected_fields(isolated_run_root):
@@ -88,3 +92,106 @@ def test_state_file_is_valid_json(isolated_run_root):
     raw = state.run_path(run["run_id"]).read_text()
     parsed = json.loads(raw)
     assert parsed["events"][0]["data"] == {"k": [1, 2, 3]}
+
+
+# ---------------------------------------------------------------------------
+# Batch 1 — state.update, task registry, cooperative cancel
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_update_applies_mutator_and_persists(isolated_run_root):
+    run = state.new_run("T1")
+    state.save(run)
+
+    def _mutate(d):
+        d["status"] = "running"
+        d["foo"] = 42
+
+    updated = await state.update(run["run_id"], _mutate)
+    assert updated is not None
+    assert updated["status"] == "running"
+    assert updated["foo"] == 42
+
+    reloaded = state.load(run["run_id"])
+    assert reloaded["status"] == "running"
+    assert reloaded["foo"] == 42
+
+
+@pytest.mark.asyncio
+async def test_update_missing_run_returns_none(isolated_run_root):
+    assert await state.update("nope", lambda d: None) is None
+
+
+@pytest.mark.asyncio
+async def test_emit_preserves_external_cancel(isolated_run_root):
+    """A /cancel that lands between stages must survive the next emit.
+
+    Reproduces the Batch 1 race: pipeline holds an in-memory dict with
+    status='running'; /cancel writes status='cancelled' to disk; pipeline
+    then emits the next stage event. The lock + disk-merge in emit() must
+    not let the pipeline overwrite the cancel.
+    """
+    run = state.new_run("T1")
+    run["status"] = "running"
+    state.save(run)
+
+    # External writer (acting like /cancel) flips the status on disk.
+    await state.update(run["run_id"], lambda d: d.update({"status": "cancelled"}))
+
+    # Pipeline emits its next stage event using its stale in-memory dict.
+    assert run["status"] == "running"  # still stale locally
+    await state.emit(run, stage="stt", status="started", message="about to start")
+
+    # Both on-disk state AND the in-memory dict now reflect the cancel.
+    assert run["status"] == "cancelled"
+    reloaded = state.load(run["run_id"])
+    assert reloaded["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_raise_if_cancelled(isolated_run_root):
+    run = state.new_run("T1")
+    state.save(run)
+
+    # Not cancelled → no raise.
+    state.raise_if_cancelled(run["run_id"])
+
+    await state.update(run["run_id"], lambda d: d.update({"status": "cancelled"}))
+
+    with pytest.raises(asyncio.CancelledError):
+        state.raise_if_cancelled(run["run_id"])
+
+
+@pytest.mark.asyncio
+async def test_task_registry_set_get_drop(isolated_run_root):
+    async def _noop():
+        await asyncio.sleep(0)
+
+    task = asyncio.create_task(_noop())
+    state.set_task("abc", task)
+    assert state.get_task("abc") is task
+
+    await task  # completes → done_callback auto-drops
+    await asyncio.sleep(0)  # let the callback fire
+    assert state.get_task("abc") is None
+
+
+@pytest.mark.asyncio
+async def test_cancel_run_task_cancels_running_task(isolated_run_root):
+    async def _long():
+        await asyncio.sleep(10)
+
+    task = asyncio.create_task(_long())
+    state.set_task("abc", task)
+
+    assert state.cancel_run_task("abc") is True
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    # Done callback cleared the registry entry.
+    assert state.get_task("abc") is None
+
+
+@pytest.mark.asyncio
+async def test_cancel_run_task_missing_returns_false(isolated_run_root):
+    assert state.cancel_run_task("nope") is False

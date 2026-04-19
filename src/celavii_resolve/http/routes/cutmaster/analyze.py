@@ -36,7 +36,7 @@ async def analyze(body: AnalyzeRequest) -> AnalyzeResponse:
         body.preset,
     )
 
-    asyncio.create_task(
+    task = asyncio.create_task(
         run_analyze(
             run_id=run["run_id"],
             timeline_name=body.timeline_name,
@@ -47,6 +47,8 @@ async def analyze(body: AnalyzeRequest) -> AnalyzeResponse:
             stt_provider=body.stt_provider,
         )
     )
+    # Register so /cancel can .cancel() the in-flight task (Batch 1b).
+    state.set_task(run["run_id"], task)
 
     return AnalyzeResponse(run_id=run["run_id"], status="pending")
 
@@ -111,23 +113,33 @@ async def cancel(run_id: str) -> dict:
     any subscribers to the SSE stream receive a terminal ``cancelled`` event
     so they can tear down their listeners.
     """
-    data = state.load(run_id)
-    if data is None:
-        raise HTTPException(status_code=404, detail=f"run {run_id} not found")
-
-    if data.get("status") in {"complete", "failed", "cancelled"}:
-        return {"run_id": run_id, "status": data["status"], "noop": True}
-
-    data["status"] = "cancelled"
-    data["cancelled_at"] = state._now_iso()  # type: ignore[attr-defined]
     cancel_event = {
         "stage": "cancelled",
         "status": "cancelled",
         "message": "Run cancelled by user",
         "data": None,
     }
-    state.append_event(data, cancel_event)
-    state.save(data)
+
+    def _mutate(data: dict) -> None:
+        if data.get("status") in {"complete", "failed", "cancelled", "done"}:
+            # Short-circuit handled below by the caller via the sentinel.
+            data["_cancel_noop"] = True
+            return
+        data["status"] = "cancelled"
+        data["cancelled_at"] = state._now_iso()  # type: ignore[attr-defined]
+        state.append_event(data, cancel_event)
+
+    updated = await state.update(run_id, _mutate)
+    if updated is None:
+        raise HTTPException(status_code=404, detail=f"run {run_id} not found")
+
+    if updated.pop("_cancel_noop", False):
+        return {"run_id": run_id, "status": updated["status"], "noop": True}
+
+    # Interrupt the in-flight analyze task at its next await point (Batch 1b).
+    # The cooperative raise_if_cancelled checkpoints in the pipeline also
+    # catch workers mid-`asyncio.to_thread` between stages.
+    state.cancel_run_task(run_id)
 
     queue = state.get_queue(run_id)
     try:

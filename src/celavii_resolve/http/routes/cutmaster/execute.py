@@ -106,19 +106,30 @@ async def execute(body: ExecuteRequest) -> dict:
             )
             result["replaced_timelines"] = replaced
 
-    run["execute"] = result
-    history: list[dict] = run.setdefault("execute_history", [])
-    history.append(
-        {
-            "new_timeline_name": new_name,
-            "custom_name": custom_name,
-            "replaced_timelines": replaced,
-            "snapshot_path": result.get("snapshot_path"),
-            "at": time.time(),
-        }
-    )
-    run["status"] = "done"
-    state.save(run)
+    history_entry = {
+        "new_timeline_name": new_name,
+        "custom_name": custom_name,
+        "replaced_timelines": replaced,
+        "snapshot_path": result.get("snapshot_path"),
+        "at": time.time(),
+    }
+
+    # Atomic final write. We also persist the Clip Hunter candidate swap
+    # (``plan.resolved_segments`` + selected_index) that this handler made
+    # in memory earlier — apply it to the fresh on-disk dict so concurrent
+    # writers (e.g. /cancel) don't see a stale snapshot. Execute-level
+    # cancellation is Batch 2; for Batch 1 we accept that a /cancel landing
+    # mid-build gets overwritten to "done".
+    plan_after_swap = run.get("plan")
+
+    def _mutate(d: dict) -> None:
+        if plan_after_swap is not None:
+            d["plan"] = plan_after_swap
+        d["execute"] = result
+        d.setdefault("execute_history", []).append(history_entry)
+        d["status"] = "done"
+
+    await state.update(body.run_id, _mutate)
 
     return result
 
@@ -184,16 +195,17 @@ async def delete_cut(body: DeleteCutRequest) -> dict:
 
     if target is None:
         # Already gone — still return ok so the UI can reset
-        run.pop("execute", None)
-        state.save(run)
+        await state.update(body.run_id, lambda d: d.pop("execute", None))
         return {"deleted": False, "reason": f"timeline '{new_name}' not found"}
 
     ok = media_pool.DeleteTimelines([target])
-    run.pop("execute", None)
-    # Also drop the matching history entry so the UI history stays truthful.
-    history = run.get("execute_history") or []
-    run["execute_history"] = [h for h in history if h.get("new_timeline_name") != new_name]
-    state.save(run)
+
+    def _mutate(d: dict) -> None:
+        d.pop("execute", None)
+        hist = d.get("execute_history") or []
+        d["execute_history"] = [h for h in hist if h.get("new_timeline_name") != new_name]
+
+    await state.update(body.run_id, _mutate)
 
     return {
         "deleted": bool(ok),
@@ -243,9 +255,11 @@ async def delete_all_cuts(body: DeleteAllCutsRequest) -> dict:
         except Exception:
             log.exception("failed to delete timeline %s", name)
 
-    run.pop("execute", None)
-    run["execute_history"] = []
-    state.save(run)
+    def _mutate(d: dict) -> None:
+        d.pop("execute", None)
+        d["execute_history"] = []
+
+    await state.update(body.run_id, _mutate)
 
     return {
         "deleted": removed,

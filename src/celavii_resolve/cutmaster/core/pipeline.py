@@ -460,12 +460,16 @@ async def run_analyze(
             state.save(run)
             return
 
+        state.raise_if_cancelled(run_id)
+
         if not await _vfr_check(tl, run, state.emit):
             run["status"] = "failed"
             run["error"] = "vfr_detected"
             state.save(run)
             await state.emit(run, stage="done", status="failed", message="halted on VFR")
             return
+
+        state.raise_if_cancelled(run_id)
 
         if per_clip_stt:
             # v2-6: skip the global concat, run STT per timeline item, and
@@ -484,6 +488,7 @@ async def run_analyze(
                     run, stage="done", status="failed", message="halted on per-clip STT"
                 )
                 return
+            state.raise_if_cancelled(run_id)
             # Cross-clip speaker reconciliation — only runs when the user
             # supplied a count, so v2-6 legacy behaviour (raw per-clip IDs)
             # stays the default.
@@ -505,6 +510,8 @@ async def run_analyze(
                 )
                 return
             wav_path, audio_duration_s = audio_result
+
+            state.raise_if_cancelled(run_id)
 
             words = await _transcribe(
                 wav_path,
@@ -530,6 +537,8 @@ async def run_analyze(
                     state.emit,
                 )
 
+        state.raise_if_cancelled(run_id)
+
         await _scrub_stage(words, scrub_params or ScrubParams(), run, state.emit)
 
         run["status"] = "done"
@@ -541,6 +550,12 @@ async def run_analyze(
             message="Analyze complete — ready for configure step",
         )
 
+    except asyncio.CancelledError:
+        # User cancelled via /cancel — the cancelled status + terminal event
+        # were already written by the endpoint. Exit cleanly without an
+        # "error" event so the SSE stream doesn't double-report.
+        log.info("Pipeline cancelled for run %s", run_id)
+        raise
     except Exception as exc:
         log.exception("Pipeline crashed")
         run["status"] = "failed"

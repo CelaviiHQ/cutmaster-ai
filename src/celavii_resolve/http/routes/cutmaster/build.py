@@ -64,6 +64,15 @@ log = logging.getLogger("celavii-resolve.http.cutmaster")
 router = APIRouter()
 
 
+async def _persist_plan(run_id: str, plan: dict) -> None:
+    """Atomically write ``run['plan']`` under the per-run lock (Batch 1a)."""
+
+    def _apply(d: dict) -> None:
+        d["plan"] = plan
+
+    await state.update(run_id, _apply)
+
+
 @router.post("/build-plan")
 async def build_plan(body: BuildPlanRequest) -> dict:
     """Run Director → Marker → resolve source frames. Dry-run: no Resolve mutation.
@@ -257,7 +266,7 @@ async def build_plan(body: BuildPlanRequest) -> dict:
                 "source_duration_s": last_word_end,
             },
         }
-        state.save(run)
+        await _persist_plan(body.run_id, run["plan"])
         return run["plan"]
 
     # v2-13: Short Generator — assembled multi-span reels. Each candidate is
@@ -375,7 +384,7 @@ async def build_plan(body: BuildPlanRequest) -> dict:
                 "mode": "short_generator",
             },
         }
-        state.save(run)
+        await _persist_plan(body.run_id, run["plan"])
         return run["plan"]
 
     # v2-3: Tightener preset forces assembled + reorder_off, re-scrubs the
@@ -460,7 +469,7 @@ async def build_plan(body: BuildPlanRequest) -> dict:
             "resolved_segments": [r.model_dump() for r in resolved],
             "tightener": tighten_summary,
         }
-        state.save(run)
+        await _persist_plan(body.run_id, run["plan"])
         return run["plan"]
 
     # v2-11: Curated + Rough cut share most of assembled's plumbing (reading
@@ -679,6 +688,6 @@ async def build_plan(body: BuildPlanRequest) -> dict:
     # v2-11: attach mode-specific metadata for Curated / Rough cut runs.
     if mode in ("curated", "rough_cut"):
         run["plan"]["timeline_state"] = _v2_11_meta  # type: ignore[name-defined]
-    state.save(run)
+    await _persist_plan(body.run_id, run["plan"])
 
     return run["plan"]
