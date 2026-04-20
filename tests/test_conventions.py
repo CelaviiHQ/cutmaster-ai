@@ -74,6 +74,8 @@ TOOL_MODULES = [
     "celavii_resolve.cutmaster.resolve_ops.segments",
     "celavii_resolve.cutmaster.core.execute",
     "celavii_resolve.cutmaster.core.timeouts",
+    "celavii_resolve.cutmaster.media.ffmpeg_frames",
+    "celavii_resolve.cutmaster.analysis.shot_tagger",
 ]
 
 # Route modules aren't tool modules — the TOOL_MODULES guard doesn't cover

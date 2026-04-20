@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import TypeVar
 
 from pydantic import BaseModel
@@ -23,6 +23,11 @@ from ..config import get_gemini_client
 log = logging.getLogger("celavii-resolve.intelligence.llm")
 
 T = TypeVar("T", bound=BaseModel)
+
+# (data, mime_type) — the minimal shape callers need to supply. Keeping the
+# public surface as plain bytes + str avoids coupling callers to google-genai
+# types; the dispatcher wraps them into ``types.Part.from_bytes`` internally.
+ImagePart = tuple[bytes, str]
 
 
 # ---------------------------------------------------------------------------
@@ -40,6 +45,10 @@ DEFAULTS: dict[str, str] = {
     "theme": "gemini-3.1-flash-lite-preview",
     "reconcile": "gemini-3.1-flash-lite-preview",
     "stt": "gemini-3.1-flash-lite-preview",  # stt.py has its own override for legacy
+    # v4 Layer C / Layer A vision agents. Same lite default; per-agent
+    # overrides via CELAVII_SHOT_TAGGER_MODEL / CELAVII_BOUNDARY_VALIDATOR_MODEL.
+    "shot_tagger": "gemini-3.1-flash-lite-preview",
+    "boundary_validator": "gemini-3.1-flash-lite-preview",
 }
 
 
@@ -70,6 +79,7 @@ def call_structured(
     max_retries: int = 3,
     validate: Callable[[T], list[str]] | None = None,
     accept_best_effort: bool = False,
+    images: Sequence[ImagePart] | None = None,
 ) -> T:
     """Call Gemini with ``response_schema`` enforcement + optional validator.
 
@@ -94,6 +104,12 @@ def call_structured(
             attribute (set via object.__setattr__) carries the final error
             list so the caller can surface warnings. Use only for agents
             whose output is a *suggestion* reviewed by the editor.
+        images: Optional list of ``(bytes, mime_type)`` tuples for vision
+            agents. Appended to the request contents after the prompt so
+            the model sees ``[prompt, image_0, image_1, ...]``. v4 Layer C
+            (shot tagging) and Layer A (boundary validator) use this to
+            inject sampled frames. All vision calls go through here so
+            cost telemetry + retry logic stay in one place.
     """
     client = get_gemini_client()
     if client is None:
@@ -103,6 +119,13 @@ def call_structured(
 
     model = model_for(agent)
     log.info("agent=%s model=%s", agent, model)
+
+    image_parts: list = []
+    if images:
+        for data, mime in images:
+            if not data:
+                raise ValueError("image data must be non-empty bytes")
+            image_parts.append(types.Part.from_bytes(data=data, mime_type=mime))
 
     best_parsed: T | None = None
     best_errors: list[str] = []
@@ -117,9 +140,11 @@ def call_structured(
                 + "\n".join(f"- {e}" for e in last_errors)
             )
 
+        contents: list = [retry_prompt, *image_parts] if image_parts else [retry_prompt]
+
         response = client.models.generate_content(
             model=model,
-            contents=[retry_prompt],
+            contents=contents,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=response_schema,

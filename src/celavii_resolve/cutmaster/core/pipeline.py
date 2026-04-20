@@ -433,6 +433,118 @@ async def _scrub_stage(words: list[dict], params: ScrubParams, run, emit) -> lis
     return result.kept
 
 
+async def _shot_tag_stage(tl, scrubbed_words: list[dict], run, emit) -> list[dict]:
+    """v4 Layer C — tag each timeline video item with Gemini vision.
+
+    Annotates every scrubbed word with a ``shot_tag`` dict and persists
+    both the per-item ``tagged_frames`` list (for Review-screen display
+    in a future phase) and the annotated transcript + scrubbed arrays.
+
+    Best-effort: if frame extraction / the vision call fails entirely,
+    the stage emits ``failed`` but returns the unmodified scrubbed words
+    so downstream stages (Director in 4.1+) keep working. No cliff on
+    missing GEMINI_API_KEY — ``call_structured`` raises and we catch.
+    """
+    from ..analysis.shot_tagger import (
+        TaggedFrame,
+        attach_tags_to_transcript,
+        build_video_item_specs,
+        tag_video_items,
+    )
+
+    await emit(
+        run,
+        stage="shot_tag",
+        status="started",
+        message="Tagging shots via Gemini vision",
+    )
+
+    try:
+        specs = await asyncio.to_thread(build_video_item_specs, tl)
+    except Exception as exc:
+        log.warning("shot_tag build_video_item_specs failed: %s", exc)
+        await emit(
+            run,
+            stage="shot_tag",
+            status="failed",
+            message=f"could not enumerate video items: {exc}",
+        )
+        return scrubbed_words
+
+    if not specs:
+        await emit(
+            run,
+            stage="shot_tag",
+            status="complete",
+            message="no taggable video items on V1 — skipping",
+            data={"items_total": 0},
+        )
+        return scrubbed_words
+
+    async def _on_item(idx: int, spec, tagged: list[TaggedFrame]) -> None:
+        # Intermediate progress event — lets the panel tick per item
+        # instead of waiting for the whole batch to finish.
+        await emit(
+            run,
+            stage="shot_tag",
+            status="progress",
+            message=f"tagged item {idx + 1}/{len(specs)} ({spec.source_name})",
+            data={
+                "item_index": spec.item_index,
+                "frames": len(tagged),
+                "items_done": idx + 1,
+                "items_total": len(specs),
+            },
+        )
+
+    try:
+        tagged_all, stats = await tag_video_items(specs, on_item_done=_on_item)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        log.exception("shot_tag stage crashed")
+        await emit(
+            run,
+            stage="shot_tag",
+            status="failed",
+            message=f"shot tagging failed: {exc}",
+        )
+        return scrubbed_words
+
+    # Persist raw tagged frames — small, useful for Review + debugging.
+    run["shot_tags"] = [
+        {
+            "item_index": t.item_index,
+            "source_path": t.source_path,
+            "source_ts_s": round(t.source_ts_s, 3),
+            "timeline_ts_s": round(t.timeline_ts_s, 3),
+            **t.tag.model_dump(),
+        }
+        for t in tagged_all
+    ]
+
+    # Attach tags to BOTH the raw transcript and the scrubbed copy so the
+    # Director prompt (4.1) and any downstream consumer sees them.
+    if run.get("transcript"):
+        run["transcript"] = attach_tags_to_transcript(run["transcript"], tagged_all)
+    annotated_scrubbed = attach_tags_to_transcript(scrubbed_words, tagged_all)
+    run["scrubbed"] = annotated_scrubbed
+    state.save(run)
+
+    await emit(
+        run,
+        stage="shot_tag",
+        status="complete",
+        message=(
+            f"Tagged {stats['frames_total']} frame(s) across "
+            f"{stats['items_tagged']}/{stats['items_total']} item(s) "
+            f"(cache: {stats['frames_cache_hits']} hit(s))"
+        ),
+        data=stats,
+    )
+    return annotated_scrubbed
+
+
 async def run_analyze(
     run_id: str,
     timeline_name: str,
@@ -441,6 +553,7 @@ async def run_analyze(
     per_clip_stt: bool = False,
     expected_speakers: int | None = None,
     stt_provider: str | None = None,
+    layer_c_enabled: bool = False,
 ) -> None:
     """Top-level analyze orchestrator.
 
@@ -552,7 +665,11 @@ async def run_analyze(
 
         state.raise_if_cancelled(run_id)
 
-        await _scrub_stage(words, scrub_params or ScrubParams(), run, state.emit)
+        scrubbed = await _scrub_stage(words, scrub_params or ScrubParams(), run, state.emit)
+
+        if layer_c_enabled:
+            state.raise_if_cancelled(run_id)
+            await _shot_tag_stage(tl, scrubbed, run, state.emit)
 
         run["status"] = "done"
         state.save(run)

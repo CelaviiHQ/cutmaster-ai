@@ -48,6 +48,22 @@ class AnalyzeRequest(BaseModel):
             "Falls back to CELAVII_STT_PROVIDER env var, then to 'gemini'."
         ),
     )
+    # v4 Layer C — shot tagging during analyze. Off by default to preserve
+    # v3 byte-identical behaviour when the editor hasn't opted in. The
+    # panel's Configure-screen master toggle (Phase 4.4) triggers a
+    # re-analyze with this flag flipped; first analyze of new footage
+    # stays fast by default.
+    layer_c_enabled: bool = Field(
+        default=False,
+        description=(
+            "v4 Layer C: when true, sample frames from each V1 video "
+            "item post-scrub and tag them via Gemini vision. Tags cache "
+            "under ~/.celavii/cutmaster/shot-tags/v1/<sha1(source_path)>/ "
+            "so re-analyze after edits reuses prior work. No-op without "
+            "GEMINI_API_KEY (stage emits 'failed' and the pipeline "
+            "continues with un-annotated transcript)."
+        ),
+    )
 
 
 class AnalyzeResponse(BaseModel):
@@ -179,6 +195,42 @@ class UserSettings(BaseModel):
             "Source-time in seconds of the HookCandidate the editor picked. "
             "When set, the Director's first selected_clip must start within "
             "a tolerance of this value or the plan is rejected."
+        ),
+    )
+    # v4 sensory layers. The master toggle drives the Configure-screen
+    # UX copy (Phase 4.4); per-layer flags let power users override
+    # mode-aware defaults. Consumption lands in 4.1 (Director prompt)
+    # and 4.2 (boundary validator). Defaulting to False keeps the v3
+    # build-plan path byte-identical.
+    sensory_master_enabled: bool = Field(
+        default=False,
+        description=(
+            "v4 'Shot-aware editing' master toggle. When true, the "
+            "per-mode activation matrix in data/presets.py resolves "
+            "which sensory layers (C / A / Audio) run for this preset."
+        ),
+    )
+    layer_c_enabled: bool = Field(
+        default=False,
+        description=(
+            "v4 Layer C override (shot tagging). Independent of the "
+            "master toggle — set true to force the layer on, false to "
+            "force off. The Director prompt renders the shot-tag block "
+            "only when this resolves true."
+        ),
+    )
+    layer_a_enabled: bool = Field(
+        default=False,
+        description=(
+            "v4 Layer A override (boundary validator). Forces the "
+            "post-plan retry loop on/off regardless of master toggle."
+        ),
+    )
+    layer_audio_enabled: bool = Field(
+        default=False,
+        description=(
+            "v4 Layer Audio override (DSP cues). Forces the ffmpeg "
+            "audio-cue pass on/off regardless of master toggle."
         ),
     )
 
