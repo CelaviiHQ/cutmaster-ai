@@ -656,6 +656,91 @@ def _shot_tag_block(transcript: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _boundary_rejections_block(user_settings: dict | None) -> str:
+    """Render BOUNDARY REJECTIONS when the outer validator loop retried.
+
+    Layer A (:mod:`analysis.boundary_validator`) flags cuts that land on
+    visually disruptive frame pairs. The validator loop
+    (:mod:`core.validator_loop`) re-invokes the Director with those
+    rejections injected via ``user_settings["_boundary_rejections"]``.
+
+    For multi-candidate plans (Short Generator) the loop also sets
+    ``user_settings["_candidate_roster"]`` so the retry carries the
+    previous attempt's candidate themes + engagement order. Locking
+    the roster prevents the model from reshuffling candidates between
+    retries, which would make per-candidate rejections meaningless.
+
+    Wire contract: both keys are internal — ``_user_settings_block``
+    doesn't read them, so they never leak into the USER SETTINGS
+    summary. Empty / missing → empty block (first attempt + sensory-off
+    runs).
+    """
+    if not user_settings:
+        return ""
+    rejections = user_settings.get("_boundary_rejections") or []
+    roster = user_settings.get("_candidate_roster") or []
+    if not rejections:
+        return ""
+
+    # Multi-candidate mode is active when any rejection carries a
+    # non-default candidate_index OR the caller supplied a roster.
+    multi_candidate = bool(roster) or any((r.get("candidate_index") or 0) != 0 for r in rejections)
+
+    lines = [
+        "BOUNDARY REJECTIONS — your previous plan contained visually jarring cuts:",
+        "",
+    ]
+
+    if multi_candidate and roster:
+        lines.append(
+            "Previous attempt's candidate roster — KEEP these themes and their "
+            "engagement order on retry:"
+        )
+        for entry in roster:
+            try:
+                idx = int(entry.get("candidate_index", 0))
+            except (TypeError, ValueError):
+                idx = 0
+            theme = (entry.get("theme") or "").strip() or "(no theme)"
+            lines.append(f'  candidate {idx}: "{theme}"')
+        lines.append("")
+
+    for r in rejections:
+        try:
+            cut_index = int(r.get("cut_index", 0))
+        except (TypeError, ValueError):
+            cut_index = 0
+        reason = (r.get("reason") or "").strip() or "(no reason supplied)"
+        if multi_candidate:
+            try:
+                cand_idx = int(r.get("candidate_index") or 0)
+            except (TypeError, ValueError):
+                cand_idx = 0
+            prefix = f"candidate {cand_idx}, cut {cut_index}"
+        else:
+            prefix = f"cut {cut_index}"
+        lines.append(f"  {prefix}: {reason}")
+        suggestion = (r.get("suggestion") or "").strip()
+        if suggestion:
+            lines.append(f"    suggestion: {suggestion}")
+
+    lines.append("")
+    if multi_candidate:
+        lines.append(
+            "For each rejected cut above: keep the same candidate (same theme, "
+            "same engagement rank) but pick DIFFERENT word boundaries for that "
+            "specific span transition. Candidates + cuts not listed above may "
+            "stay as-is. Do NOT reshuffle candidate order or rewrite themes."
+        )
+    else:
+        lines.append(
+            "Pick DIFFERENT word boundaries for the cuts above. The transcript has "
+            "other defensible in/out points — find them. Cuts not listed above may "
+            "stay as-is. Do NOT just return the same plan."
+        )
+    return "\n".join(lines)
+
+
 def _shape_takes_for_prompt(
     takes: list[dict],
     user_settings: dict | None,
@@ -885,7 +970,10 @@ def _prompt(preset: PresetBundle, transcript: list[dict], user_settings: dict | 
     speakers = _speaker_block(preset, transcript, user_settings)
     clip_meta = _clip_metadata_block(transcript)
     shot_tags = _shot_tag_block(transcript)
-    optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers, clip_meta, shot_tags) if b)
+    boundary_rej = _boundary_rejections_block(user_settings)
+    optional_blocks = "\n\n".join(
+        b for b in (exclude, focus, speakers, clip_meta, shot_tags, boundary_rej) if b
+    )
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     recipe = _target_length_recipe_block(user_settings, preset)
     hook = _selected_hook_block(user_settings)
@@ -1054,7 +1142,10 @@ def _assembled_prompt(
     speakers = _speaker_block(preset, flat_words, user_settings)
     clip_meta = _clip_metadata_block(flat_words)
     shot_tags = _shot_tag_block(flat_words)
-    optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers, clip_meta, shot_tags) if b)
+    boundary_rej = _boundary_rejections_block(user_settings)
+    optional_blocks = "\n\n".join(
+        b for b in (exclude, focus, speakers, clip_meta, shot_tags, boundary_rej) if b
+    )
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     takes_for_prompt = _shape_takes_for_prompt(takes, user_settings)
 
@@ -1274,8 +1365,9 @@ def _clip_hunter_prompt(
     speakers = _speaker_block(preset, transcript, user_settings)
     clip_meta = _clip_metadata_block(transcript)
     shot_tags = _shot_tag_block(transcript)
+    boundary_rej = _boundary_rejections_block(user_settings)
     optional_blocks = "\n\n".join(
-        b for b in (exclude, focus, themes, speakers, clip_meta, shot_tags) if b
+        b for b in (exclude, focus, themes, speakers, clip_meta, shot_tags, boundary_rej) if b
     )
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     transcript_for_prompt = _shape_for_prompt(transcript, user_settings)
@@ -1521,8 +1613,9 @@ def _short_generator_prompt(
     speakers = _speaker_block(preset, transcript, user_settings)
     clip_meta = _clip_metadata_block(transcript)
     shot_tags = _shot_tag_block(transcript)
+    boundary_rej = _boundary_rejections_block(user_settings)
     optional_blocks = "\n\n".join(
-        b for b in (exclude, focus, themes, speakers, clip_meta, shot_tags) if b
+        b for b in (exclude, focus, themes, speakers, clip_meta, shot_tags, boundary_rej) if b
     )
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     transcript_for_prompt = _shape_for_prompt(transcript, user_settings)
@@ -1806,7 +1899,10 @@ def _curated_prompt(
     speakers = _speaker_block(preset, flat_words, user_settings)
     clip_meta = _clip_metadata_block(flat_words)
     shot_tags = _shot_tag_block(flat_words)
-    optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers, clip_meta, shot_tags) if b)
+    boundary_rej = _boundary_rejections_block(user_settings)
+    optional_blocks = "\n\n".join(
+        b for b in (exclude, focus, speakers, clip_meta, shot_tags, boundary_rej) if b
+    )
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     takes_for_prompt = _shape_takes_for_prompt(takes, user_settings)
 
@@ -1935,7 +2031,10 @@ def _rough_cut_prompt(
     speakers = _speaker_block(preset, flat_words, user_settings)
     clip_meta = _clip_metadata_block(flat_words)
     shot_tags = _shot_tag_block(flat_words)
-    optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers, clip_meta, shot_tags) if b)
+    boundary_rej = _boundary_rejections_block(user_settings)
+    optional_blocks = "\n\n".join(
+        b for b in (exclude, focus, speakers, clip_meta, shot_tags, boundary_rej) if b
+    )
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     takes_for_prompt = _shape_takes_for_prompt(takes, user_settings)
     groups_for_prompt = [

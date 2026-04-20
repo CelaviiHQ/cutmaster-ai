@@ -14,6 +14,10 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 
+from ....cutmaster.analysis.boundary_validator import (
+    build_boundary_samples,
+    build_short_generator_boundary_samples,
+)
 from ....cutmaster.analysis.marker_agent import MarkerPlan, suggest_markers
 from ....cutmaster.analysis.scrubber import ScrubParams, scrub
 from ....cutmaster.analysis.tightener import (
@@ -42,6 +46,10 @@ from ....cutmaster.core.timeouts import (
     MARKER_TIMEOUT_S,
     with_timeout,
 )
+from ....cutmaster.core.validator_loop import (
+    BoundaryValidationResult,
+    run_with_boundary_validation,
+)
 from ....cutmaster.data.presets import (
     PRESETS,
     get_preset,
@@ -67,6 +75,97 @@ from ._models import BuildPlanRequest
 log = logging.getLogger("celavii-resolve.http.cutmaster")
 
 router = APIRouter()
+
+
+# v4 Layer A activation matrix (proposal §"Per-mode activation matrix").
+# Phase 4.2 wires raw_dump / rough_cut / curated (single-plan validation).
+# Phase 4.2-followup extends to short_generator via candidate-aware
+# addressing: every candidate's internal span transitions get validated
+# in one batched call, with a theme roster so retries don't reshuffle
+# engagement order. Assembled stays permanently off (within-take cuts
+# keep the same shot). Clip Hunter is skipped — each candidate is one
+# span, so there are no internal transitions to validate. Short Generator
+# doesn't appear in this set because it isn't a "mode" (timeline_mode)
+# — it's a preset. The build.py wiring activates Layer A directly on
+# the short_generator branch when either the master toggle or the
+# explicit layer_a_enabled flag is set.
+LAYER_A_ACTIVE_MODES = frozenset({"raw_dump", "rough_cut", "curated"})
+
+
+def _layer_a_enabled_for_preset(settings: dict, preset_name: str) -> bool:
+    """Preset-scoped Layer A gate (as opposed to mode-scoped).
+
+    Used by Short Generator, which isn't part of the timeline_mode enum
+    but still benefits from boundary validation across its candidates'
+    multi-span structure. Same precedence as the mode gate: explicit
+    ``layer_a_enabled`` wins, else the master toggle enables it when
+    the preset is in the Layer-A-applicable set.
+    """
+    if settings.get("layer_a_enabled"):
+        return True
+    return bool(settings.get("sensory_master_enabled")) and preset_name == "short_generator"
+
+
+def _layer_a_enabled(settings: dict, mode: str) -> bool:
+    """Whether the outer boundary-validator loop should wrap this run.
+
+    Explicit ``layer_a_enabled`` overrides always win. Otherwise the
+    master toggle activates Layer A for modes in
+    :data:`LAYER_A_ACTIVE_MODES`. When neither is set, the Director runs
+    unwrapped and the build path is byte-identical to v3.
+    """
+    if settings.get("layer_a_enabled"):
+        return True
+    return bool(settings.get("sensory_master_enabled")) and mode in LAYER_A_ACTIVE_MODES
+
+
+async def _director_or_validated(
+    *,
+    mode: str,
+    settings: dict,
+    base_call,
+    get_selected_clips,
+    tl,
+    project,
+):
+    """Invoke the Director; when Layer A is active, wrap with the retry loop.
+
+    ``base_call`` is an awaitable taking the effective settings dict and
+    returning a plan. ``get_selected_clips(plan)`` extracts the CutSegment
+    list the validator compares frame pairs on — different for flat plans
+    (``plan.selected_clips``) vs. curated/rough-cut plans (which need
+    ``expand_curated_plan`` first; the caller handles that in the closure).
+
+    Returns ``(plan, BoundaryValidationResult | None)``. Result is ``None``
+    when Layer A is off so callers can skip the warnings surface.
+    """
+    if not _layer_a_enabled(settings, mode):
+        plan = await base_call(settings)
+        return plan, None
+
+    async def _director_fn(rejections, roster):
+        effective = dict(settings)
+        if rejections:
+            effective["_boundary_rejections"] = rejections
+        if roster:
+            effective["_candidate_roster"] = roster
+        return await base_call(effective)
+
+    def _build_samples(plan):
+        try:
+            segments = get_selected_clips(plan)
+        except Exception as exc:
+            log.info("layer A: get_selected_clips raised (%s) — skipping validator", exc)
+            return []
+        return build_boundary_samples(tl, segments, project=project)
+
+    # Linear plans have no candidate roster — omitting
+    # extract_candidate_roster keeps the loop in single-plan mode.
+    result = await run_with_boundary_validation(
+        director_fn=_director_fn,
+        build_samples=_build_samples,
+    )
+    return result.plan, result
 
 
 async def _persist_plan(run_id: str, plan: dict) -> None:
@@ -139,6 +238,11 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         body.preset,
         body.run_id,
     )
+
+    # v4 Layer A: populated by the wrapping loop in modes that enable it.
+    # Stays None for modes where Layer A is skipped (assembled, tightener,
+    # clip_hunter, short_generator) or for runs with Layer A off.
+    boundary_result: BoundaryValidationResult | None = None
 
     # v2-4: Clip Hunter — different optimisation target (N candidate clips
     # ranked by engagement, not one narrative cut). Each candidate is stored
@@ -320,23 +424,10 @@ async def build_plan(body: BuildPlanRequest) -> dict:
             ),
         )
 
-        try:
-            short_plan = await with_timeout(
-                asyncio.to_thread(
-                    build_short_generator_plan,
-                    scrubbed,
-                    preset,
-                    settings_dict,
-                    target_short_length_s,
-                    num_shorts,
-                ),
-                DIRECTOR_TIMEOUT_S,
-                "Short Generator Director",
-            )
-        except Exception as exc:
-            log.exception("Short Generator Director failed for run %s", body.run_id)
-            raise HTTPException(status_code=500, detail=f"Short Generator Director failed: {exc}")
-
+        # Resolve tl up front so the short-generator Layer A validator
+        # (when active) can map every candidate's span transitions to
+        # source frames before the Director call completes. Same tl
+        # consumed downstream by resolve_segments per candidate.
         from ....cutmaster.core.pipeline import _find_timeline_by_name
         from ....resolve import _boilerplate  # lazy
 
@@ -351,6 +442,54 @@ async def build_plan(body: BuildPlanRequest) -> dict:
                 status_code=400,
                 detail=f"timeline '{run['timeline_name']}' not found (was it renamed?)",
             )
+
+        async def _sg_base(eff_settings: dict):
+            return await with_timeout(
+                asyncio.to_thread(
+                    build_short_generator_plan,
+                    scrubbed,
+                    preset,
+                    eff_settings,
+                    target_short_length_s,
+                    num_shorts,
+                ),
+                DIRECTOR_TIMEOUT_S,
+                "Short Generator Director",
+            )
+
+        try:
+            if _layer_a_enabled_for_preset(settings_dict, body.preset):
+
+                async def _sg_director(rejections, roster):
+                    eff = dict(settings_dict)
+                    if rejections:
+                        eff["_boundary_rejections"] = rejections
+                    if roster:
+                        eff["_candidate_roster"] = roster
+                    return await _sg_base(eff)
+
+                def _sg_samples(plan):
+                    return build_short_generator_boundary_samples(
+                        tl, plan.candidates, project=project
+                    )
+
+                def _sg_roster(plan):
+                    return [
+                        {"candidate_index": i, "theme": cand.theme}
+                        for i, cand in enumerate(plan.candidates)
+                    ]
+
+                boundary_result = await run_with_boundary_validation(
+                    director_fn=_sg_director,
+                    build_samples=_sg_samples,
+                    extract_candidate_roster=_sg_roster,
+                )
+                short_plan = boundary_result.plan
+            else:
+                short_plan = await _sg_base(settings_dict)
+        except Exception as exc:
+            log.exception("Short Generator Director failed for run %s", body.run_id)
+            raise HTTPException(status_code=500, detail=f"Short Generator Director failed: {exc}")
 
         # Resolve spans per candidate. Unlike Clip Hunter, each candidate
         # carries multiple CutSegments — resolver handles them identically
@@ -405,6 +544,8 @@ async def build_plan(body: BuildPlanRequest) -> dict:
                 "mode": "short_generator",
             },
         }
+        if boundary_result is not None:
+            run["plan"]["boundary_validation"] = boundary_result.to_summary()
         await _persist_plan(body.run_id, run["plan"])
         return run["plan"]
 
@@ -546,6 +687,16 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         per_item = split_transcript_per_item(transcript_for_takes, items)
         takes = build_take_entries(items, per_item)
 
+        def _curated_samples(plan):
+            # Curated / rough-cut plans don't carry a flat selected_clips
+            # list — expand_curated_plan builds one from the take indexes.
+            try:
+                segs, _hook = expand_curated_plan(plan, takes)
+            except Exception as exc:
+                log.info("layer A: expand_curated_plan raised (%s) — skipping", exc)
+                return []
+            return build_boundary_samples(tl, segs, project=project)
+
         if mode == "rough_cut":
             groups = detect_groups(
                 grouped_items,
@@ -557,12 +708,32 @@ async def build_plan(body: BuildPlanRequest) -> dict:
                 body.run_id,
                 director_mod._rough_cut_prompt(preset, takes, groups, settings_dict),
             )
-            try:
-                curated_plan = await with_timeout(
-                    asyncio.to_thread(build_rough_cut_plan, takes, groups, preset, settings_dict),
+
+            async def _rc_base(eff_settings: dict):
+                return await with_timeout(
+                    asyncio.to_thread(build_rough_cut_plan, takes, groups, preset, eff_settings),
                     DIRECTOR_TIMEOUT_S,
                     "Rough cut Director",
                 )
+
+            try:
+                if _layer_a_enabled(settings_dict, mode):
+
+                    async def _rc_director(rejections, roster):
+                        eff = dict(settings_dict)
+                        if rejections:
+                            eff["_boundary_rejections"] = rejections
+                        if roster:
+                            eff["_candidate_roster"] = roster
+                        return await _rc_base(eff)
+
+                    boundary_result = await run_with_boundary_validation(
+                        director_fn=_rc_director,
+                        build_samples=_curated_samples,
+                    )
+                    curated_plan = boundary_result.plan
+                else:
+                    curated_plan = await _rc_base(settings_dict)
             except Exception as exc:
                 log.exception("Rough cut Director failed for run %s", body.run_id)
                 raise HTTPException(status_code=500, detail=f"Rough cut Director failed: {exc}")
@@ -573,12 +744,32 @@ async def build_plan(body: BuildPlanRequest) -> dict:
                 body.run_id,
                 director_mod._curated_prompt(preset, takes, settings_dict),
             )
-            try:
-                curated_plan = await with_timeout(
-                    asyncio.to_thread(build_curated_cut_plan, takes, preset, settings_dict),
+
+            async def _cur_base(eff_settings: dict):
+                return await with_timeout(
+                    asyncio.to_thread(build_curated_cut_plan, takes, preset, eff_settings),
                     DIRECTOR_TIMEOUT_S,
                     "Curated Director",
                 )
+
+            try:
+                if _layer_a_enabled(settings_dict, mode):
+
+                    async def _cur_director(rejections, roster):
+                        eff = dict(settings_dict)
+                        if rejections:
+                            eff["_boundary_rejections"] = rejections
+                        if roster:
+                            eff["_candidate_roster"] = roster
+                        return await _cur_base(eff)
+
+                    boundary_result = await run_with_boundary_validation(
+                        director_fn=_cur_director,
+                        build_samples=_curated_samples,
+                    )
+                    curated_plan = boundary_result.plan
+                else:
+                    curated_plan = await _cur_base(settings_dict)
             except Exception as exc:
                 log.exception("Curated Director failed for run %s", body.run_id)
                 raise HTTPException(status_code=500, detail=f"Curated Director failed: {exc}")
@@ -669,16 +860,10 @@ async def build_plan(body: BuildPlanRequest) -> dict:
             body.run_id,
             director_mod._prompt(preset, scrubbed, settings_dict),
         )
-        try:
-            plan = await with_timeout(
-                asyncio.to_thread(build_cut_plan, scrubbed, preset, settings_dict),
-                DIRECTOR_TIMEOUT_S,
-                "Director",
-            )
-        except Exception as exc:
-            log.exception("Director failed for run %s", body.run_id)
-            raise HTTPException(status_code=500, detail=f"Director agent failed: {exc}")
 
+        # Resolve tl up front so the Marker + segment resolver can consume
+        # it below, AND so v4 Layer A (when active) can map proposed cut
+        # boundaries to source frames without a second Resolve round-trip.
         from ....cutmaster.core.pipeline import _find_timeline_by_name
         from ....resolve import _boilerplate  # lazy
 
@@ -693,6 +878,23 @@ async def build_plan(body: BuildPlanRequest) -> dict:
                 status_code=400,
                 detail=f"timeline '{run['timeline_name']}' not found (was it renamed?)",
             )
+
+        try:
+            plan, boundary_result = await _director_or_validated(
+                mode=mode,
+                settings=settings_dict,
+                base_call=lambda settings: with_timeout(
+                    asyncio.to_thread(build_cut_plan, scrubbed, preset, settings),
+                    DIRECTOR_TIMEOUT_S,
+                    "Director",
+                ),
+                get_selected_clips=lambda plan: plan.selected_clips,
+                tl=tl,
+                project=project,
+            )
+        except Exception as exc:
+            log.exception("Director failed for run %s", body.run_id)
+            raise HTTPException(status_code=500, detail=f"Director agent failed: {exc}")
 
     # Marker agent runs against the flat CutSegment list in both modes.
     try:
@@ -721,6 +923,12 @@ async def build_plan(body: BuildPlanRequest) -> dict:
     # v2-11: attach mode-specific metadata for Curated / Rough cut runs.
     if mode in ("curated", "rough_cut"):
         run["plan"]["timeline_state"] = _v2_11_meta  # type: ignore[name-defined]
+    # v4 Phase 4.2: surface boundary-validator warnings so the Review
+    # screen can show remaining jarring / borderline cuts alongside the
+    # plan. Only present when Layer A ran — consumers treat absence as
+    # "validator didn't weigh in" rather than "zero issues".
+    if boundary_result is not None:
+        run["plan"]["boundary_validation"] = boundary_result.to_summary()
     await _persist_plan(body.run_id, run["plan"])
 
     return run["plan"]
