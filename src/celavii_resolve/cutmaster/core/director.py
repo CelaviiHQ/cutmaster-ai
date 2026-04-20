@@ -493,14 +493,15 @@ def _slim_transcript_for_prompt(transcript: list[dict]) -> list[dict]:
     roughly 3×. The ``clip_index`` integer stays so the Director can still
     cross-reference words back to the table.
 
-    v4 Layer C does the same for ``shot_tag`` — the SHOT TAGS coalesced
-    block carries the same signal once per range rather than once per
-    word (60-min source: ~50-150 block lines vs. >10k per-word duplicates).
+    v4 Layer C / Layer Audio do the same for ``shot_tag`` + ``audio_cue``
+    — the SHOT TAGS block and AUDIO CUES block carry significant signal
+    once per range / per significant word, so keeping them on every word
+    of the JSON transcript is pure duplication.
 
     Words without these fields pass through unchanged — v1 runs, the
     concat STT path, and sensory-off builds all satisfy that.
     """
-    drop = ("clip_metadata", "shot_tag")
+    drop = ("clip_metadata", "shot_tag", "audio_cue")
     out: list[dict] = []
     for w in transcript:
         if not any(k in w for k in drop):
@@ -654,6 +655,125 @@ def _shot_tag_block(transcript: list[dict]) -> str:
         "advisory — narrative / pacing / transcript semantics still win."
     )
     return "\n".join(lines)
+
+
+# v4 Layer Audio block — significance thresholds + hard row cap. Kept in
+# sync with audio_cues.SIGNIFICANT_PAUSE_MS but redeclared here so the
+# renderer doesn't import ffmpeg-adjacent code at Director import time.
+_AUDIO_CUE_PAUSE_MS_FLOOR = 600
+_AUDIO_CUE_RMS_DELTA_FLOOR = 4.0
+_AUDIO_CUE_MAX_ROWS = 120
+
+
+def _audio_cue_block(transcript: list[dict], *, mode: str | None = None) -> str:
+    """Render AUDIO CUES when words carry ``audio_cue`` (v4 Layer Audio).
+
+    Shows only the SIGNIFICANT cues — natural endpoints (big
+    pause_after or silence_tail) and hard resets (big pause_before or
+    noticeable RMS drop). A typical 10-minute scrubbed transcript
+    yields ~30-80 rows; anything beyond :data:`_AUDIO_CUE_MAX_ROWS`
+    truncates with a summary line.
+
+    ``mode`` optionally tailors the "Prefer:" footer. Per the v4
+    activation matrix, Assembled + Short Generator get pause-aware
+    guidance by default; raw_dump / curated / rough_cut get the
+    generic hint. Unknown / missing mode → generic hint.
+
+    Words without ``audio_cue`` cause an empty-string return (same
+    contract as the other optional blocks).
+    """
+    rows: list[tuple[int, dict, str]] = []
+    for idx, w in enumerate(transcript):
+        cue = w.get("audio_cue")
+        if not cue:
+            continue
+        before = int(cue.get("pause_before_ms") or 0)
+        after = int(cue.get("pause_after_ms") or 0)
+        delta = float(cue.get("rms_db_delta") or 0.0)
+        tail = bool(cue.get("is_silence_tail"))
+
+        significant = (
+            before >= _AUDIO_CUE_PAUSE_MS_FLOOR
+            or after >= _AUDIO_CUE_PAUSE_MS_FLOOR
+            or tail
+            or abs(delta) >= _AUDIO_CUE_RMS_DELTA_FLOOR
+        )
+        if not significant:
+            continue
+
+        # Short reason annotation helps the model pick the right cut
+        # intent at a glance without re-parsing the numbers.
+        reasons: list[str] = []
+        if tail and after >= _AUDIO_CUE_PAUSE_MS_FLOOR:
+            reasons.append("natural endpoint — cut candidate")
+        elif tail:
+            reasons.append("silence tail — cut candidate")
+        elif after >= _AUDIO_CUE_PAUSE_MS_FLOOR:
+            reasons.append("trailing pause — cut candidate")
+        if before >= _AUDIO_CUE_PAUSE_MS_FLOOR:
+            reasons.append("hard reset — cut candidate")
+        if abs(delta) >= _AUDIO_CUE_RMS_DELTA_FLOOR:
+            reasons.append(f"volume shift {'+' if delta >= 0 else ''}{delta:.1f} dB")
+
+        rows.append((idx, cue, " · ".join(reasons)))
+
+    if not rows:
+        return ""
+
+    lines = [
+        "AUDIO CUES (derived from signal — only significant cues shown):",
+        "",
+    ]
+
+    truncated = max(0, len(rows) - _AUDIO_CUE_MAX_ROWS)
+    for idx, cue, reason in rows[:_AUDIO_CUE_MAX_ROWS]:
+        word = transcript[idx].get("word", "?")
+        parts: list[str] = [f'word {idx} "{word}"']
+        pb = int(cue.get("pause_before_ms") or 0)
+        pa = int(cue.get("pause_after_ms") or 0)
+        if pb:
+            parts.append(f"pause_before={pb}ms")
+        if pa:
+            parts.append(f"pause_after={pa}ms")
+        if cue.get("is_silence_tail"):
+            parts.append("is_silence_tail=true")
+        delta = float(cue.get("rms_db_delta") or 0.0)
+        if abs(delta) >= _AUDIO_CUE_RMS_DELTA_FLOOR:
+            parts.append(f"rms_delta={delta:+.1f}dB")
+        head = "  " + "  ".join(parts)
+        if reason:
+            head = f"{head:<70} ({reason})"
+        lines.append(head)
+
+    if truncated:
+        lines.append(f"  ... {truncated} more cues omitted")
+
+    lines.append("")
+    lines.append(_audio_cue_footer(mode))
+    return "\n".join(lines)
+
+
+def _audio_cue_footer(mode: str | None) -> str:
+    """Mode-aware guidance lines appended to the AUDIO CUES block."""
+    base = (
+        "Prefer: cutting on natural endpoints (pause_after ≥ 400ms or "
+        "is_silence_tail=true). Avoid cutting on words flagged as hard "
+        "resets (pause_before > 800ms) unless you're opening a new beat."
+    )
+    if mode == "assembled":
+        return (
+            base + " Assembled mode: tighten every pause_before / pause_after "
+            "> 800ms unless it lands on a narrative beat — the editor "
+            "already locked shot order, pause trimming is the main "
+            "signal you contribute."
+        )
+    if mode == "short_generator":
+        return (
+            base + " Short Generator: every span transition should land on a "
+            "beat boundary — align span starts to is_silence_tail cues "
+            "where the transcript allows."
+        )
+    return base
 
 
 def _boundary_rejections_block(user_settings: dict | None) -> str:
@@ -970,9 +1090,10 @@ def _prompt(preset: PresetBundle, transcript: list[dict], user_settings: dict | 
     speakers = _speaker_block(preset, transcript, user_settings)
     clip_meta = _clip_metadata_block(transcript)
     shot_tags = _shot_tag_block(transcript)
+    audio_cues = _audio_cue_block(transcript, mode="raw_dump")
     boundary_rej = _boundary_rejections_block(user_settings)
     optional_blocks = "\n\n".join(
-        b for b in (exclude, focus, speakers, clip_meta, shot_tags, boundary_rej) if b
+        b for b in (exclude, focus, speakers, clip_meta, shot_tags, audio_cues, boundary_rej) if b
     )
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     recipe = _target_length_recipe_block(user_settings, preset)
@@ -1142,9 +1263,10 @@ def _assembled_prompt(
     speakers = _speaker_block(preset, flat_words, user_settings)
     clip_meta = _clip_metadata_block(flat_words)
     shot_tags = _shot_tag_block(flat_words)
+    audio_cues = _audio_cue_block(flat_words, mode="assembled")
     boundary_rej = _boundary_rejections_block(user_settings)
     optional_blocks = "\n\n".join(
-        b for b in (exclude, focus, speakers, clip_meta, shot_tags, boundary_rej) if b
+        b for b in (exclude, focus, speakers, clip_meta, shot_tags, audio_cues, boundary_rej) if b
     )
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     takes_for_prompt = _shape_takes_for_prompt(takes, user_settings)
@@ -1365,9 +1487,21 @@ def _clip_hunter_prompt(
     speakers = _speaker_block(preset, transcript, user_settings)
     clip_meta = _clip_metadata_block(transcript)
     shot_tags = _shot_tag_block(transcript)
+    audio_cues = _audio_cue_block(transcript, mode="clip_hunter")
     boundary_rej = _boundary_rejections_block(user_settings)
     optional_blocks = "\n\n".join(
-        b for b in (exclude, focus, themes, speakers, clip_meta, shot_tags, boundary_rej) if b
+        b
+        for b in (
+            exclude,
+            focus,
+            themes,
+            speakers,
+            clip_meta,
+            shot_tags,
+            audio_cues,
+            boundary_rej,
+        )
+        if b
     )
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     transcript_for_prompt = _shape_for_prompt(transcript, user_settings)
@@ -1613,9 +1747,21 @@ def _short_generator_prompt(
     speakers = _speaker_block(preset, transcript, user_settings)
     clip_meta = _clip_metadata_block(transcript)
     shot_tags = _shot_tag_block(transcript)
+    audio_cues = _audio_cue_block(transcript, mode="short_generator")
     boundary_rej = _boundary_rejections_block(user_settings)
     optional_blocks = "\n\n".join(
-        b for b in (exclude, focus, themes, speakers, clip_meta, shot_tags, boundary_rej) if b
+        b
+        for b in (
+            exclude,
+            focus,
+            themes,
+            speakers,
+            clip_meta,
+            shot_tags,
+            audio_cues,
+            boundary_rej,
+        )
+        if b
     )
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     transcript_for_prompt = _shape_for_prompt(transcript, user_settings)
@@ -1899,9 +2045,10 @@ def _curated_prompt(
     speakers = _speaker_block(preset, flat_words, user_settings)
     clip_meta = _clip_metadata_block(flat_words)
     shot_tags = _shot_tag_block(flat_words)
+    audio_cues = _audio_cue_block(flat_words, mode="curated")
     boundary_rej = _boundary_rejections_block(user_settings)
     optional_blocks = "\n\n".join(
-        b for b in (exclude, focus, speakers, clip_meta, shot_tags, boundary_rej) if b
+        b for b in (exclude, focus, speakers, clip_meta, shot_tags, audio_cues, boundary_rej) if b
     )
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     takes_for_prompt = _shape_takes_for_prompt(takes, user_settings)
@@ -2031,9 +2178,10 @@ def _rough_cut_prompt(
     speakers = _speaker_block(preset, flat_words, user_settings)
     clip_meta = _clip_metadata_block(flat_words)
     shot_tags = _shot_tag_block(flat_words)
+    audio_cues = _audio_cue_block(flat_words, mode="rough_cut")
     boundary_rej = _boundary_rejections_block(user_settings)
     optional_blocks = "\n\n".join(
-        b for b in (exclude, focus, speakers, clip_meta, shot_tags, boundary_rej) if b
+        b for b in (exclude, focus, speakers, clip_meta, shot_tags, audio_cues, boundary_rej) if b
     )
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     takes_for_prompt = _shape_takes_for_prompt(takes, user_settings)

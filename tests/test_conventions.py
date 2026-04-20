@@ -78,6 +78,7 @@ TOOL_MODULES = [
     "celavii_resolve.cutmaster.analysis.shot_tagger",
     "celavii_resolve.cutmaster.analysis.boundary_validator",
     "celavii_resolve.cutmaster.core.validator_loop",
+    "celavii_resolve.cutmaster.analysis.audio_cues",
 ]
 
 # Route modules aren't tool modules — the TOOL_MODULES guard doesn't cover

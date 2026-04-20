@@ -64,6 +64,23 @@ class AnalyzeRequest(BaseModel):
             "continues with un-annotated transcript)."
         ),
     )
+    # v4 Layer Audio — deterministic DSP cues. No Gemini dependency;
+    # runs on the ffmpeg binary the pipeline already requires. Default
+    # off so v3 analyze stays byte-identical; panel flips it on for
+    # Assembled / Short Generator where pause-aware cuts are the signal.
+    layer_audio_enabled: bool = Field(
+        default=False,
+        description=(
+            "v4 Layer Audio: when true, run ffmpeg silencedetect + astats "
+            "over timeline audio and attach per-word cues "
+            "(pause_before_ms, pause_after_ms, rms_db_delta, "
+            "is_silence_tail) to the scrubbed transcript. No Gemini API "
+            "key needed. Cues cache under "
+            "~/.celavii/cutmaster/audio-cues/v1/<sha1(wav_signature)>/. "
+            "Stage is best-effort: ffmpeg failures surface as a failed "
+            "event but the pipeline continues with unannotated words."
+        ),
+    )
 
 
 class AnalyzeResponse(BaseModel):

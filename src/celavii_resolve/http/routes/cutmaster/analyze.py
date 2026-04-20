@@ -50,6 +50,7 @@ async def analyze(body: AnalyzeRequest) -> AnalyzeResponse:
                 expected_speakers=body.expected_speakers,
                 stt_provider=body.stt_provider,
                 layer_c_enabled=body.layer_c_enabled,
+                layer_audio_enabled=body.layer_audio_enabled,
             )
 
     task = asyncio.create_task(_run_with_ctx(run["run_id"]))

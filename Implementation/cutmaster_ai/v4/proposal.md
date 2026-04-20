@@ -354,12 +354,14 @@ Lands the "propose → review → re-plan" half of the flow.
 
 Lands in the next commit alongside this proposal update. Covers all applicable modes in one pass (the initial plan scoped short_generator as a followup but the user required full-pipeline coverage before moving to 4.3 — candidate-aware wiring landed same-session).
 
-### Phase 4.3 — Layer Audio DSP cues (1.5 days)
+### Phase 4.3 — Layer Audio DSP cues (1.5 days) ✅
 
-- **4.3.1** `analysis/audio_cues.py` — ffmpeg `astats` pass + pause/RMS computation + simple laughter/breath heuristics. Source-file-keyed cache under `audio-cues/v1/`.
-- **4.3.2** Pipeline stage `audio_cues` post-scrub, gated on `user_settings.layer_audio_enabled`.
-- **4.3.3** `_audio_cue_block` renderer + injection into Director prompts.
-- **4.3.4** Director guidance: pause-aware cutting rules for Assembled + Short Generator.
+- ✅ **4.3.1** `analysis/audio_cues.py` — ffmpeg `silencedetect` pass + `astats` RMS envelope + pure-arithmetic pause derivation. Laughter/breath heuristics deferred to v4.1 per the dependency-free constraint (numpy would be needed). Source-file-keyed cache under `audio-cues/v1/<sha1(path+size+mtime)>/cues.json` — invalidates automatically when the concat WAV is rebuilt on re-analyze.
+- ✅ **4.3.2** Pipeline stage `audio_cues` post-scrub, post-shot_tag. Gated on `AnalyzeRequest.layer_audio_enabled`. Falls back cleanly when ffmpeg fails (pause-only cues from STT timestamps). For per-clip STT runs (which lack a concat WAV), extracts one on demand via `ffmpeg_audio.extract_timeline_audio`.
+- ✅ **4.3.3** `_audio_cue_block(transcript, mode)` renderer — shows only SIGNIFICANT cues (pause ≥ 600ms, silence tails, RMS delta ≥ 4dB) with reason annotations ("natural endpoint", "hard reset", etc.). Capped at 120 rows with overflow summary. `_slim_transcript_for_prompt` strips `audio_cue` alongside `clip_metadata` + `shot_tag`. Injected into all six prompt builders.
+- ✅ **4.3.4** Mode-aware footer in `_audio_cue_footer(mode)`: Assembled mode gets "tighten every pause > 800ms unless it lands on a narrative beat"; Short Generator gets "align span starts to is_silence_tail cues where transcript allows"; other modes get the generic "prefer natural endpoints" hint. All six builders pass their own `mode=` kwarg.
+
+Lands in the next commit alongside this proposal update.
 
 ### Phase 4.4 — Per-mode activation + panel UI (1 day)
 

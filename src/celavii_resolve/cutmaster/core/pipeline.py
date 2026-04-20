@@ -545,6 +545,102 @@ async def _shot_tag_stage(tl, scrubbed_words: list[dict], run, emit) -> list[dic
     return annotated_scrubbed
 
 
+async def _audio_cues_stage(tl, scrubbed_words: list[dict], run, emit) -> list[dict]:
+    """v4 Layer Audio — deterministic DSP cues (pauses + RMS + silence).
+
+    Runs post-scrub (and post-shot_tag when both are active). Annotates
+    every scrubbed word with an ``audio_cue`` dict the Director prompt
+    (Phase 4.3.3) renders as a compact block of significant cues.
+
+    Works off whichever audio source the STT stage produced. Concat STT
+    writes a single WAV at ``state.audio_path_for(run_id)``; per-clip
+    STT leaves per-clip WAVs under ``<run_id>/`` but no concat — in
+    that case we reassemble timeline audio on the fly via
+    ``ffmpeg_audio.extract_timeline_audio``.
+
+    Best-effort: if ffmpeg fails, the stage emits ``failed`` but
+    returns the unmodified scrubbed words so the pipeline continues.
+    """
+    from ..analysis.audio_cues import (
+        attach_cues_to_transcript,
+        compute_audio_cues,
+        summarise_cues,
+    )
+
+    await emit(
+        run,
+        stage="audio_cues",
+        status="started",
+        message="Computing pause / silence / RMS cues from timeline audio",
+    )
+
+    wav_path = state.audio_path_for(run["run_id"])
+    if not wav_path.exists():
+        # per-clip STT path doesn't produce a concat WAV — build one for
+        # cue computation. Small enough that doing it here beats adding
+        # a second up-front branch to the analyze pipeline.
+        try:
+            from ..media.ffmpeg_audio import extract_timeline_audio
+
+            await asyncio.to_thread(extract_timeline_audio, tl, wav_path)
+        except Exception as exc:
+            log.warning("audio_cues: timeline audio extract failed: %s", exc)
+            await emit(
+                run,
+                stage="audio_cues",
+                status="failed",
+                message=f"could not prepare audio for cues: {exc}",
+            )
+            return scrubbed_words
+
+    try:
+        cues = await asyncio.to_thread(compute_audio_cues, wav_path, scrubbed_words)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        log.exception("audio_cues stage crashed")
+        await emit(
+            run,
+            stage="audio_cues",
+            status="failed",
+            message=f"audio cue computation failed: {exc}",
+        )
+        return scrubbed_words
+
+    # Persist the raw cue list separately for Review-screen consumption,
+    # mirroring how shot_tag stores shot_tags alongside the annotated
+    # transcript. Keeps the full signal accessible without scanning
+    # every transcript word.
+    run["audio_cues"] = list(cues)
+
+    # Attach to BOTH transcript + scrubbed so downstream consumers see
+    # them regardless of which word list they read. Attach is a pure
+    # function — input lists are not mutated. Parallel cues for the
+    # raw transcript only make sense when lengths match (they won't
+    # after scrub), so guard on that — scrubbed is what the Director
+    # sees anyway.
+    if run.get("transcript") and len(run["transcript"]) == len(cues):
+        run["transcript"] = attach_cues_to_transcript(run["transcript"], cues)
+
+    annotated = attach_cues_to_transcript(scrubbed_words, cues)
+    run["scrubbed"] = annotated
+    state.save(run)
+
+    stats = summarise_cues(cues)
+    await emit(
+        run,
+        stage="audio_cues",
+        status="complete",
+        message=(
+            f"Attached audio cues to {stats['words_total']} word(s) "
+            f"({stats['silence_tail_hits']} silence tails, "
+            f"{stats['significant_pause_hits']} significant pauses)"
+        ),
+        data=stats,
+    )
+    return annotated
+
+
 async def run_analyze(
     run_id: str,
     timeline_name: str,
@@ -554,6 +650,7 @@ async def run_analyze(
     expected_speakers: int | None = None,
     stt_provider: str | None = None,
     layer_c_enabled: bool = False,
+    layer_audio_enabled: bool = False,
 ) -> None:
     """Top-level analyze orchestrator.
 
@@ -669,7 +766,11 @@ async def run_analyze(
 
         if layer_c_enabled:
             state.raise_if_cancelled(run_id)
-            await _shot_tag_stage(tl, scrubbed, run, state.emit)
+            scrubbed = await _shot_tag_stage(tl, scrubbed, run, state.emit)
+
+        if layer_audio_enabled:
+            state.raise_if_cancelled(run_id)
+            await _audio_cues_stage(tl, scrubbed, run, state.emit)
 
         run["status"] = "done"
         state.save(run)
