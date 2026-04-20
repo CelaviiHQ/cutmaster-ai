@@ -30,7 +30,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from ._sanitize import sanitize_prose
 
 log = logging.getLogger("celavii-resolve.cutmaster.shot_tagger")
 
@@ -79,6 +81,14 @@ class ShotTag(BaseModel):
     ] = "unknown"
     visual_energy: int = Field(default=0, ge=0, le=10)
     notable: str | None = Field(default=None, max_length=80)
+
+    # v4 Phase 4.5.1 — strip PII-ish patterns if the model slips past
+    # the GUARDRAILS block. Belt-and-braces: the prompt explicitly
+    # forbids OCR / personal details, and this scrub is a second line.
+    @field_validator("notable", mode="after")
+    @classmethod
+    def _sanitize_notable(cls, value: str | None) -> str | None:
+        return sanitize_prose(value)
 
 
 class ShotTagResponse(BaseModel):

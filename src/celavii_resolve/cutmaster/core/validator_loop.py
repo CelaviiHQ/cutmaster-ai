@@ -143,6 +143,14 @@ async def run_with_boundary_validation(
         )
 
         if not jarring:
+            log.info(
+                "boundary_validator: accepted plan",
+                extra={
+                    "stage": "boundary_validator",
+                    "retry_count": attempt,
+                    "frame_count": len(samples) * 2,
+                },
+            )
             return BoundaryValidationResult(
                 plan=plan,
                 verdicts=last_verdicts,
@@ -157,6 +165,11 @@ async def run_with_boundary_validation(
             log.info(
                 "boundary_validator: retries exhausted — %d jarring cut(s) fall through to warnings",
                 len(jarring),
+                extra={
+                    "stage": "boundary_validator",
+                    "retry_count": attempt,
+                    "frame_count": len(samples) * 2,
+                },
             )
             return BoundaryValidationResult(
                 plan=plan,

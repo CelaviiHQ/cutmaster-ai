@@ -542,6 +542,18 @@ async def _shot_tag_stage(tl, scrubbed_words: list[dict], run, emit) -> list[dic
         ),
         data=stats,
     )
+    # v4 Phase 4.5.4 — structured stage-metric line. The SSE ``emit``
+    # payload already carries data for the UI; this duplicate goes to
+    # logs with allowlisted keys so aggregators can trend frame cost +
+    # cache-hit ratio across runs without scraping event JSON.
+    log.info(
+        "shot_tag stage complete",
+        extra={
+            "stage": "shot_tag",
+            "frame_count": stats["frames_total"],
+            "cache_hits": stats["frames_cache_hits"],
+        },
+    )
     return annotated_scrubbed
 
 
@@ -637,6 +649,14 @@ async def _audio_cues_stage(tl, scrubbed_words: list[dict], run, emit) -> list[d
             f"{stats['significant_pause_hits']} significant pauses)"
         ),
         data=stats,
+    )
+    # v4 Phase 4.5.4 — structured stage metrics for log aggregators.
+    log.info(
+        "audio_cues stage complete",
+        extra={
+            "stage": "audio_cues",
+            "word_count": stats["words_total"],
+        },
     )
     return annotated
 

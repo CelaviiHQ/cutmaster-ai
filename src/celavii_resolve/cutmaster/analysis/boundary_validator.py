@@ -29,7 +29,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from ._sanitize import sanitize_prose
 
 log = logging.getLogger("celavii-resolve.cutmaster.boundary_validator")
 
@@ -65,6 +67,14 @@ class BoundaryVerdict(BaseModel):
     verdict: Literal["smooth", "borderline", "jarring"] = "smooth"
     reason: str = Field(default="", max_length=200)
     suggestion: str = Field(default="", max_length=200)
+
+    # v4 Phase 4.5.1 — PII scrub on free-prose fields. The prompt already
+    # forbids OCR / identifying individuals; this is a second line of
+    # defence before the strings hit logs / the Review screen warnings.
+    @field_validator("reason", "suggestion", mode="after")
+    @classmethod
+    def _sanitize_prose(cls, value: str) -> str:
+        return sanitize_prose(value) or ""
 
 
 class BoundaryVerdictResponse(BaseModel):

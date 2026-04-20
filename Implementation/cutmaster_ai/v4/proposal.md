@@ -370,15 +370,13 @@ Lands in the next commit alongside this proposal update.
 - ✅ **4.4.3** Configure-screen `SensoryCard` with master toggle, dynamic subtitle driven by `sensoryModeKey(preset, timeline_mode)`, collapsed `<details>` Advanced expand showing live effective state for Layers C / A / Audio plus "(forced on/off)" labels. TS mirror of the matrix lives in `apps/panel/src/sensory.ts`. Pre-analyze master toggle also lands on the Preset screen under an Advanced `<details>` so new flows can opt in before analyze fires.
 - ✅ **4.4.4** Auto-save — piggybacks on the existing `useEffect([runId, userSettings, cutName])` debounce in `App.tsx`. New fields flow through `onSettingsChange` like every other setting; no new wiring needed.
 
-### Phase 4.5 — Hardening + observability (1 day)
+### Phase 4.5 — Hardening + observability (1 day) ✅
 
-- **4.5.1** Sensitive-content guardrails in all vision prompts.
-- **4.5.2** Rate limiting — bounded concurrent Gemini calls (3 in flight) so long timelines don't hammer quota.
-- **4.5.3** Cache-management endpoint — `POST /cutmaster/sensory-cache/clear` with per-layer selectivity.
-- **4.5.4** Structured logging — per-stage `frame_count`, `cache_hits`, `retry_count`, `elapsed_ms`. New allowlist additions in `logging_setup.py`: `tokens_in`, `tokens_out`, `model`, `cache_hit`, `frame_count`, `retry_count`.
-- **4.5.5** **Per-call cost telemetry → logs only.** Every Gemini call from Layers C + A logs `tokens_in`, `tokens_out`, `model`, `elapsed_ms`, `cache_hit`. Enables workflow-cost analysis and optimisation targeting without adding UI surface. No Review-screen badge in v4.0 — revisit if users specifically ask.
-
-**Note:** estimate bumped from 0.5d to 1d after v3-style validation surfaced that the sub-items are substantive (guardrails × 3 prompts + middleware-scale rate limiter + endpoint + logging + telemetry).
+- ✅ **4.5.1** GUARDRAILS block on both vision prompts (shot_tagger already had it; boundary_validator extended). Post-hoc PII scrubber in `cutmaster/analysis/_sanitize.py` — redacts email / phone / SSN patterns — wired to `ShotTag.notable` + `BoundaryVerdict.reason` / `suggestion` via Pydantic `@field_validator(mode="after")` so every deserialised response gets scrubbed before it hits cache / logs / the Review screen.
+- ✅ **4.5.2** Shared `threading.Semaphore` in `intelligence/llm.py` (env-tunable via `CELAVII_VISION_CONCURRENCY`, default 3). Acquired only when `images` is supplied so non-vision agents stay uncapped. Shot tagger still has its own async asyncio.Semaphore at the orchestrator layer; the module-level sync semaphore bounds the *actual* Gemini in-flight count across both layers.
+- ✅ **4.5.3** `POST /cutmaster/sensory-cache/clear` in `http/routes/cutmaster/sensory_cache.py`. Body `{ "layers": "all" | ["c","a","audio"] }`; per-layer outcomes carry `cleared`, `existed_before`, `bytes_freed` so the panel can surface "freed N MB". Gating consistent with the rest of the destructive surface per §Decisions #4.
+- ✅ **4.5.4** `logging_setup.ALLOWED_EXTRA_KEYS` grows seven entries: `tokens_in`, `tokens_out`, `model`, `cache_hit`, `cache_hits`, `frame_count`, `retry_count`. Stage-level emitters: `_shot_tag_stage` logs `frame_count` + `cache_hits`; `_audio_cues_stage` logs `word_count`; `validator_loop` logs `retry_count` + `frame_count` on accept and exhausted-retry paths.
+- ✅ **4.5.5** Per-call cost telemetry in `call_structured` — wraps every Gemini invocation with `time.monotonic()` + reads `response.usage_metadata.{prompt_token_count, candidates_token_count}` through `_safe_token_count` (guarded for older SDK versions). Logs `tokens_in`, `tokens_out`, `model`, `elapsed_ms`, `cache_hit=False` on every call. No UI surface per §Decisions #1; aggregators can trend cost via the allowlisted keys.
 
 ---
 

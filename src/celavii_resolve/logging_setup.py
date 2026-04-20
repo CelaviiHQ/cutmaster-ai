@@ -91,6 +91,17 @@ ALLOWED_EXTRA_KEYS = frozenset(
         "path",
         "status_code",
         "duration_ms",
+        # v4 Phase 4.5 — sensory-layer observability.
+        # Per-call (Gemini vision chokepoint): tokens_in / tokens_out /
+        # model / cache_hit. Stage-level (shot_tag / audio_cues /
+        # validator_loop): frame_count / cache_hits / retry_count.
+        "tokens_in",
+        "tokens_out",
+        "model",
+        "cache_hit",
+        "cache_hits",
+        "frame_count",
+        "retry_count",
     }
 )
 

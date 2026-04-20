@@ -13,6 +13,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
+import time
 from collections.abc import Callable, Sequence
 from typing import TypeVar
 
@@ -23,6 +25,36 @@ from ..config import get_gemini_client
 log = logging.getLogger("celavii-resolve.intelligence.llm")
 
 T = TypeVar("T", bound=BaseModel)
+
+
+# ---------------------------------------------------------------------------
+# v4 Phase 4.5 — shared vision-call concurrency gate
+# ---------------------------------------------------------------------------
+#
+# Long timelines can trigger dozens of Gemini vision calls (shot_tagger +
+# boundary_validator + validator_loop retries). Without a budget, a single
+# analyze can saturate the quota and bleed into whatever the user does
+# next. Semaphore is shared across both vision agents so the total
+# in-flight ceiling is bounded regardless of which layer fires.
+#
+# Default 3 — plenty for the panel's one-editor-at-a-time usage while
+# staying polite to free-tier quotas. Override via
+# ``CELAVII_VISION_CONCURRENCY`` (positive int).
+
+
+def _vision_concurrency_limit() -> int:
+    raw = os.environ.get("CELAVII_VISION_CONCURRENCY", "").strip()
+    if not raw:
+        return 3
+    try:
+        v = int(raw)
+    except ValueError:
+        log.warning("CELAVII_VISION_CONCURRENCY not an int (%s), using 3", raw)
+        return 3
+    return max(1, v)
+
+
+_VISION_SEM = threading.Semaphore(_vision_concurrency_limit())
 
 # (data, mime_type) — the minimal shape callers need to supply. Keeping the
 # public surface as plain bytes + str avoids coupling callers to google-genai
@@ -142,14 +174,54 @@ def call_structured(
 
         contents: list = [retry_prompt, *image_parts] if image_parts else [retry_prompt]
 
-        response = client.models.generate_content(
-            model=model,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=response_schema,
-                temperature=temperature,
-            ),
+        # Vision calls go through the shared semaphore so shot_tagger +
+        # boundary_validator + any future vision agent never exceed the
+        # configured concurrent-call budget. Non-vision calls skip the
+        # gate entirely — they're already cheap by comparison.
+        call_start = time.monotonic()
+        if image_parts:
+            with _VISION_SEM:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=response_schema,
+                        temperature=temperature,
+                    ),
+                )
+        else:
+            response = client.models.generate_content(
+                model=model,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=response_schema,
+                    temperature=temperature,
+                ),
+            )
+        elapsed_ms = int((time.monotonic() - call_start) * 1000)
+
+        # v4 Phase 4.5.5 — per-call cost telemetry. Logs only; no UI
+        # surface. Gemini exposes usage under ``usage_metadata`` with
+        # ``prompt_token_count`` / ``candidates_token_count``. Guarded
+        # because older SDK versions may not populate it.
+        tokens_in = _safe_token_count(response, "prompt_token_count")
+        tokens_out = _safe_token_count(response, "candidates_token_count")
+        log.info(
+            "agent=%s attempt=%d elapsed_ms=%d tokens_in=%s tokens_out=%s",
+            agent,
+            attempt,
+            elapsed_ms,
+            tokens_in,
+            tokens_out,
+            extra={
+                "model": model,
+                "tokens_in": tokens_in,
+                "tokens_out": tokens_out,
+                "elapsed_ms": elapsed_ms,
+                "cache_hit": False,  # in-process call, not a cache replay
+            },
         )
 
         parsed = _parse_response(response, response_schema)
@@ -183,6 +255,25 @@ def call_structured(
     raise AgentError(
         f"{agent} agent failed after {max_retries} retries. Last errors: {last_errors}"
     )
+
+
+def _safe_token_count(response, attr: str) -> int | None:
+    """Best-effort extract of a token count from Gemini's ``usage_metadata``.
+
+    Older google-genai SDK versions (and some response shapes) don't
+    populate ``usage_metadata``; those calls log ``tokens_in=None`` /
+    ``tokens_out=None`` rather than crashing the telemetry path.
+    """
+    usage = getattr(response, "usage_metadata", None)
+    if usage is None:
+        return None
+    value = getattr(usage, attr, None)
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _parse_response(response, schema: type[T]) -> T:
