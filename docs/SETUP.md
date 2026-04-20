@@ -62,8 +62,8 @@ It must say **"DaVinci Resolve Studio"** (not just "DaVinci Resolve").
 
 ```bash
 # Clone the repo
-git clone https://github.com/CelaviiHQ/celavii-davinci-resolve-mcp.git
-cd celavii-davinci-resolve-mcp
+git clone https://github.com/CelaviiHQ/cutmaster-ai.git
+cd cutmaster-ai
 
 # Run the universal installer (interactive)
 python3 scripts/install.py
@@ -77,8 +77,8 @@ python3 scripts/install.py --clients all
 ### One-Command Setup (macOS)
 
 ```bash
-git clone https://github.com/CelaviiHQ/celavii-davinci-resolve-mcp.git
-cd celavii-davinci-resolve-mcp
+git clone https://github.com/CelaviiHQ/cutmaster-ai.git
+cd cutmaster-ai
 bash scripts/setup.sh
 ```
 
@@ -93,8 +93,8 @@ This single script will:
 ### Manual Install
 
 ```bash
-git clone https://github.com/CelaviiHQ/celavii-davinci-resolve-mcp.git
-cd celavii-davinci-resolve-mcp
+git clone https://github.com/CelaviiHQ/cutmaster-ai.git
+cd cutmaster-ai
 
 # Create venv and install
 python3.11 -m venv .venv
@@ -141,15 +141,15 @@ Open the config file (create it if it doesn't exist) and add:
 {
   "mcpServers": {
     "celavii-resolve": {
-      "command": "/path/to/celavii-davinci-resolve-mcp/.venv/bin/python3",
+      "command": "/path/to/cutmaster-ai/.venv/bin/python3",
       "args": ["-m", "celavii_resolve"],
-      "cwd": "/path/to/celavii-davinci-resolve-mcp"
+      "cwd": "/path/to/cutmaster-ai"
     }
   }
 }
 ```
 
-Replace `/path/to/celavii-davinci-resolve-mcp` with the actual path where you cloned the repo.
+Replace `/path/to/cutmaster-ai` with the actual path where you cloned the repo.
 
 **Option C — Using uv (no venv needed):**
 
@@ -160,7 +160,7 @@ Replace `/path/to/celavii-davinci-resolve-mcp` with the actual path where you cl
       "command": "uv",
       "args": [
         "run",
-        "--directory", "/path/to/celavii-davinci-resolve-mcp",
+        "--directory", "/path/to/cutmaster-ai",
         "python", "-m", "celavii_resolve"
       ]
     }
@@ -181,7 +181,7 @@ Claude Code uses a project-level `.mcp.json` file. This is **already included** 
 
 ```bash
 # Navigate to the project directory
-cd celavii-davinci-resolve-mcp
+cd cutmaster-ai
 
 # The .mcp.json is already configured — just start Claude Code
 claude
@@ -212,9 +212,9 @@ Add to `~/.claude/settings.json`:
 {
   "mcpServers": {
     "celavii-resolve": {
-      "command": "/path/to/celavii-davinci-resolve-mcp/.venv/bin/python3",
+      "command": "/path/to/cutmaster-ai/.venv/bin/python3",
       "args": ["-m", "celavii_resolve"],
-      "cwd": "/path/to/celavii-davinci-resolve-mcp"
+      "cwd": "/path/to/cutmaster-ai"
     }
   }
 }
@@ -228,9 +228,9 @@ Add to `~/.claude/settings.json`:
 {
   "mcpServers": {
     "celavii-resolve": {
-      "command": "/path/to/celavii-davinci-resolve-mcp/.venv/bin/python3",
+      "command": "/path/to/cutmaster-ai/.venv/bin/python3",
       "args": ["-m", "celavii_resolve"],
-      "cwd": "/path/to/celavii-davinci-resolve-mcp"
+      "cwd": "/path/to/cutmaster-ai"
     }
   }
 }
@@ -242,9 +242,9 @@ Add to `~/.claude/settings.json`:
 {
   "servers": {
     "celavii-resolve": {
-      "command": "/path/to/celavii-davinci-resolve-mcp/.venv/bin/python3",
+      "command": "/path/to/cutmaster-ai/.venv/bin/python3",
       "args": ["-m", "celavii_resolve"],
-      "cwd": "/path/to/celavii-davinci-resolve-mcp"
+      "cwd": "/path/to/cutmaster-ai"
     }
   }
 }
@@ -256,9 +256,9 @@ Add to `~/.claude/settings.json`:
 {
   "mcpServers": {
     "celavii-resolve": {
-      "command": "/path/to/celavii-davinci-resolve-mcp/.venv/bin/python3",
+      "command": "/path/to/cutmaster-ai/.venv/bin/python3",
       "args": ["-m", "celavii_resolve"],
-      "cwd": "/path/to/celavii-davinci-resolve-mcp"
+      "cwd": "/path/to/cutmaster-ai"
     }
   }
 }
@@ -271,10 +271,10 @@ Add to `~/.claude/settings.json`:
   "context_servers": {
     "celavii-resolve": {
       "command": {
-        "path": "/path/to/celavii-davinci-resolve-mcp/.venv/bin/python3",
+        "path": "/path/to/cutmaster-ai/.venv/bin/python3",
         "args": ["-m", "celavii_resolve"],
         "env": {
-          "PYTHONPATH": "/path/to/celavii-davinci-resolve-mcp/src"
+          "PYTHONPATH": "/path/to/cutmaster-ai/src"
         }
       },
       "settings": {}
@@ -315,7 +315,7 @@ Skills are Claude Code slash commands defined in `skills/*/SKILL.md` files. When
 > /preflight
 ```
 
-**Skills are project-level by default.** They work when Claude Code is running inside the `celavii-davinci-resolve-mcp` directory. To use them from any directory, see [Installing for Global Access](#44-installing-for-global-access).
+**Skills are project-level by default.** They work when Claude Code is running inside the `cutmaster-ai` directory. To use them from any directory, see [Installing for Global Access](#44-installing-for-global-access).
 
 ### 4.2 How Agents Work
 
@@ -385,9 +385,9 @@ cp hooks/hooks.json ~/.claude/settings.json
 {
   "mcpServers": {
     "celavii-resolve": {
-      "command": "/path/to/celavii-davinci-resolve-mcp/.venv/bin/python3",
+      "command": "/path/to/cutmaster-ai/.venv/bin/python3",
       "args": ["-m", "celavii_resolve"],
-      "cwd": "/path/to/celavii-davinci-resolve-mcp"
+      "cwd": "/path/to/cutmaster-ai"
     }
   }
 }
@@ -453,7 +453,7 @@ Once installed, all 9 skills become available as namespaced slash commands:
 During development, test the plugin without building a ZIP:
 
 ```bash
-claude --plugin-dir ./celavii-davinci-resolve-mcp
+claude --plugin-dir ./cutmaster-ai
 ```
 
 This loads the plugin directly from the project directory, using the `.claude-plugin/plugin.json` manifest and the `skills/` directory.
@@ -541,7 +541,7 @@ The recipient can then:
 
 ```bash
 unzip celavii-resolve-v0.1.0.zip
-cd celavii-davinci-resolve-mcp
+cd cutmaster-ai
 bash scripts/setup.sh
 ```
 
@@ -584,7 +584,7 @@ After setup, verify everything works:
 ### Check Resolve Connection
 
 ```bash
-cd celavii-davinci-resolve-mcp
+cd cutmaster-ai
 source .venv/bin/activate
 python -c "
 import sys; sys.path.insert(0, 'src')
@@ -623,7 +623,7 @@ You should see the tool being called and returning the Resolve version.
 ### Test in Claude Code
 
 ```bash
-cd celavii-davinci-resolve-mcp
+cd cutmaster-ai
 claude
 ```
 
@@ -646,7 +646,7 @@ Then type:
    ```
 2. Check the Python path is correct — it must be the **absolute** path to the venv Python:
    ```bash
-   ls -la /path/to/celavii-davinci-resolve-mcp/.venv/bin/python3
+   ls -la /path/to/cutmaster-ai/.venv/bin/python3
    ```
 3. Restart Claude Desktop completely (Cmd+Q, not just close window)
 4. Check Claude Desktop's developer console for errors
@@ -660,7 +660,7 @@ Then type:
 ### "Module not found" errors
 
 ```bash
-cd celavii-davinci-resolve-mcp
+cd cutmaster-ai
 source .venv/bin/activate
 pip install -e ".[dev]"
 ```
@@ -675,7 +675,7 @@ chmod 644 ~/Library/LaunchAgents/com.celavii.resolve-mcp.plist
 
 - Make sure you're running Claude Code **from inside the project directory**:
   ```bash
-  cd celavii-davinci-resolve-mcp
+  cd cutmaster-ai
   claude
   ```
 - Or install globally: `bash scripts/setup.sh --global`

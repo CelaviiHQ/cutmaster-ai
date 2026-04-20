@@ -56,8 +56,8 @@ Studio extends the OSS core via two **entry-point groups** (`celavii_resolve.too
 ### One-Command Setup (macOS)
 
 ```bash
-git clone https://github.com/CelaviiHQ/celavii-davinci-resolve-mcp.git
-cd celavii-davinci-resolve-mcp
+git clone https://github.com/CelaviiHQ/cutmaster-ai.git
+cd cutmaster-ai
 bash scripts/setup.sh
 ```
 
@@ -70,16 +70,16 @@ bash scripts/setup.sh --all
 ### Interactive Installer
 
 ```bash
-git clone https://github.com/CelaviiHQ/celavii-davinci-resolve-mcp.git
-cd celavii-davinci-resolve-mcp
+git clone https://github.com/CelaviiHQ/cutmaster-ai.git
+cd cutmaster-ai
 python3 scripts/install.py
 ```
 
 ### Manual Install
 
 ```bash
-git clone https://github.com/CelaviiHQ/celavii-davinci-resolve-mcp.git
-cd celavii-davinci-resolve-mcp
+git clone https://github.com/CelaviiHQ/cutmaster-ai.git
+cd cutmaster-ai
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
@@ -97,9 +97,9 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 {
   "mcpServers": {
     "celavii-resolve": {
-      "command": "/path/to/celavii-davinci-resolve-mcp/.venv/bin/python3",
+      "command": "/path/to/cutmaster-ai/.venv/bin/python3",
       "args": ["-m", "celavii_resolve"],
-      "cwd": "/path/to/celavii-davinci-resolve-mcp"
+      "cwd": "/path/to/cutmaster-ai"
     }
   }
 }
@@ -112,7 +112,7 @@ Or run `python3 scripts/install.py --clients claude-desktop` to configure automa
 The project includes a `.mcp.json` file — Claude Code auto-detects it:
 
 ```bash
-cd celavii-davinci-resolve-mcp
+cd cutmaster-ai
 claude
 ```
 
@@ -284,7 +284,7 @@ python -m celavii_resolve # Run server
 ## Project Structure
 
 ```
-celavii-davinci-resolve-mcp/
+cutmaster-ai/
 ├── src/celavii_resolve/
 │   ├── config.py          # FastMCP server, constants
 │   ├── resolve.py         # Connection management, helpers

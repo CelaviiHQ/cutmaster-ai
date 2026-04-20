@@ -14,7 +14,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PROJECT_NAME="celavii-davinci-resolve-mcp"
+PROJECT_NAME="cutmaster-ai"
 
 # Read version from pyproject.toml
 VERSION=$(grep '^version' "$PROJECT_DIR/pyproject.toml" | head -1 | sed 's/version = "\(.*\)"/\1/')

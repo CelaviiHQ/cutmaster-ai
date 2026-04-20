@@ -5,8 +5,8 @@ Welcome — and thanks for the interest. This guide gets you from clone to first
 ## First-time setup
 
 ```bash
-git clone https://github.com/CelaviiHQ/celavii-davinci-resolve-mcp.git
-cd celavii-davinci-resolve-mcp
+git clone https://github.com/CelaviiHQ/cutmaster-ai.git
+cd cutmaster-ai
 
 # 0. Install uv (REQUIRED — the committed .mcp.json uses `uv run`)
 brew install uv                                        # macOS

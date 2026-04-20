@@ -31,8 +31,8 @@ Point it at a raw or assembled timeline; pick a preset (Podcast → YouTube, Vlo
 ### 1. Clone and set up Python
 
 ```bash
-git clone https://github.com/CelaviiHQ/celavii-davinci-resolve-mcp.git
-cd celavii-davinci-resolve-mcp
+git clone https://github.com/CelaviiHQ/cutmaster-ai.git
+cd cutmaster-ai
 bash scripts/setup.sh --panel
 ```
 

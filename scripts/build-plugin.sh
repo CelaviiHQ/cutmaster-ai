@@ -17,7 +17,7 @@
 #   claude plugin install ./celavii-resolve-plugin.zip
 #
 # Or test locally:
-#   claude --plugin-dir ./celavii-davinci-resolve-mcp
+#   claude --plugin-dir ./cutmaster-ai
 # ============================================================================
 
 set -euo pipefail
