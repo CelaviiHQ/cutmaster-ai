@@ -57,8 +57,8 @@ celavii-resolve = "celavii_resolve:main"
 celavii-resolve-panel = "celavii_resolve.http.app:main"
 
 [project.urls]
-Homepage = "https://github.com/CelaviiHQ/celavii-davinci-resolve-mcp"
-Repository = "https://github.com/CelaviiHQ/celavii-davinci-resolve-mcp"
+Homepage = "https://github.com/CelaviiHQ/cutmaster-ai"
+Repository = "https://github.com/CelaviiHQ/cutmaster-ai"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/celavii_resolve"]
