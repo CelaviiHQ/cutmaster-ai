@@ -483,7 +483,7 @@ def _maybe_relabel_transcript(
 
 
 def _slim_transcript_for_prompt(transcript: list[dict]) -> list[dict]:
-    """Drop ``clip_metadata`` off every word before JSON-serialising.
+    """Drop ``clip_metadata`` + ``shot_tag`` off every word before JSON-serialising.
 
     v2-6 attaches full clip metadata to every word for the pipeline's
     internal use. When the transcript hits the Director prompt though, the
@@ -493,15 +493,20 @@ def _slim_transcript_for_prompt(transcript: list[dict]) -> list[dict]:
     roughly 3×. The ``clip_index`` integer stays so the Director can still
     cross-reference words back to the table.
 
-    Words without ``clip_metadata`` pass through unchanged — v1 runs and
-    the concat STT path don't need this path.
+    v4 Layer C does the same for ``shot_tag`` — the SHOT TAGS coalesced
+    block carries the same signal once per range rather than once per
+    word (60-min source: ~50-150 block lines vs. >10k per-word duplicates).
+
+    Words without these fields pass through unchanged — v1 runs, the
+    concat STT path, and sensory-off builds all satisfy that.
     """
+    drop = ("clip_metadata", "shot_tag")
     out: list[dict] = []
     for w in transcript:
-        if "clip_metadata" not in w:
+        if not any(k in w for k in drop):
             out.append(w)
             continue
-        out.append({k: v for k, v in w.items() if k != "clip_metadata"})
+        out.append({k: v for k, v in w.items() if k not in drop})
     return out
 
 
@@ -532,6 +537,123 @@ def _clip_metadata_block(transcript: list[dict]) -> str:
         "consider the clip's position when deciding structure.\n"
         f"{table}"
     )
+
+
+# v4 Layer C: hard cap on how many rows the SHOT TAGS block can carry
+# before the overflow summary kicks in. On a 60-min source, coalesced
+# ranges typically land around 50-120 — 150 is the safety valve that
+# keeps the prompt bounded even when shot variety spikes.
+_SHOT_TAG_MAX_ROWS = 150
+
+
+def _shot_tag_block(transcript: list[dict]) -> str:
+    """Render a SHOT TAGS block when words carry ``shot_tag`` (v4 Layer C).
+
+    Coalesces consecutive words that share the same tag identity into a
+    single row so a 10,000-word transcript yields ~50-150 rows, not one
+    per word. Identity = ``(item_index, timeline_ts_s)`` — the tuple the
+    shot_tagger writes when it attaches tags. Words without ``shot_tag``
+    cause an empty string return (same contract as the other optional
+    blocks — sensory-off runs emit nothing).
+
+    The format mirrors the v4 proposal example. Missing / unknown fields
+    are omitted row-by-row so the row stays compact when the tagger
+    didn't have signal (e.g. framing=unknown).
+
+    When row count exceeds ``_SHOT_TAG_MAX_ROWS``, the tail is summarised
+    as "... N more ranges omitted" — the prompt stays bounded.
+    """
+    tagged_words = [w for w in transcript if w.get("shot_tag")]
+    if not tagged_words:
+        return ""
+
+    # Coalesce by (item_index, timeline_ts_s). Track word index within the
+    # passed-in transcript so the row label is "words A-B" against the
+    # same ordering the prompt sees.
+    rows: list[tuple[int, int, dict]] = []
+    current_key: tuple | None = None
+    current_start = 0
+    current_tag: dict | None = None
+
+    for idx, word in enumerate(transcript):
+        tag = word.get("shot_tag")
+        if tag is None:
+            # Untagged word breaks the current run. Close out any open run.
+            if current_key is not None and current_tag is not None:
+                rows.append((current_start, idx - 1, current_tag))
+                current_key = None
+                current_tag = None
+            continue
+
+        key = (tag.get("item_index"), tag.get("timeline_ts_s"))
+        if key != current_key:
+            if current_key is not None and current_tag is not None:
+                rows.append((current_start, idx - 1, current_tag))
+            current_key = key
+            current_start = idx
+            current_tag = tag
+
+    if current_key is not None and current_tag is not None:
+        rows.append((current_start, len(transcript) - 1, current_tag))
+
+    if not rows:
+        return ""
+
+    # Drop rows where every tag field is unknown / default — they add noise
+    # without carrying signal.
+    def _has_signal(tag: dict) -> bool:
+        if tag.get("shot_type") not in (None, "unknown"):
+            return True
+        if tag.get("framing") not in (None, "unknown"):
+            return True
+        if tag.get("gesture_intensity") not in (None, "unknown"):
+            return True
+        if int(tag.get("visual_energy") or 0) > 0:
+            return True
+        return bool(tag.get("notable"))
+
+    rows = [r for r in rows if _has_signal(r[2])]
+    if not rows:
+        return ""
+
+    lines = [
+        "SHOT TAGS (per word range, derived from Gemini vision pass):",
+        "",
+    ]
+
+    truncated = max(0, len(rows) - _SHOT_TAG_MAX_ROWS)
+    for a, b, tag in rows[:_SHOT_TAG_MAX_ROWS]:
+        label = f"words {a}-{b}"
+        parts: list[str] = []
+        item_idx = tag.get("item_index")
+        if item_idx is not None:
+            parts.append(f"item={item_idx}")
+        for field_name, prefix in (
+            ("shot_type", "shot"),
+            ("framing", "framing"),
+            ("gesture_intensity", "gest"),
+        ):
+            val = tag.get(field_name)
+            if val and val != "unknown":
+                parts.append(f"{prefix}={val}")
+        energy = tag.get("visual_energy")
+        if energy is not None and int(energy) > 0:
+            parts.append(f"energy={int(energy)}")
+        notable = tag.get("notable")
+        if notable:
+            parts.append(f'"{notable}"')
+        lines.append(f"  {label:<16} " + "  ".join(parts))
+
+    if truncated:
+        lines.append(f"  ... {truncated} more ranges omitted")
+
+    lines.append("")
+    lines.append(
+        "Prefer: not cutting mid-emphatic-gesture · alternating shot types · "
+        "opening on higher visual_energy for hook impact. These tags are "
+        "advisory — narrative / pacing / transcript semantics still win."
+    )
+    return "\n".join(lines)
 
 
 def _shape_takes_for_prompt(
@@ -762,7 +884,8 @@ def _prompt(preset: PresetBundle, transcript: list[dict], user_settings: dict | 
     focus = _focus_block(user_settings)
     speakers = _speaker_block(preset, transcript, user_settings)
     clip_meta = _clip_metadata_block(transcript)
-    optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers, clip_meta) if b)
+    shot_tags = _shot_tag_block(transcript)
+    optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers, clip_meta, shot_tags) if b)
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     recipe = _target_length_recipe_block(user_settings, preset)
     hook = _selected_hook_block(user_settings)
@@ -930,7 +1053,8 @@ def _assembled_prompt(
         flat_words.extend(t.get("transcript") or [])
     speakers = _speaker_block(preset, flat_words, user_settings)
     clip_meta = _clip_metadata_block(flat_words)
-    optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers, clip_meta) if b)
+    shot_tags = _shot_tag_block(flat_words)
+    optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers, clip_meta, shot_tags) if b)
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     takes_for_prompt = _shape_takes_for_prompt(takes, user_settings)
 
@@ -1149,7 +1273,10 @@ def _clip_hunter_prompt(
     themes = _themes_block(user_settings)
     speakers = _speaker_block(preset, transcript, user_settings)
     clip_meta = _clip_metadata_block(transcript)
-    optional_blocks = "\n\n".join(b for b in (exclude, focus, themes, speakers, clip_meta) if b)
+    shot_tags = _shot_tag_block(transcript)
+    optional_blocks = "\n\n".join(
+        b for b in (exclude, focus, themes, speakers, clip_meta, shot_tags) if b
+    )
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     transcript_for_prompt = _shape_for_prompt(transcript, user_settings)
     low = target_clip_length_s * 0.6
@@ -1393,7 +1520,10 @@ def _short_generator_prompt(
     themes = _themes_block(user_settings)
     speakers = _speaker_block(preset, transcript, user_settings)
     clip_meta = _clip_metadata_block(transcript)
-    optional_blocks = "\n\n".join(b for b in (exclude, focus, themes, speakers, clip_meta) if b)
+    shot_tags = _shot_tag_block(transcript)
+    optional_blocks = "\n\n".join(
+        b for b in (exclude, focus, themes, speakers, clip_meta, shot_tags) if b
+    )
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     transcript_for_prompt = _shape_for_prompt(transcript, user_settings)
     # Recipe approach: pre-solve the arithmetic for the model. Don't ask it to
@@ -1675,7 +1805,8 @@ def _curated_prompt(
         flat_words.extend(t.get("transcript") or [])
     speakers = _speaker_block(preset, flat_words, user_settings)
     clip_meta = _clip_metadata_block(flat_words)
-    optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers, clip_meta) if b)
+    shot_tags = _shot_tag_block(flat_words)
+    optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers, clip_meta, shot_tags) if b)
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     takes_for_prompt = _shape_takes_for_prompt(takes, user_settings)
 
@@ -1803,7 +1934,8 @@ def _rough_cut_prompt(
         flat_words.extend(t.get("transcript") or [])
     speakers = _speaker_block(preset, flat_words, user_settings)
     clip_meta = _clip_metadata_block(flat_words)
-    optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers, clip_meta) if b)
+    shot_tags = _shot_tag_block(flat_words)
+    optional_blocks = "\n\n".join(b for b in (exclude, focus, speakers, clip_meta, shot_tags) if b)
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     takes_for_prompt = _shape_takes_for_prompt(takes, user_settings)
     groups_for_prompt = [
