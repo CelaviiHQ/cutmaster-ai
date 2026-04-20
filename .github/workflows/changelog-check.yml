@@ -1,0 +1,57 @@
+name: CHANGELOG check
+
+# Requires PRs that modify src/ to also add an entry under `## [Unreleased]`
+# in CHANGELOG.md. Prevents "oops, I forgot to update the changelog" merges.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Determine base ref
+        id: base
+        run: |
+          echo "sha=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Check for src/ changes
+        id: src
+        run: |
+          CHANGED=$(git diff --name-only "${{ steps.base.outputs.sha }}"...HEAD -- 'src/***' || true)
+          if [ -n "$CHANGED" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Changed src/ files:"
+            echo "$CHANGED"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Require CHANGELOG [Unreleased] update
+        if: steps.src.outputs.changed == 'true'
+        run: |
+          # Extract the body of the "## [Unreleased]" section — everything
+          # between that heading and the next "## [" heading or EOF.
+          UNRELEASED=$(awk '
+            /^## \[Unreleased\]/ { flag=1; next }
+            flag && /^## \[/ { exit }
+            flag { print }
+          ' CHANGELOG.md)
+
+          # Strip whitespace; fail if empty.
+          TRIMMED=$(echo "$UNRELEASED" | sed '/^[[:space:]]*$/d')
+          if [ -z "$TRIMMED" ]; then
+            echo "::error::PR modifies src/ but CHANGELOG.md '## [Unreleased]' is empty." >&2
+            echo "Add a bullet describing your change under ## [Unreleased]." >&2
+            exit 1
+          fi
+          echo "Unreleased section has content — check passes."

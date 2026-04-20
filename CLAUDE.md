@@ -40,14 +40,17 @@ Two distinct roles, by design:
 
 `.claude/agents/` is intentionally **absent** — the colorist/editor/etc. agents are for end-user video work, not Python development. If you need a dev-facing agent, add it to `.claude/agents/` (not the top-level `agents/`).
 
-## Two consumers, one codebase
+## Three consumers, one codebase
 
-| Entry point | Transport | Consumer | Install |
+| Consumer | Transport | Entry point | Install |
 |---|---|---|---|
-| `celavii-resolve` | MCP stdio | Claude Code / Desktop | `pip install celavii-resolve` |
-| `celavii-resolve-panel` | HTTP on `127.0.0.1:8765` | React Workflow Integration panel | `pip install 'celavii-resolve[panel]'` |
+| **MCP clients** (Claude Code / Desktop, Cursor) | MCP stdio | `celavii-resolve` | `pip install celavii-resolve` |
+| **Resolve Workflow Integration panel** (React UI, in-Resolve webview) | HTTP on `127.0.0.1:8765` | `celavii-resolve-panel` | `pip install 'celavii-resolve[panel]'` |
+| **Celavii Studio** (closed-source native macOS app — separate repo) | HTTP via bundled Python | `celavii-resolve-panel` embedded | Web download from celavii.com |
 
-Both call the same underlying Resolve logic. Every tool function under `cutmaster/` exposes a **plain Python function** (callable from `http/`) and a thin `@mcp.tool` wrapper (callable over MCP). When adding a new primitive that both consumers need, keep the business logic in the plain function and make the `@mcp.tool` a thin adapter.
+Studio doesn't fork or patch this repo — it **pins a PyPI release** of `celavii-resolve` and ships it alongside a private `celavii_studio_pro` wheel that registers extra capabilities via **entry points**. The OSS package keeps running exactly as it does today for everyone else; Studio just happens to be the most demanding consumer. See [SURFACE.md](SURFACE.md) for the versioned contract and [`src/celavii_resolve/plugins.py`](src/celavii_resolve/plugins.py) for discovery.
+
+All three consumers call the same underlying Resolve logic. Every tool function under `cutmaster/` exposes a **plain Python function** (callable from `http/`) and a thin `@mcp.tool` wrapper (callable over MCP). When adding a new primitive that both consumers need, keep the business logic in the plain function and make the `@mcp.tool` a thin adapter.
 
 ## Responsibility model (pick the right bucket)
 

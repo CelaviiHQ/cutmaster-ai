@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import logging
 import os
+import socket
+import sys
 import time
 
 try:
@@ -23,7 +25,10 @@ except ImportError as exc:
     ) from exc
 
 from .. import __version__
+from ..licensing import current_tier
 from ..logging_setup import configure_logging
+from ..migrations.runner import apply_migrations
+from ..plugins import discover_panel_routes, registered_plugins
 from .routes import cutmaster as cutmaster_routes
 
 log = logging.getLogger("celavii-resolve-panel")
@@ -82,7 +87,15 @@ def create_app() -> FastAPI:
     def ping() -> dict:
         return {"ok": True, "service": "celavii-resolve-panel", "version": __version__}
 
+    @app.get("/pro/status")
+    def pro_status() -> dict:
+        return {"tier": current_tier(), "plugins": registered_plugins()}
+
     app.include_router(cutmaster_routes.router)
+
+    # Panel-route plugins register last so they can include_router their
+    # own prefixed routers without colliding with OSS endpoints.
+    discover_panel_routes(app)
 
     # Serve the React bundle if it's been built. Panel build step copies
     # apps/panel/dist/ → src/celavii_resolve/http/static/.
@@ -92,8 +105,26 @@ def create_app() -> FastAPI:
     return app
 
 
+def _pick_free_port() -> int:
+    """Ask the kernel for a free ephemeral port and release it immediately."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def _default_state_db_path() -> str:
+    """Default Panel SQLite location. Overridden by ``CELAVII_PANEL_DB``."""
+    home = os.path.expanduser("~")
+    return os.path.join(home, ".celavii", "panel", "state.db")
+
+
 def main() -> None:
-    """Entry point for the ``celavii-resolve-panel`` console script."""
+    """Entry point for the ``celavii-resolve-panel`` console script.
+
+    Prints ``PANEL_READY http://host:port`` as the first stdout line so
+    supervisors (e.g. the Studio Swift shell) can discover a randomly
+    assigned port. Set ``CELAVII_PANEL_PORT=0`` to force random allocation.
+    """
     try:
         import uvicorn
     except ImportError as exc:
@@ -104,9 +135,24 @@ def main() -> None:
 
     host = os.environ.get("CELAVII_PANEL_HOST", "127.0.0.1")
     port = int(os.environ.get("CELAVII_PANEL_PORT", "8765"))
+    if port == 0:
+        port = _pick_free_port()
+
+    # Stdout must lead with PANEL_READY so a supervisor parsing line-by-line
+    # can capture the URL before any other output. Configure logging after.
+    print(f"PANEL_READY http://{host}:{port}", flush=True)
+    sys.stdout.flush()
 
     configure_logging()
     log.info("Starting celavii-resolve-panel on http://%s:%d", host, port)
+
+    db_path = os.environ.get("CELAVII_PANEL_DB", _default_state_db_path())
+    try:
+        applied = apply_migrations(db_path)
+        if applied:
+            log.info("Applied %d migration(s): %s", len(applied), ", ".join(applied))
+    except Exception:
+        log.exception("Panel state migrations failed at %s", db_path)
 
     uvicorn.run(
         "celavii_resolve.http.app:create_app",

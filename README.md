@@ -26,6 +26,16 @@ A DaVinci Resolve toolkit with two faces: an **MCP server** (for AI clients like
 
 > The **Resolve Workflow Integration plugin** and the **Claude Code plugin** are two entirely separate artifacts. They share no files and follow different install paths. See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md#two-plugins-one-repo) for the disambiguation.
 
+### Three products that depend on this repo
+
+| # | Name | Audience | Source | Distribution |
+|---|---|---|---|---|
+| 1 | **Celavii MCP** (Claude Code plugin) | AI engineers, Claude Code users | This repo | `pip install celavii-resolve` + Claude Code marketplace |
+| 2 | **Celavii Resolve Workflow plugin** | Any Resolve 21+ user | This repo | Copy into Resolve's plugin folder |
+| 3 | **Celavii Studio** (paid macOS app) | Colorists, editors, designers | Separate private repo | Notarized DMG from [celavii.com](https://celavii.com) — pins a PyPI version of this package |
+
+Studio extends the OSS core via two **entry-point groups** (`celavii_resolve.tools` and `celavii_resolve.panel_routes`) — third-party plugins can register the same way. See [SURFACE.md](SURFACE.md) for the contract and [`src/celavii_resolve/plugins.py`](src/celavii_resolve/plugins.py) for the discovery code.
+
 ---
 
 ## Features

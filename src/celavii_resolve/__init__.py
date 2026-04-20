@@ -57,3 +57,8 @@ from .cutmaster.data import presets as cutmaster_presets  # noqa: F401, E402
 from .intelligence import llm as cutmaster_llm  # noqa: F401, E402
 from .tools import lut_registry  # noqa: F401, E402
 from . import resources  # noqa: F401, E402
+
+# Third-party MCP tool plugins — run last so OSS tools register first.
+from .plugins import discover_tools  # noqa: E402
+
+discover_tools(mcp)
