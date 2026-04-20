@@ -11,6 +11,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from ....cutmaster.core import state
 from ....cutmaster.core.pipeline import run_analyze
+from ....cutmaster.data.presets import resolve_sensory_layers
 from ....logging_setup import with_run_id
 from ._models import AnalyzeRequest, AnalyzeResponse
 
@@ -30,11 +31,28 @@ async def analyze(body: AnalyzeRequest) -> AnalyzeResponse:
     run = state.new_run(body.timeline_name, body.preset)
     state.save(run)
 
+    # v4 Phase 4.4: when the caller supplies sensory_master_enabled but
+    # no explicit per-layer overrides, resolve via the matrix against the
+    # preset (timeline_mode isn't known yet — use the default "raw_dump"
+    # row). Panel callers already send pre-resolved booleans so this is
+    # a no-op for them; pure-API callers (scripts, tests) get sane
+    # defaults from just toggling master.
+    layer_c_resolved, _layer_a_unused, layer_audio_resolved = resolve_sensory_layers(
+        master_enabled=body.sensory_master_enabled,
+        c_override=body.layer_c_enabled if body.layer_c_enabled else None,
+        a_override=None,
+        audio_override=body.layer_audio_enabled if body.layer_audio_enabled else None,
+        preset=body.preset,
+        timeline_mode="raw_dump",
+    )
+
     log.info(
-        "Analyze run %s starting for timeline '%s' (preset=%s)",
+        "Analyze run %s starting for timeline '%s' (preset=%s, layer_c=%s, layer_audio=%s)",
         run["run_id"],
         body.timeline_name,
         body.preset,
+        layer_c_resolved,
+        layer_audio_resolved,
     )
 
     async def _run_with_ctx(run_id: str) -> None:
@@ -49,8 +67,8 @@ async def analyze(body: AnalyzeRequest) -> AnalyzeResponse:
                 per_clip_stt=body.per_clip_stt,
                 expected_speakers=body.expected_speakers,
                 stt_provider=body.stt_provider,
-                layer_c_enabled=body.layer_c_enabled,
-                layer_audio_enabled=body.layer_audio_enabled,
+                layer_c_enabled=layer_c_resolved,
+                layer_audio_enabled=layer_audio_resolved,
             )
 
     task = asyncio.create_task(_run_with_ctx(run["run_id"]))

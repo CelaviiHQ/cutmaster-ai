@@ -24,6 +24,8 @@ interface Props {
     onExpectedSpeakersChange: (v: number | null) => void;
     sttProvider: SttProviderKey | null;
     onSttProviderChange: (v: SttProviderKey | null) => void;
+    sensoryMasterEnabled: boolean;
+    onSensoryMasterChange: (v: boolean) => void;
     onNext: () => void | Promise<void>;
     /** Jump to an existing run — hydrates state + navigates to resumeAt. */
     onReopenRun: (runId: string) => void | Promise<void>;
@@ -61,6 +63,8 @@ export default function PresetPickScreen({
     onExpectedSpeakersChange,
     sttProvider,
     onSttProviderChange,
+    sensoryMasterEnabled,
+    onSensoryMasterChange,
     onNext,
     onReopenRun,
 }: Props) {
@@ -563,6 +567,61 @@ export default function PresetPickScreen({
                             trimmed timeline only re-transcribes the changed takes.
                         </p>
                     </div>
+                </div>
+            </details>
+
+            {/* v4 Phase 4.4 — Shot-aware editing pre-analyze toggle.
+                Fine-grained per-layer overrides live on the Configure
+                screen; this is just the master switch so new runs can
+                opt in before analyze kicks off. */}
+            <details className="card card--advanced">
+                <summary>
+                    <span>
+                        Shot-aware editing
+                        {sensoryMasterEnabled && (
+                            <>
+                                {" "}
+                                <span
+                                    className="muted"
+                                    style={{ fontSize: "var(--fs-2)" }}
+                                >
+                                    · on
+                                </span>
+                            </>
+                        )}
+                    </span>
+                </summary>
+                <div className="card-body">
+                    <label
+                        style={{
+                            display: "flex",
+                            gap: "var(--s-2)",
+                            alignItems: "center",
+                            margin: 0,
+                            color: "var(--text-primary)",
+                            fontSize: "var(--fs-3)",
+                        }}
+                    >
+                        <input
+                            type="checkbox"
+                            checked={sensoryMasterEnabled}
+                            onChange={(e) =>
+                                onSensoryMasterChange(e.target.checked)
+                            }
+                            style={{ width: "auto", height: "auto" }}
+                        />
+                        Enable shot tagging + boundary validation
+                    </label>
+                    <p
+                        className="muted"
+                        style={{ marginTop: "var(--s-2)", fontSize: "var(--fs-2)" }}
+                    >
+                        Samples frames from each timeline item and asks Gemini
+                        for shot tags; validates cut boundaries at build time.
+                        Adds 30–60 s on first analyze; cached after. Needs{" "}
+                        <code>GEMINI_API_KEY</code>. Fine-tune individual
+                        layers on the Configure screen.
+                    </p>
                 </div>
             </details>
 

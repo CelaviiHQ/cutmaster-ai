@@ -174,6 +174,13 @@ export interface UserSettings {
   num_clips?: number;
   speaker_labels?: Record<string, string> | null;
   selected_hook_s?: number | null;
+  // v4 Phase 4.4 sensory-layer toggles. Master drives the matrix; the
+  // per-layer fields are tri-state overrides (null = defer to matrix,
+  // true = force on, false = force off).
+  sensory_master_enabled?: boolean;
+  layer_c_enabled?: boolean | null;
+  layer_a_enabled?: boolean | null;
+  layer_audio_enabled?: boolean | null;
 }
 
 export interface SpeakerRosterEntry {

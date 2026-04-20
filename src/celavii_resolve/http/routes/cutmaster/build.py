@@ -55,6 +55,7 @@ from ....cutmaster.data.presets import (
     get_preset,
     preset_mode_compatible,
     preset_mode_incompatibility_reason,
+    resolve_sensory_layers,
 )
 from ....cutmaster.resolve_ops.assembled import (
     build_take_entries,
@@ -77,46 +78,55 @@ log = logging.getLogger("celavii-resolve.http.cutmaster")
 router = APIRouter()
 
 
-# v4 Layer A activation matrix (proposal §"Per-mode activation matrix").
-# Phase 4.2 wires raw_dump / rough_cut / curated (single-plan validation).
-# Phase 4.2-followup extends to short_generator via candidate-aware
-# addressing: every candidate's internal span transitions get validated
-# in one batched call, with a theme roster so retries don't reshuffle
-# engagement order. Assembled stays permanently off (within-take cuts
-# keep the same shot). Clip Hunter is skipped — each candidate is one
-# span, so there are no internal transitions to validate. Short Generator
-# doesn't appear in this set because it isn't a "mode" (timeline_mode)
-# — it's a preset. The build.py wiring activates Layer A directly on
-# the short_generator branch when either the master toggle or the
-# explicit layer_a_enabled flag is set.
-LAYER_A_ACTIVE_MODES = frozenset({"raw_dump", "rough_cut", "curated"})
+# v4 Phase 4.4: per-layer activation flows through
+# :func:`resolve_sensory_layers` so the matrix in ``data/presets.py`` stays
+# the single source of truth. Clip Hunter's Layer-A entry is "off" in the
+# matrix — each candidate is one span with no internal transitions to
+# validate — so the resolver returns False there regardless of master.
+# Assembled is similarly gated off. Short Generator (preset, not mode)
+# and linear modes (raw_dump / rough_cut / curated) share the same
+# resolver path.
 
 
 def _layer_a_enabled_for_preset(settings: dict, preset_name: str) -> bool:
-    """Preset-scoped Layer A gate (as opposed to mode-scoped).
+    """Preset-scoped Layer A gate (Short Generator / Clip Hunter path).
 
-    Used by Short Generator, which isn't part of the timeline_mode enum
-    but still benefits from boundary validation across its candidates'
-    multi-span structure. Same precedence as the mode gate: explicit
-    ``layer_a_enabled`` wins, else the master toggle enables it when
-    the preset is in the Layer-A-applicable set.
+    Short Generator isn't a ``timeline_mode`` — it's a preset with its own
+    multi-candidate structure. The resolver recognises the preset key
+    directly via :func:`sensory_mode_key`; timeline_mode is unused here
+    (passed as empty string for a deterministic lookup).
     """
-    if settings.get("layer_a_enabled"):
-        return True
-    return bool(settings.get("sensory_master_enabled")) and preset_name == "short_generator"
+    _, layer_a, _ = resolve_sensory_layers(
+        master_enabled=bool(settings.get("sensory_master_enabled")),
+        c_override=settings.get("layer_c_enabled"),
+        a_override=settings.get("layer_a_enabled"),
+        audio_override=settings.get("layer_audio_enabled"),
+        preset=preset_name,
+        timeline_mode="",
+    )
+    return layer_a
 
 
 def _layer_a_enabled(settings: dict, mode: str) -> bool:
     """Whether the outer boundary-validator loop should wrap this run.
 
-    Explicit ``layer_a_enabled`` overrides always win. Otherwise the
-    master toggle activates Layer A for modes in
-    :data:`LAYER_A_ACTIVE_MODES`. When neither is set, the Director runs
-    unwrapped and the build path is byte-identical to v3.
+    Explicit ``layer_a_enabled`` override wins (tri-state: True / False /
+    None-means-defer). Otherwise the matrix × master toggle resolves the
+    effective flag. When neither is set, the Director runs unwrapped and
+    the build path is byte-identical to v3.
     """
-    if settings.get("layer_a_enabled"):
-        return True
-    return bool(settings.get("sensory_master_enabled")) and mode in LAYER_A_ACTIVE_MODES
+    _, layer_a, _ = resolve_sensory_layers(
+        master_enabled=bool(settings.get("sensory_master_enabled")),
+        c_override=settings.get("layer_c_enabled"),
+        a_override=settings.get("layer_a_enabled"),
+        audio_override=settings.get("layer_audio_enabled"),
+        # ``preset`` field isn't on the settings dict (it's on the request
+        # envelope). For mode-scoped resolution we feed only the
+        # timeline_mode key so the matrix hits its linear-mode rows.
+        preset="",
+        timeline_mode=mode,
+    )
+    return layer_a
 
 
 async def _director_or_validated(

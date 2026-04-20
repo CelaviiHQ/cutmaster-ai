@@ -2,6 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { SourceAspectInfo } from "../api";
 import MascotLoading from "./MascotLoading";
+import {
+    SENSORY_SUBTITLES,
+    resolveSensoryLayers,
+    sensoryModeKey,
+} from "../sensory";
 import type {
     FormatKey,
     FormatSpec,
@@ -806,6 +811,15 @@ export default function ConfigureScreen({
             )}
 
             {!isTightener && (
+                <SensoryCard
+                    settings={settings}
+                    preset={preset}
+                    timelineMode={timelineMode}
+                    onSettingsChange={onSettingsChange}
+                />
+            )}
+
+            {!isTightener && (
                 <div className="card">
                     <h2>
                         {isClipHunter
@@ -851,6 +865,208 @@ export default function ConfigureScreen({
                 <button className="secondary" onClick={onBack} data-hotkey="back">← Back</button>
                 <button onClick={onNext} data-hotkey="primary">Build plan →</button>
             </div>
+        </div>
+    );
+}
+
+
+// v4 Phase 4.4 — Shot-aware editing card. Master toggle + dynamic subtitle +
+// Advanced expand with per-layer overrides. Keeps the per-layer fields as
+// tri-state (null/true/false) so the resolver can distinguish "follow the
+// matrix" from "explicit on / off".
+interface SensoryCardProps {
+    settings: UserSettings;
+    preset: PresetKey;
+    timelineMode: "raw_dump" | "rough_cut" | "curated" | "assembled";
+    onSettingsChange: (s: UserSettings) => void;
+}
+
+function SensoryCard({
+    settings,
+    preset,
+    timelineMode,
+    onSettingsChange,
+}: SensoryCardProps) {
+    const master = !!settings.sensory_master_enabled;
+    const key = sensoryModeKey(preset, timelineMode);
+    const subtitle =
+        SENSORY_SUBTITLES[key] ?? SENSORY_SUBTITLES.raw_dump;
+    const resolved = resolveSensoryLayers(settings, preset);
+
+    // Tri-state per-layer override. Checked reflects the effective
+    // resolution (matrix or explicit). Clicking toggles to the opposite
+    // explicit value; a second click returns to matrix-defer (null).
+    const nextOverride = (
+        current: boolean | null | undefined,
+        effective: boolean,
+    ): boolean | null => {
+        if (current === true) return false;
+        if (current === false) return null;
+        // current is null/undefined — flip to the opposite of the
+        // current effective value so the checkbox click feels natural.
+        return !effective;
+    };
+
+    const toggleLayer = (layer: "c" | "a" | "audio") => {
+        if (layer === "c") {
+            onSettingsChange({
+                ...settings,
+                layer_c_enabled: nextOverride(
+                    settings.layer_c_enabled,
+                    resolved.c,
+                ),
+            });
+        } else if (layer === "a") {
+            onSettingsChange({
+                ...settings,
+                layer_a_enabled: nextOverride(
+                    settings.layer_a_enabled,
+                    resolved.a,
+                ),
+            });
+        } else {
+            onSettingsChange({
+                ...settings,
+                layer_audio_enabled: nextOverride(
+                    settings.layer_audio_enabled,
+                    resolved.audio,
+                ),
+            });
+        }
+    };
+
+    const toggleMaster = (on: boolean) => {
+        // Turning master on/off clears any per-layer overrides so the
+        // matrix governs the new state cleanly. Power users can re-flip
+        // overrides under Advanced afterwards.
+        onSettingsChange({
+            ...settings,
+            sensory_master_enabled: on,
+            layer_c_enabled: null,
+            layer_a_enabled: null,
+            layer_audio_enabled: null,
+        });
+    };
+
+    const overrideLabel = (override: boolean | null | undefined) => {
+        if (override === true) return " (forced on)";
+        if (override === false) return " (forced off)";
+        return "";
+    };
+
+    return (
+        <div className="card">
+            <h2>Shot-aware editing</h2>
+            <label
+                style={{
+                    display: "flex",
+                    gap: 6,
+                    alignItems: "center",
+                    margin: 0,
+                    marginTop: 4,
+                }}
+            >
+                <input
+                    type="checkbox"
+                    checked={master}
+                    onChange={(e) => toggleMaster(e.target.checked)}
+                />
+                Enable
+            </label>
+            <p className="muted" style={{ marginTop: 8 }}>
+                {master
+                    ? subtitle
+                    : "Off — transcript-only cuts, matches v3 behaviour."}
+            </p>
+
+            <details className="card card--advanced" style={{ marginTop: 12 }}>
+                <summary>
+                    <span>
+                        Advanced · per-layer overrides
+                        {!master && (
+                            <>
+                                {" "}
+                                <span
+                                    className="muted"
+                                    style={{ fontSize: "var(--fs-2)" }}
+                                >
+                                    · master off
+                                </span>
+                            </>
+                        )}
+                    </span>
+                </summary>
+                <div className="card-body">
+                    <p className="muted" style={{ marginBottom: 8 }}>
+                        The master switch auto-picks layers for this
+                        preset+mode. Tick to force a layer on, tick again
+                        to force off, a third time to return to matrix
+                        defaults.
+                    </p>
+                    <label
+                        style={{
+                            display: "flex",
+                            gap: 6,
+                            alignItems: "center",
+                            margin: 0,
+                            marginBottom: 6,
+                        }}
+                    >
+                        <input
+                            type="checkbox"
+                            checked={resolved.c}
+                            onChange={() => toggleLayer("c")}
+                        />
+                        Layer C — Shot tagging (Gemini vision)
+                        <span className="muted" style={{ fontSize: "var(--fs-2)" }}>
+                            {overrideLabel(settings.layer_c_enabled)}
+                        </span>
+                    </label>
+                    <label
+                        style={{
+                            display: "flex",
+                            gap: 6,
+                            alignItems: "center",
+                            margin: 0,
+                            marginBottom: 6,
+                        }}
+                    >
+                        <input
+                            type="checkbox"
+                            checked={resolved.a}
+                            onChange={() => toggleLayer("a")}
+                        />
+                        Layer A — Boundary validator (post-plan retry)
+                        <span className="muted" style={{ fontSize: "var(--fs-2)" }}>
+                            {overrideLabel(settings.layer_a_enabled)}
+                        </span>
+                    </label>
+                    <label
+                        style={{
+                            display: "flex",
+                            gap: 6,
+                            alignItems: "center",
+                            margin: 0,
+                        }}
+                    >
+                        <input
+                            type="checkbox"
+                            checked={resolved.audio}
+                            onChange={() => toggleLayer("audio")}
+                        />
+                        Layer Audio — Pause / silence / RMS cues (DSP)
+                        <span className="muted" style={{ fontSize: "var(--fs-2)" }}>
+                            {overrideLabel(settings.layer_audio_enabled)}
+                        </span>
+                    </label>
+                    <p className="muted" style={{ marginTop: 10, fontSize: "var(--fs-2)" }}>
+                        Layers C and Audio run during analyze — toggle on the
+                        preset screen to apply on the first run, or re-analyze
+                        to pick them up later. Layer A runs at build-plan time,
+                        so changes here apply to the next plan you build.
+                    </p>
+                </div>
+            </details>
         </div>
     );
 }

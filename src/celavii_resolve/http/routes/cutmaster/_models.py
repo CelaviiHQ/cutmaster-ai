@@ -48,6 +48,18 @@ class AnalyzeRequest(BaseModel):
             "Falls back to CELAVII_STT_PROVIDER env var, then to 'gemini'."
         ),
     )
+    # v4 Phase 4.4: panel resolves master + matrix + overrides client-side
+    # and sends the final booleans here. ``sensory_master_enabled`` is
+    # round-tripped for parity with UserSettings but isn't consulted by
+    # the pipeline — the resolver already baked it in.
+    sensory_master_enabled: bool = Field(
+        default=False,
+        description=(
+            "v4 'Shot-aware editing' master toggle. Round-tripped for "
+            "completeness; pipeline reads layer_c_enabled / "
+            "layer_audio_enabled directly."
+        ),
+    )
     # v4 Layer C — shot tagging during analyze. Off by default to preserve
     # v3 byte-identical behaviour when the editor hasn't opted in. The
     # panel's Configure-screen master toggle (Phase 4.4) triggers a
@@ -215,10 +227,11 @@ class UserSettings(BaseModel):
         ),
     )
     # v4 sensory layers. The master toggle drives the Configure-screen
-    # UX copy (Phase 4.4); per-layer flags let power users override
-    # mode-aware defaults. Consumption lands in 4.1 (Director prompt)
-    # and 4.2 (boundary validator). Defaulting to False keeps the v3
-    # build-plan path byte-identical.
+    # UX copy (Phase 4.4); per-layer flags let power users override the
+    # mode-aware defaults in ``data/presets.py::SENSORY_MATRIX``.
+    # Consumption lands in 4.1 (Director prompt) and 4.2 (boundary
+    # validator). Defaulting to False keeps the v3 build-plan path
+    # byte-identical when the editor never opens the card.
     sensory_master_enabled: bool = Field(
         default=False,
         description=(
@@ -227,27 +240,32 @@ class UserSettings(BaseModel):
             "which sensory layers (C / A / Audio) run for this preset."
         ),
     )
-    layer_c_enabled: bool = Field(
-        default=False,
+    # Per-layer overrides — tri-state so the resolver can distinguish
+    # "defer to matrix" (None) from "force on" (True) / "force off"
+    # (False). Pydantic v2 preserves ``None`` as the default so older
+    # clients that never send these keys land on matrix semantics.
+    layer_c_enabled: bool | None = Field(
+        default=None,
         description=(
-            "v4 Layer C override (shot tagging). Independent of the "
-            "master toggle — set true to force the layer on, false to "
-            "force off. The Director prompt renders the shot-tag block "
-            "only when this resolves true."
+            "v4 Layer C override (shot tagging). None = defer to matrix "
+            "+ master toggle; True = force on; False = force off. The "
+            "Director prompt renders the shot-tag block only when this "
+            "resolves true."
         ),
     )
-    layer_a_enabled: bool = Field(
-        default=False,
+    layer_a_enabled: bool | None = Field(
+        default=None,
         description=(
-            "v4 Layer A override (boundary validator). Forces the "
-            "post-plan retry loop on/off regardless of master toggle."
+            "v4 Layer A override (boundary validator). None = defer to "
+            "matrix + master toggle; True/False force. Forces the "
+            "post-plan retry loop on/off."
         ),
     )
-    layer_audio_enabled: bool = Field(
-        default=False,
+    layer_audio_enabled: bool | None = Field(
+        default=None,
         description=(
-            "v4 Layer Audio override (DSP cues). Forces the ffmpeg "
-            "audio-cue pass on/off regardless of master toggle."
+            "v4 Layer Audio override (DSP cues). None = defer to matrix "
+            "+ master toggle; True/False force the ffmpeg audio-cue pass."
         ),
     )
 

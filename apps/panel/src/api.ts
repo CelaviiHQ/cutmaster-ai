@@ -68,6 +68,9 @@ export const api = {
       perClipStt?: boolean;
       expectedSpeakers?: number | null;
       sttProvider?: SttProviderKey | null;
+      sensoryMasterEnabled?: boolean;
+      layerCEnabled?: boolean;
+      layerAudioEnabled?: boolean;
     },
   ) =>
     http<{ run_id: string; status: string }>("/cutmaster/analyze", {
@@ -82,6 +85,11 @@ export const api = {
         ...(options?.sttProvider
           ? { stt_provider: options.sttProvider }
           : {}),
+        ...(options?.sensoryMasterEnabled
+          ? { sensory_master_enabled: true }
+          : {}),
+        ...(options?.layerCEnabled ? { layer_c_enabled: true } : {}),
+        ...(options?.layerAudioEnabled ? { layer_audio_enabled: true } : {}),
       }),
     }),
 

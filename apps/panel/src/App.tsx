@@ -12,6 +12,7 @@ import ConfigureScreen from "./screens/ConfigureScreen";
 import ReviewScreen from "./screens/ReviewScreen";
 import TokensGate from "./screens/TokensGate";
 import { api } from "./api";
+import { resolveSensoryLayers } from "./sensory";
 import {
     clearSession,
     formatRelativeTime,
@@ -68,6 +69,10 @@ export default function App() {
         reorder_allowed: true,
         takes_already_scrubbed: false,
         num_clips: 3,
+        sensory_master_enabled: false,
+        layer_c_enabled: null,
+        layer_a_enabled: null,
+        layer_audio_enabled: null,
     });
     const [backendOk, setBackendOk] = useState<boolean | null>(null);
     const [resume, setResume] = useState<ResumeInfo | null>(null);
@@ -222,6 +227,10 @@ export default function App() {
             reorder_allowed: true,
             takes_already_scrubbed: false,
             num_clips: 3,
+            sensory_master_enabled: false,
+            layer_c_enabled: null,
+            layer_a_enabled: null,
+            layer_audio_enabled: null,
         });
     };
 
@@ -497,11 +506,32 @@ export default function App() {
                     onExpectedSpeakersChange={setExpectedSpeakers}
                     sttProvider={sttProvider}
                     onSttProviderChange={setSttProvider}
+                    sensoryMasterEnabled={!!userSettings.sensory_master_enabled}
+                    onSensoryMasterChange={(v) =>
+                        setUserSettings({
+                            ...userSettings,
+                            sensory_master_enabled: v,
+                            // Clearing overrides so the matrix governs
+                            // cleanly — Configure-screen Advanced can
+                            // re-set them.
+                            layer_c_enabled: null,
+                            layer_a_enabled: null,
+                            layer_audio_enabled: null,
+                        })
+                    }
                     onNext={async () => {
+                        // v4 Phase 4.4: resolve sensory flags client-side
+                        // against the activation matrix so the analyze call
+                        // carries final booleans. When master is off, the
+                        // three fields stay false — no extra payload.
+                        const resolved = resolveSensoryLayers(userSettings, preset);
                         const r = await api.analyze(timelineName, preset, {
                             perClipStt,
                             expectedSpeakers,
                             sttProvider,
+                            sensoryMasterEnabled: !!userSettings.sensory_master_enabled,
+                            layerCEnabled: resolved.c,
+                            layerAudioEnabled: resolved.audio,
                         });
                         setRunId(r.run_id);
                         saveRunPointer(r.run_id);

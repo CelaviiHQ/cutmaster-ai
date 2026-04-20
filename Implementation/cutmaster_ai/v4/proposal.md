@@ -363,12 +363,12 @@ Lands in the next commit alongside this proposal update. Covers all applicable m
 
 Lands in the next commit alongside this proposal update.
 
-### Phase 4.4 — Per-mode activation + panel UI (1 day)
+### Phase 4.4 — Per-mode activation + panel UI (1 day) ✅
 
-- **4.4.1** `data/presets.py` — per-preset default layer-activation matrix.
-- **4.4.2** Master-toggle logic in `build.py`: resolve `sensory_master_enabled` + mode + overrides into effective per-layer enabled flags.
-- **4.4.3** Configure-screen panel card — master toggle + dynamic subtitle + Advanced expand with per-layer overrides.
-- **4.4.4** Auto-save wiring (reuses v3-4c debounce).
+- ✅ **4.4.1** `data/presets.py` — `SENSORY_MATRIX` + `resolve_sensory_layers(master, *overrides, preset, timeline_mode)` helper. Six rows per the proposal matrix (raw_dump / rough_cut / curated / assembled / clip_hunter / short_generator). Multi-candidate presets collapse onto their preset key; tightener collapses to assembled. Subtitle copy lives in `SENSORY_MODE_SUBTITLES` next to the matrix so schema drift is obvious.
+- ✅ **4.4.2** `_models.py` — per-layer flags widened to tri-state (`bool | None`) so `None` = defer-to-matrix, `True` = force on, `False` = force off. `AnalyzeRequest` grows `sensory_master_enabled`. `build.py::_layer_a_enabled` + `_layer_a_enabled_for_preset` refactored to delegate to `resolve_sensory_layers`; Clip Hunter now gates off via matrix instead of the old hardcoded check. `analyze.py` applies server-side resolver for non-panel API callers (panel sends final booleans already).
+- ✅ **4.4.3** Configure-screen `SensoryCard` with master toggle, dynamic subtitle driven by `sensoryModeKey(preset, timeline_mode)`, collapsed `<details>` Advanced expand showing live effective state for Layers C / A / Audio plus "(forced on/off)" labels. TS mirror of the matrix lives in `apps/panel/src/sensory.ts`. Pre-analyze master toggle also lands on the Preset screen under an Advanced `<details>` so new flows can opt in before analyze fires.
+- ✅ **4.4.4** Auto-save — piggybacks on the existing `useEffect([runId, userSettings, cutName])` debounce in `App.tsx`. New fields flow through `onSettingsChange` like every other setting; no new wiring needed.
 
 ### Phase 4.5 — Hardening + observability (1 day)
 

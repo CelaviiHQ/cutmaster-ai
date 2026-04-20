@@ -757,3 +757,107 @@ def preset_mode_compatible(preset: str, mode: str) -> bool:
 def preset_mode_incompatibility_reason(preset: str, mode: str) -> str | None:
     """Return a human-readable reason when a combo is blocked, else ``None``."""
     return _INCOMPATIBLE.get((preset, mode))
+
+
+# ---------------------------------------------------------------------------
+# v4 Phase 4.4: Per-mode sensory-layer activation matrix
+# ---------------------------------------------------------------------------
+#
+# Proposal §"Per-mode activation matrix" — each (preset, timeline_mode) pair
+# gets a different mix of Layer C (shot tags), Layer A (boundary validator),
+# and Layer Audio (DSP cues) because each cutting context makes different
+# kinds of cuts.
+#
+#   - "default": active when the master toggle flips on.
+#   - "opt_in":  never auto-activates; explicit per-layer override needed.
+#   - "off":     cost/no-signal combo; explicit override still respected
+#                so power users debugging can force it.
+
+ActivationLevel = Literal["default", "opt_in", "off"]
+
+
+class SensoryActivation(BaseModel):
+    """One row of :data:`SENSORY_MATRIX`. Per-layer activation level."""
+
+    c: ActivationLevel = "default"
+    a: ActivationLevel = "default"
+    audio: ActivationLevel = "opt_in"
+
+
+# Keyed by an internal "mode key" that collapses preset + timeline_mode onto
+# the proposal's 6-row matrix. Multi-candidate presets (clip_hunter,
+# short_generator) ignore timeline_mode; Tightener forces assembled.
+SENSORY_MATRIX: dict[str, SensoryActivation] = {
+    "raw_dump": SensoryActivation(c="default", a="default", audio="opt_in"),
+    "rough_cut": SensoryActivation(c="default", a="default", audio="opt_in"),
+    "curated": SensoryActivation(c="default", a="default", audio="opt_in"),
+    "assembled": SensoryActivation(c="default", a="off", audio="default"),
+    "clip_hunter": SensoryActivation(c="default", a="off", audio="opt_in"),
+    "short_generator": SensoryActivation(c="default", a="default", audio="default"),
+}
+
+
+# Human-facing copy for the Configure-screen subtitle. Kept next to the
+# matrix so schema drift stays obvious. Picked up by the panel through a
+# preset-info endpoint in a follow-up; backend never renders this itself.
+SENSORY_MODE_SUBTITLES: dict[str, str] = {
+    "raw_dump": "Shot tagging + cut validation. Adds 30–60s on first analyze; cached after.",
+    "rough_cut": "Shot tagging helps pick winners between A/B takes; cut validation between takes.",
+    "curated": "Shot-variety tagging across takes; cut validation at take boundaries.",
+    "assembled": "Gesture-aware filler tightening + pause detection. Within-take cuts only.",
+    "clip_hunter": "Visual-energy scoring boosts engagement ranking; clip in/out validated.",
+    "short_generator": "Full stack — shot tagging, span boundary validation, beat-aware hook timing.",
+}
+
+
+def sensory_mode_key(preset: str, timeline_mode: str) -> str:
+    """Collapse (preset, timeline_mode) to the matrix key.
+
+    - ``short_generator`` / ``clip_hunter`` → preset key (multi-candidate
+      presets don't use timeline_mode).
+    - ``tightener`` → ``"assembled"`` (preset forces assembled mode; the
+      sensory profile tracks the state, not the preset label).
+    - anything else → ``timeline_mode`` (raw_dump / rough_cut / curated /
+      assembled).
+    """
+    if preset in ("short_generator", "clip_hunter"):
+        return preset
+    if preset == "tightener":
+        return "assembled"
+    if timeline_mode in ("raw_dump", "rough_cut", "curated", "assembled"):
+        return timeline_mode
+    return "raw_dump"  # unknown mode — safe default
+
+
+def resolve_sensory_layers(
+    *,
+    master_enabled: bool,
+    c_override: bool | None,
+    a_override: bool | None,
+    audio_override: bool | None,
+    preset: str,
+    timeline_mode: str,
+) -> tuple[bool, bool, bool]:
+    """Resolve effective per-layer enabled flags.
+
+    Precedence: ``*_override is not None`` wins (forces on/off); else fall
+    back to the matrix × master toggle: ``"default"`` layers go on when
+    master is on, ``"opt_in"`` / ``"off"`` stay off unless overridden.
+
+    Returns ``(layer_c_enabled, layer_a_enabled, layer_audio_enabled)``.
+    """
+    key = sensory_mode_key(preset, timeline_mode)
+    row = SENSORY_MATRIX.get(key, SENSORY_MATRIX["raw_dump"])
+
+    def _pick(level: ActivationLevel, override: bool | None) -> bool:
+        if override is not None:
+            return override
+        if not master_enabled:
+            return False
+        return level == "default"
+
+    return (
+        _pick(row.c, c_override),
+        _pick(row.a, a_override),
+        _pick(row.audio, audio_override),
+    )
