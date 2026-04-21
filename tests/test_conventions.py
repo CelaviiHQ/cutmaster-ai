@@ -80,6 +80,7 @@ TOOL_MODULES = [
     "cutmaster_ai.cutmaster.core.validator_loop",
     "cutmaster_ai.cutmaster.analysis.audio_cues",
     "cutmaster_ai.cutmaster.analysis._sanitize",
+    "cutmaster_ai.cutmaster.resolve_ops.track_picker",
 ]
 
 # Route modules aren't tool modules — the TOOL_MODULES guard doesn't cover

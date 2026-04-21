@@ -9,6 +9,7 @@ import type {
     SttProviderInfo,
     SttProviderKey,
     TimelineMode,
+    TrackListResponse,
 } from "../types";
 
 interface Props {
@@ -24,6 +25,10 @@ interface Props {
     onExpectedSpeakersChange: (v: number | null) => void;
     sttProvider: SttProviderKey | null;
     onSttProviderChange: (v: SttProviderKey | null) => void;
+    videoTrack: number | null;
+    onVideoTrackChange: (v: number | null) => void;
+    audioTrack: number | null;
+    onAudioTrackChange: (v: number | null) => void;
     sensoryMasterEnabled: boolean;
     onSensoryMasterChange: (v: boolean) => void;
     onNext: () => void | Promise<void>;
@@ -63,6 +68,10 @@ export default function PresetPickScreen({
     onExpectedSpeakersChange,
     sttProvider,
     onSttProviderChange,
+    videoTrack,
+    onVideoTrackChange,
+    audioTrack,
+    onAudioTrackChange,
     sensoryMasterEnabled,
     onSensoryMasterChange,
     onNext,
@@ -82,6 +91,10 @@ export default function PresetPickScreen({
     const [timelineExpanded, setTimelineExpanded] = useState(false);
     const [timelineUserTouched, setTimelineUserTouched] = useState(false);
     const hasAutoSelected = useRef(false);
+    // Track roster for the override picker. Fetched on each timeline
+    // change; null = "not loaded yet" (UI stays collapsed).
+    const [trackList, setTrackList] = useState<TrackListResponse | null>(null);
+    const [tracksLoading, setTracksLoading] = useState(false);
 
     useEffect(() => {
         api.listPresets()
@@ -121,6 +134,35 @@ export default function PresetPickScreen({
         loadProjectInfo();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Fetch track roster when the timeline name changes. The override
+    // card renders auto-picked defaults unless the editor expands.
+    useEffect(() => {
+        if (!timelineName.trim()) {
+            setTrackList(null);
+            return;
+        }
+        let cancelled = false;
+        setTracksLoading(true);
+        api.tracks(timelineName)
+            .then((r) => {
+                if (cancelled) return;
+                setTrackList(r);
+                // If the editor hasn't overridden, reflect the
+                // auto-picks back up to App.tsx so analyze carries
+                // null (= auto) — only set explicit overrides when the
+                // editor deliberately picks a different track.
+            })
+            .catch(() => {
+                if (!cancelled) setTrackList(null);
+            })
+            .finally(() => {
+                if (!cancelled) setTracksLoading(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [timelineName]);
 
     const submit = async () => {
         setLoading(true);
@@ -254,6 +296,109 @@ export default function PresetPickScreen({
                         </p>
                     )}
                 </div>
+            )}
+
+            {/* Source tracks: auto-picked, collapsible override. */}
+            {trackList && (
+                <details
+                    className="card card--advanced"
+                    open={
+                        // Auto-expand when auto-pick failed or when the
+                        // editor has already chosen an override.
+                        trackList.picked_video == null ||
+                        trackList.picked_audio == null ||
+                        videoTrack != null ||
+                        audioTrack != null
+                    }
+                >
+                    <summary>
+                        <span>
+                            Source tracks
+                            {trackList.picked_video != null && (
+                                <>
+                                    {" "}
+                                    <span className="muted" style={{ fontSize: "var(--fs-2)" }}>
+                                        · V{videoTrack ?? trackList.picked_video} + A
+                                        {audioTrack ?? trackList.picked_audio}
+                                    </span>
+                                </>
+                            )}
+                            {tracksLoading && (
+                                <>
+                                    {" "}
+                                    <span className="muted" style={{ fontSize: "var(--fs-2)" }}>
+                                        · loading…
+                                    </span>
+                                </>
+                            )}
+                        </span>
+                    </summary>
+                    <div className="card-body">
+                        <p className="muted" style={{ marginBottom: "var(--s-3)" }}>
+                            CutMaster auto-picks the picture edit + dialogue
+                            track. Override below if the defaults miss — e.g.
+                            picture on V2 with an empty V1, or a dialogue track
+                            stacked above a music bed.
+                        </p>
+
+                        <label style={{ display: "block", marginBottom: "var(--s-2)" }}>
+                            Video (picture edit)
+                        </label>
+                        <select
+                            value={videoTrack ?? ""}
+                            onChange={(e) => {
+                                const raw = e.target.value;
+                                if (!raw) onVideoTrackChange(null);
+                                else onVideoTrackChange(Number(raw));
+                            }}
+                            style={{ marginBottom: "var(--s-3)" }}
+                        >
+                            <option value="">
+                                {trackList.picked_video != null
+                                    ? `Auto (V${trackList.picked_video})`
+                                    : "Auto (no pick available)"}
+                            </option>
+                            {trackList.video_tracks.map((t) => (
+                                <option key={t.index} value={t.index}>
+                                    V{t.index}
+                                    {t.name && t.name !== `V${t.index}` ? ` — ${t.name}` : ""}
+                                    {" · "}
+                                    {t.item_count} item
+                                    {t.item_count === 1 ? "" : "s"}
+                                    {t.picked_by_default ? " ✓" : ""}
+                                </option>
+                            ))}
+                        </select>
+
+                        <label style={{ display: "block", marginBottom: "var(--s-2)" }}>
+                            Audio (dialogue)
+                        </label>
+                        <select
+                            value={audioTrack ?? ""}
+                            onChange={(e) => {
+                                const raw = e.target.value;
+                                if (!raw) onAudioTrackChange(null);
+                                else onAudioTrackChange(Number(raw));
+                            }}
+                        >
+                            <option value="">
+                                {trackList.picked_audio != null
+                                    ? `Auto (A${trackList.picked_audio})`
+                                    : "Auto (no pick available)"}
+                            </option>
+                            {trackList.audio_tracks.map((t) => (
+                                <option key={t.index} value={t.index}>
+                                    A{t.index}
+                                    {t.name && t.name !== `A${t.index}` ? ` — ${t.name}` : ""}
+                                    {" · "}
+                                    {t.item_count} item
+                                    {t.item_count === 1 ? "" : "s"}
+                                    {t.picked_by_default ? " ✓" : ""}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                </details>
             )}
 
             {/* v3-1.2 — Timeline state as 2×2 grid */}

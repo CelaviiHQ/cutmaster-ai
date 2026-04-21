@@ -36,11 +36,16 @@ def _run(cmd: list[str]) -> subprocess.CompletedProcess:
 def extract_timeline_audio(
     tl,
     out_path: Path,
-    track_index: int = 1,
+    track_index: int | None = None,
     sample_rate: int = 16000,
     channels: int = 1,
 ) -> dict:
     """Concatenate audio from the timeline's source files into ``out_path``.
+
+    ``track_index`` is 1-based. ``None`` (default) auto-picks via
+    :func:`track_picker.pick_audio_tracks`, which prefers dialogue-
+    labelled tracks and falls back to the lowest-numbered non-music
+    track. Pass an explicit int to force a specific track.
 
     Returns ``{"path": str, "duration_s": float, "segments": int, "sample_rate": int}``.
 
@@ -48,9 +53,13 @@ def extract_timeline_audio(
         FileNotFoundError: ffmpeg/ffprobe not on PATH, or a source file is gone.
         ValueError: the track is empty or items have no media pool item.
     """
+    from ..resolve_ops.track_picker import pick_audio_tracks
     from .source_resolver import resolve_item_to_segments
 
     _require_ffmpeg()
+
+    if track_index is None:
+        track_index = pick_audio_tracks(tl)[0]
 
     fps = _timeline_fps(tl)
     items = tl.GetItemListInTrack("audio", track_index) or []

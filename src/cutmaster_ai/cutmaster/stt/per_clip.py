@@ -94,8 +94,14 @@ class ClipAudioSpec:
 # ---------------------------------------------------------------------------
 
 
-def build_clip_audio_specs(tl, track_index: int = 1, project=None) -> list[ClipAudioSpec]:
+def build_clip_audio_specs(tl, track_index: int | None = None, project=None) -> list[ClipAudioSpec]:
     """Read audio track ``track_index`` and return one ``ClipAudioSpec`` per item.
+
+    ``track_index`` is 1-based. When ``None`` (the default), the track
+    is auto-picked via :func:`track_picker.pick_audio_tracks` — the
+    first dialogue-labelled track, falling back to the lowest-numbered
+    non-music track. Passing an explicit int forces that track (Tier 2
+    override path).
 
     Each item is resolved to its underlying source file(s) via
     :func:`source_resolver.resolve_item_to_segments`, which walks through
@@ -106,11 +112,16 @@ def build_clip_audio_specs(tl, track_index: int = 1, project=None) -> list[ClipA
     """
     from ..media.frame_math import _timeline_fps, _timeline_start_frame
     from ..media.source_resolver import resolve_item_to_segments
+    from ..resolve_ops.track_picker import pick_audio_tracks
 
     if project is None:
         from ...resolve import _boilerplate  # lazy — Resolve connection
 
         _, project, _ = _boilerplate()
+
+    if track_index is None:
+        # Auto-pick: take the first dialogue-labelled track.
+        track_index = pick_audio_tracks(tl)[0]
 
     fps = _timeline_fps(tl)
     tl_start = _timeline_start_frame(tl)

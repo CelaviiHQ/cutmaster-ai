@@ -11,6 +11,8 @@ from ._models import (
     SpeakerRosterEntry,
     SpeakerRosterResponse,
     TimelineInfo,
+    TrackInfoResponse,
+    TrackListResponse,
 )
 
 router = APIRouter()
@@ -137,6 +139,57 @@ async def project_info() -> ProjectInfoResponse:
         )
 
     return ProjectInfoResponse(project_name=project_name, timelines=timelines)
+
+
+@router.get("/tracks/{timeline_name}", response_model=TrackListResponse)
+async def tracks(timeline_name: str) -> TrackListResponse:
+    """Return the video + audio track roster for a timeline.
+
+    Feeds the Preset-screen override picker. Auto-picked defaults are
+    marked via ``picked_by_default`` so the UI can collapse to the
+    heuristic result unless the editor expands to override.
+    """
+    from ....cutmaster.core.pipeline import _find_timeline_by_name
+    from ....cutmaster.resolve_ops.track_picker import (
+        NoDialogueTrackError,
+        NoSourceTrackError,
+        list_audio_tracks,
+        list_video_tracks,
+        pick_audio_tracks,
+        pick_video_track,
+    )
+    from ....resolve import _boilerplate  # lazy
+
+    try:
+        _, project, _ = _boilerplate()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Resolve unreachable: {exc}")
+
+    tl = _find_timeline_by_name(project, timeline_name)
+    if tl is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"timeline '{timeline_name}' not found",
+        )
+
+    video_rows = [TrackInfoResponse(**t) for t in list_video_tracks(tl)]
+    audio_rows = [TrackInfoResponse(**t) for t in list_audio_tracks(tl)]
+
+    try:
+        picked_video: int | None = pick_video_track(tl)
+    except NoSourceTrackError:
+        picked_video = None
+    try:
+        picked_audio: int | None = pick_audio_tracks(tl)[0]
+    except NoDialogueTrackError:
+        picked_audio = None
+
+    return TrackListResponse(
+        video_tracks=video_rows,
+        audio_tracks=audio_rows,
+        picked_video=picked_video,
+        picked_audio=picked_audio,
+    )
 
 
 @router.get("/speakers/{run_id}", response_model=SpeakerRosterResponse)

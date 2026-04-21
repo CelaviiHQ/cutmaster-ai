@@ -235,7 +235,10 @@ def test_build_video_item_specs_skips_unresolvable(monkeypatch):
     monkeypatch.setattr(fm, "_timeline_start_frame", lambda _tl: 0)
     monkeypatch.setattr(sr, "resolve_item_to_segments", lambda *_a, **_k: [])
 
-    specs = shot_tagger.build_video_item_specs(tl, project=object())
+    # Passing video_track=1 explicitly bypasses the track_picker call
+    # (which requires GetTrackCount / GetTrackName that this fake tl
+    # doesn't implement).
+    specs = shot_tagger.build_video_item_specs(tl, project=object(), video_track=1)
     assert specs == []
 
 

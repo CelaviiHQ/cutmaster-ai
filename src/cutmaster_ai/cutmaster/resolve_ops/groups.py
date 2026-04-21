@@ -255,14 +255,21 @@ def all_singletons(groups: list[Group]) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def read_items_with_grouping_signals(tl, track_index: int = 1) -> list[GroupedItem]:
+def read_items_with_grouping_signals(tl, track_index: int | None = None) -> list[GroupedItem]:
     """Read V{track_index} items with their clip color + flags.
 
     Mirrors ``assembled.read_items_on_track`` — same geometry, plus the two
     grouping signals. We keep this adapter here (not in ``assembled``) so
     callers that don't need grouping don't pay the extra API round-trips.
+
+    ``track_index`` is 1-based; ``None`` auto-picks via
+    :func:`track_picker.pick_video_track`.
     """
     from ..media.frame_math import _timeline_fps, _timeline_start_frame
+    from .track_picker import pick_video_track
+
+    if track_index is None:
+        track_index = pick_video_track(tl)
 
     fps = _timeline_fps(tl)
     tl_start_frame = _timeline_start_frame(tl)

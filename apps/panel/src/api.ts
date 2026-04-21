@@ -12,6 +12,7 @@ import type {
   SttProviderKey,
   SttProviderList,
   StoryAnalysis,
+  TrackListResponse,
   UserSettings,
 } from "./types";
 
@@ -61,6 +62,11 @@ export const api = {
   speakers: (runId: string) =>
     http<{ speakers: SpeakerRosterEntry[] }>(`/cutmaster/speakers/${runId}`),
 
+  tracks: (timelineName: string) =>
+    http<TrackListResponse>(
+      `/cutmaster/tracks/${encodeURIComponent(timelineName)}`,
+    ),
+
   analyze: (
     timelineName: string,
     preset: string,
@@ -71,6 +77,8 @@ export const api = {
       sensoryMasterEnabled?: boolean;
       layerCEnabled?: boolean;
       layerAudioEnabled?: boolean;
+      videoTrack?: number | null;
+      audioTrack?: number | null;
     },
   ) =>
     http<{ run_id: string; status: string }>("/cutmaster/analyze", {
@@ -90,6 +98,8 @@ export const api = {
           : {}),
         ...(options?.layerCEnabled ? { layer_c_enabled: true } : {}),
         ...(options?.layerAudioEnabled ? { layer_audio_enabled: true } : {}),
+        ...(options?.videoTrack != null ? { video_track: options.videoTrack } : {}),
+        ...(options?.audioTrack != null ? { audio_track: options.audioTrack } : {}),
       }),
     }),
 

@@ -69,6 +69,8 @@ async def analyze(body: AnalyzeRequest) -> AnalyzeResponse:
                 stt_provider=body.stt_provider,
                 layer_c_enabled=layer_c_resolved,
                 layer_audio_enabled=layer_audio_resolved,
+                video_track=body.video_track,
+                audio_track=body.audio_track,
             )
 
     task = asyncio.create_task(_run_with_ctx(run["run_id"]))

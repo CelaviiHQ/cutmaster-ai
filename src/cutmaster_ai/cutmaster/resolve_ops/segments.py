@@ -80,16 +80,26 @@ def _find_overlapping_pieces(
     return pieces
 
 
-def resolve_segments(tl, segments: list[CutSegment]) -> list[ResolvedCutSegment]:
+def resolve_segments(
+    tl, segments: list[CutSegment], *, video_track: int | None = None
+) -> list[ResolvedCutSegment]:
     """Turn timeline-seconds segments into source-frame pieces.
 
     Cross-boundary segments are auto-split into per-item pieces. If the
-    entire segment falls in a gap (no overlapping items on V1), raises
-    :class:`ValueError`.
+    entire segment falls in a gap (no overlapping items on the picked
+    video track), raises :class:`ValueError`.
+
+    ``video_track`` is 1-based; ``None`` auto-picks via
+    :func:`track_picker.pick_video_track`.
     """
+    from .track_picker import pick_video_track
+
+    if video_track is None:
+        video_track = pick_video_track(tl)
+
     fps = _timeline_fps(tl)
     tl_start = _timeline_start_frame(tl)
-    items = tl.GetItemListInTrack("video", 1) or []
+    items = tl.GetItemListInTrack("video", video_track) or []
 
     out: list[ResolvedCutSegment] = []
 

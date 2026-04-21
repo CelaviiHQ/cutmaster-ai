@@ -80,6 +80,11 @@ export default function App() {
     const [perClipStt, setPerClipStt] = useState(false);
     const [expectedSpeakers, setExpectedSpeakers] = useState<number | null>(null);
     const [sttProvider, setSttProvider] = useState<SttProviderKey | null>(null);
+    // Source-track overrides. Null = auto-pick via the backend's
+    // track_picker. The Preset screen's override card sets these when
+    // the editor disagrees with the heuristic.
+    const [videoTrack, setVideoTrack] = useState<number | null>(null);
+    const [audioTrack, setAudioTrack] = useState<number | null>(null);
     const [showShortcuts, setShowShortcuts] = useState(false);
     // Live per-stage context for the step indicator.
     const [analyzeDurationS, setAnalyzeDurationS] = useState<number | null>(null);
@@ -506,6 +511,10 @@ export default function App() {
                     onExpectedSpeakersChange={setExpectedSpeakers}
                     sttProvider={sttProvider}
                     onSttProviderChange={setSttProvider}
+                    videoTrack={videoTrack}
+                    onVideoTrackChange={setVideoTrack}
+                    audioTrack={audioTrack}
+                    onAudioTrackChange={setAudioTrack}
                     sensoryMasterEnabled={!!userSettings.sensory_master_enabled}
                     onSensoryMasterChange={(v) =>
                         setUserSettings({
@@ -532,6 +541,8 @@ export default function App() {
                             sensoryMasterEnabled: !!userSettings.sensory_master_enabled,
                             layerCEnabled: resolved.c,
                             layerAudioEnabled: resolved.audio,
+                            videoTrack,
+                            audioTrack,
                         });
                         setRunId(r.run_id);
                         saveRunPointer(r.run_id);

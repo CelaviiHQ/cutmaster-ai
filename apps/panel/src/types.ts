@@ -199,6 +199,20 @@ export interface ProjectInfo {
   timelines: TimelineInfo[];
 }
 
+export interface TrackInfo {
+  index: number;
+  name: string;
+  item_count: number;
+  picked_by_default: boolean;
+}
+
+export interface TrackListResponse {
+  video_tracks: TrackInfo[];
+  audio_tracks: TrackInfo[];
+  picked_video: number | null;
+  picked_audio: number | null;
+}
+
 export type SttProviderKey = "gemini" | "deepgram";
 
 export interface SttProviderInfo {

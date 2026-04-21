@@ -48,6 +48,25 @@ class AnalyzeRequest(BaseModel):
             "Falls back to CUTMASTER_STT_PROVIDER env var, then to 'gemini'."
         ),
     )
+    # Source-track overrides. None = auto-pick via
+    # :func:`track_picker.pick_video_track` / ``pick_audio_tracks``.
+    video_track: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "1-based video track to treat as the picture edit. None "
+            "auto-picks (prefer V1 if non-empty, else lowest-numbered "
+            "non-empty)."
+        ),
+    )
+    audio_track: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "1-based audio track to transcribe. None auto-picks (prefer "
+            "dialogue-labelled tracks, else lowest non-music non-empty)."
+        ),
+    )
     # v4 Phase 4.4: panel resolves master + matrix + overrides client-side
     # and sends the final booleans here. ``sensory_master_enabled`` is
     # round-tripped for parity with UserSettings but isn't consulted by
@@ -111,6 +130,28 @@ class TimelineInfo(BaseModel):
     name: str
     is_current: bool
     item_count: int
+
+
+class TrackInfoResponse(BaseModel):
+    """One row per track — feeds the PresetPickScreen override picker."""
+
+    index: int
+    name: str
+    item_count: int
+    picked_by_default: bool
+
+
+class TrackListResponse(BaseModel):
+    video_tracks: list[TrackInfoResponse]
+    audio_tracks: list[TrackInfoResponse]
+    picked_video: int | None = Field(
+        default=None,
+        description="1-based auto-picked video track, or None when every track is empty.",
+    )
+    picked_audio: int | None = Field(
+        default=None,
+        description="1-based auto-picked dialogue track, or None when every track is empty.",
+    )
 
 
 class ProjectInfoResponse(BaseModel):

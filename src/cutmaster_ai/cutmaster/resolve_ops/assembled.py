@@ -99,14 +99,18 @@ def build_take_entries(
     return out
 
 
-def read_items_on_track(tl, track_index: int = 1) -> list[ItemSummary]:
+def read_items_on_track(tl, track_index: int | None = None) -> list[ItemSummary]:
     """Read the timeline's V{track_index} items into ``ItemSummary`` dicts.
 
-    Thin Resolve adapter so the HTTP route can stay short. Kept at the bottom
-    of this module and called only when we're already inside build-plan.
-    Requires ``tl`` to be a Resolve ``Timeline``.
+    Thin Resolve adapter so the HTTP route can stay short. ``track_index``
+    is 1-based; ``None`` (default) auto-picks via
+    :func:`track_picker.pick_video_track`.
     """
     from ..media.frame_math import _timeline_fps, _timeline_start_frame
+    from .track_picker import pick_video_track
+
+    if track_index is None:
+        track_index = pick_video_track(tl)
 
     fps = _timeline_fps(tl)
     tl_start_frame = _timeline_start_frame(tl)

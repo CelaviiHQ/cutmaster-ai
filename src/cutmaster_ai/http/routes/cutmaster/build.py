@@ -137,6 +137,7 @@ async def _director_or_validated(
     get_selected_clips,
     tl,
     project,
+    video_track: int = 1,
 ):
     """Invoke the Director; when Layer A is active, wrap with the retry loop.
 
@@ -167,7 +168,7 @@ async def _director_or_validated(
         except Exception as exc:
             log.info("layer A: get_selected_clips raised (%s) — skipping validator", exc)
             return []
-        return build_boundary_samples(tl, segments, project=project)
+        return build_boundary_samples(tl, segments, project=project, video_track=video_track)
 
     # Linear plans have no candidate roster — omitting
     # extract_candidate_roster keeps the loop in single-plan mode.
@@ -208,6 +209,12 @@ async def build_plan(body: BuildPlanRequest) -> dict:
     preset = get_preset(body.preset)
     settings_dict = body.user_settings.model_dump()
     mode = body.user_settings.timeline_mode
+
+    # Source-track index picked during analyze (track_picker auto-detect
+    # or explicit AnalyzeRequest override) and persisted on the run.
+    # Older runs (pre-picker) don't have this field — default to 1 so
+    # they still build against the legacy V1 assumption.
+    video_track_idx = int(run.get("video_track") or 1)
 
     # v2-11: compatibility guard + reorder=false handling for new modes.
     # Must run before the preset-specific branches so an incompatible combo
@@ -350,7 +357,9 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         for cand in hunter_plan.candidates:
             segs = candidate_to_segments(cand)
             try:
-                resolved = await asyncio.to_thread(resolve_segments, tl, segs)
+                resolved = await asyncio.to_thread(
+                    resolve_segments, tl, segs, video_track=video_track_idx
+                )
             except ValueError as exc:
                 raise HTTPException(
                     status_code=400,
@@ -480,7 +489,10 @@ async def build_plan(body: BuildPlanRequest) -> dict:
 
                 def _sg_samples(plan):
                     return build_short_generator_boundary_samples(
-                        tl, plan.candidates, project=project
+                        tl,
+                        plan.candidates,
+                        project=project,
+                        video_track=video_track_idx,
                     )
 
                 def _sg_roster(plan):
@@ -508,7 +520,9 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         for cand in short_plan.candidates:
             segs = short_candidate_to_segments(cand)
             try:
-                resolved = await asyncio.to_thread(resolve_segments, tl, segs)
+                resolved = await asyncio.to_thread(
+                    resolve_segments, tl, segs, video_track=video_track_idx
+                )
             except ValueError as exc:
                 raise HTTPException(
                     status_code=400,
@@ -597,11 +611,11 @@ async def build_plan(body: BuildPlanRequest) -> dict:
                 detail=f"timeline '{run['timeline_name']}' not found (was it renamed?)",
             )
 
-        items = read_items_on_track(tl, track_index=1)
+        items = read_items_on_track(tl, track_index=video_track_idx)
         if not items:
             raise HTTPException(
                 status_code=400,
-                detail="timeline has no items on video track 1 — Tightener needs takes",
+                detail=f"timeline has no items on V{video_track_idx} — Tightener needs takes",
             )
         per_item = split_transcript_per_item(tight_scrubbed, items)
         takes = build_take_entries(items, per_item)
@@ -629,7 +643,9 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         tighten_summary = tightener_stats(raw_transcript, takes, segments)
 
         try:
-            resolved = await asyncio.to_thread(resolve_segments, tl, segments)
+            resolved = await asyncio.to_thread(
+                resolve_segments, tl, segments, video_track=video_track_idx
+            )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=f"source-frame mapping failed: {exc}")
 
@@ -678,20 +694,20 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         # needs the take geometry. Read both through the grouping adapter
         # for Rough cut, fall back to the simpler adapter for Curated.
         if mode == "rough_cut":
-            grouped_items = read_items_with_grouping_signals(tl, track_index=1)
+            grouped_items = read_items_with_grouping_signals(tl, track_index=video_track_idx)
             if not grouped_items:
                 raise HTTPException(
                     status_code=400,
-                    detail="timeline has no items on video track 1 — Rough cut needs takes",
+                    detail=f"timeline has no items on V{video_track_idx} — Rough cut needs takes",
                 )
             items = to_item_summary(grouped_items)
         else:
             grouped_items = None
-            items = read_items_on_track(tl, track_index=1)
+            items = read_items_on_track(tl, track_index=video_track_idx)
             if not items:
                 raise HTTPException(
                     status_code=400,
-                    detail="timeline has no items on video track 1 — Curated needs takes",
+                    detail=f"timeline has no items on V{video_track_idx} — Curated needs takes",
                 )
 
         per_item = split_transcript_per_item(transcript_for_takes, items)
@@ -705,7 +721,7 @@ async def build_plan(body: BuildPlanRequest) -> dict:
             except Exception as exc:
                 log.info("layer A: expand_curated_plan raised (%s) — skipping", exc)
                 return []
-            return build_boundary_samples(tl, segs, project=project)
+            return build_boundary_samples(tl, segs, project=project, video_track=video_track_idx)
 
         if mode == "rough_cut":
             groups = detect_groups(
@@ -829,11 +845,11 @@ async def build_plan(body: BuildPlanRequest) -> dict:
                 detail=f"timeline '{run['timeline_name']}' not found (was it renamed?)",
             )
 
-        items = read_items_on_track(tl, track_index=1)
+        items = read_items_on_track(tl, track_index=video_track_idx)
         if not items:
             raise HTTPException(
                 status_code=400,
-                detail="timeline has no items on video track 1 — assembled mode needs takes",
+                detail=f"timeline has no items on V{video_track_idx} — assembled mode needs takes",
             )
         per_item = split_transcript_per_item(transcript_for_takes, items)
         takes = build_take_entries(items, per_item)
@@ -901,6 +917,7 @@ async def build_plan(body: BuildPlanRequest) -> dict:
                 get_selected_clips=lambda plan: plan.selected_clips,
                 tl=tl,
                 project=project,
+                video_track=video_track_idx,
             )
         except Exception as exc:
             log.exception("Director failed for run %s", body.run_id)
@@ -919,7 +936,9 @@ async def build_plan(body: BuildPlanRequest) -> dict:
 
     # Resolve source frames — identical in both modes.
     try:
-        resolved = await asyncio.to_thread(resolve_segments, tl, plan.selected_clips)
+        resolved = await asyncio.to_thread(
+            resolve_segments, tl, plan.selected_clips, video_track=video_track_idx
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"source-frame mapping failed: {exc}")
 

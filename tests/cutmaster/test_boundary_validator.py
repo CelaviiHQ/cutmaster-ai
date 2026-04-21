@@ -634,7 +634,7 @@ def test_short_generator_sample_builder_tags_all_candidates(monkeypatch):
     monkeypatch.setattr(
         boundary_validator,
         "_locate_source_frame",
-        lambda _tl, _proj, ts: ("/tmp/x.mov", float(ts)),
+        lambda _tl, _proj, ts, **_kw: ("/tmp/x.mov", float(ts)),
     )
 
     # Build two synthetic candidates with ShortCandidate-shaped duck types.
@@ -662,6 +662,7 @@ def test_short_generator_sample_builder_tags_all_candidates(monkeypatch):
         tl=MagicMock(),
         candidates=[cand_a, cand_b],
         project=MagicMock(),
+        video_track=1,
     )
     # Candidate A: 3 spans → 2 internal cuts.
     # Candidate B: 2 spans → 1 internal cut.
@@ -685,6 +686,7 @@ def test_short_generator_sample_builder_skips_single_span_candidates():
         tl=MagicMock(),
         candidates=[cand_solo],
         project=MagicMock(),
+        video_track=1,
     )
     # No internal cuts → no samples. No exception either.
     assert samples == []

@@ -184,25 +184,34 @@ class VideoItemSpec:
     segments: list[tuple[str, float, float]]
 
 
-def build_video_item_specs(tl, project=None) -> list[VideoItemSpec]:
-    """Walk V1 and return one spec per item, skipping unresolvable items.
+def build_video_item_specs(
+    tl, project=None, *, video_track: int | None = None
+) -> list[VideoItemSpec]:
+    """Walk the picked video track and return one spec per item.
 
     Mirrors :func:`stt.per_clip.build_clip_audio_specs` but for the video
-    track. Separate helper because audio / video tracks aren't guaranteed
+    side. Separate helper because audio / video tracks aren't guaranteed
     to be 1:1 (adjustment clips, B-roll only on V1, etc.) — pairing
     happens implicitly via the stitched transcript's timeline timestamps.
+
+    ``video_track`` is 1-based. ``None`` (default) auto-picks via
+    :func:`track_picker.pick_video_track`.
     """
     from ..media.frame_math import _timeline_fps, _timeline_start_frame
     from ..media.source_resolver import resolve_item_to_segments
+    from ..resolve_ops.track_picker import pick_video_track
 
     if project is None:
         from ...resolve import _boilerplate  # lazy — Resolve connection
 
         _, project, _ = _boilerplate()
 
+    if video_track is None:
+        video_track = pick_video_track(tl)
+
     fps = _timeline_fps(tl)
     tl_start = _timeline_start_frame(tl)
-    items = tl.GetItemListInTrack("video", 1) or []
+    items = tl.GetItemListInTrack("video", video_track) or []
     out: list[VideoItemSpec] = []
 
     for idx, item in enumerate(items):

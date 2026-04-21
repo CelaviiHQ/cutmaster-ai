@@ -108,14 +108,17 @@ class BoundarySample:
     candidate_index: int = 0
 
 
-def _locate_source_frame(tl, project, timeline_ts_s: float) -> tuple[str, float] | None:
+def _locate_source_frame(
+    tl, project, timeline_ts_s: float, *, video_track: int = 1
+) -> tuple[str, float] | None:
     """Map a timeline-seconds instant to ``(source_path, source_ts_s)``.
 
-    Walks V1 items, finds the item overlapping the requested timeline
-    frame, then leverages :func:`source_resolver.resolve_item_to_segments`
-    to traverse through compounds / nested timelines. Returns ``None``
-    for gaps, generator items, or otherwise-unresolvable content — the
-    caller treats those as "no boundary sample" rather than crashing.
+    Walks items on ``video_track``, finds the item overlapping the
+    requested timeline frame, then leverages
+    :func:`source_resolver.resolve_item_to_segments` to traverse through
+    compounds / nested timelines. Returns ``None`` for gaps, generator
+    items, or otherwise-unresolvable content — the caller treats those
+    as "no boundary sample" rather than crashing.
     """
     from ..media.frame_math import _timeline_fps, _timeline_start_frame
     from ..media.source_resolver import resolve_item_to_segments
@@ -124,7 +127,7 @@ def _locate_source_frame(tl, project, timeline_ts_s: float) -> tuple[str, float]
     tl_start = _timeline_start_frame(tl)
     target_frame = tl_start + int(round(float(timeline_ts_s) * fps))
 
-    items = tl.GetItemListInTrack("video", 1) or []
+    items = tl.GetItemListInTrack("video", video_track) or []
     for item in items:
         start = int(item.GetStart())
         end = int(item.GetEnd())
@@ -161,12 +164,21 @@ def _locate_source_frame(tl, project, timeline_ts_s: float) -> tuple[str, float]
         last = segments[-1]
         return str(last.path), max(last.in_s, last.out_s - (1.0 / fps))
 
-    log.info("boundary at tl=%.3fs falls in a V1 gap; skipping", timeline_ts_s)
+    log.info(
+        "boundary at tl=%.3fs falls in a V%d gap; skipping",
+        timeline_ts_s,
+        video_track,
+    )
     return None
 
 
 def build_boundary_samples(
-    tl, segments, project=None, *, candidate_index: int = 0
+    tl,
+    segments,
+    project=None,
+    *,
+    candidate_index: int = 0,
+    video_track: int | None = None,
 ) -> list[BoundarySample]:
     """Resolve each consecutive cut pair in ``segments`` to a ``BoundarySample``.
 
@@ -180,18 +192,23 @@ def build_boundary_samples(
     plans (Short Generator) can feed all candidates' cuts through the
     same batched Gemini call without cut_index collisions.
     """
+    from ..resolve_ops.track_picker import pick_video_track
+
     if project is None:
         from ...resolve import _boilerplate  # lazy
 
         _, project, _ = _boilerplate()
+
+    if video_track is None:
+        video_track = pick_video_track(tl)
 
     samples: list[BoundarySample] = []
     for i in range(len(segments) - 1):
         outgoing = segments[i]
         incoming = segments[i + 1]
 
-        out_loc = _locate_source_frame(tl, project, float(outgoing.end_s))
-        in_loc = _locate_source_frame(tl, project, float(incoming.start_s))
+        out_loc = _locate_source_frame(tl, project, float(outgoing.end_s), video_track=video_track)
+        in_loc = _locate_source_frame(tl, project, float(incoming.start_s), video_track=video_track)
         if out_loc is None or in_loc is None:
             continue
         samples.append(
@@ -208,7 +225,9 @@ def build_boundary_samples(
     return samples
 
 
-def build_short_generator_boundary_samples(tl, candidates, project=None) -> list[BoundarySample]:
+def build_short_generator_boundary_samples(
+    tl, candidates, project=None, *, video_track: int | None = None
+) -> list[BoundarySample]:
     """Walk every Short-Generator candidate's spans and emit one
     sample per internal cut.
 
@@ -229,7 +248,15 @@ def build_short_generator_boundary_samples(tl, candidates, project=None) -> list
         segs = short_candidate_to_segments(cand)
         if len(segs) < 2:
             continue
-        samples.extend(build_boundary_samples(tl, segs, project=project, candidate_index=ci))
+        samples.extend(
+            build_boundary_samples(
+                tl,
+                segs,
+                project=project,
+                candidate_index=ci,
+                video_track=video_track,
+            )
+        )
     return samples
 
 

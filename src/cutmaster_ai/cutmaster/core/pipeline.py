@@ -27,18 +27,18 @@ def _find_timeline_by_name(project, name: str):
     return None
 
 
-async def _vfr_check(tl, run, emit) -> bool:
-    """Scan all V1 source files for VFR. Returns True on pass."""
+async def _vfr_check(tl, run, emit, *, video_track: int = 1) -> bool:
+    """Scan source files on ``video_track`` for VFR. Returns True on pass."""
     await emit(
         run,
         stage="vfr_check",
         status="started",
-        message="Checking source media for variable frame rate",
+        message=f"Checking V{video_track} source media for variable frame rate",
     )
 
     from ..media.vfr import detect_vfr  # lazy — avoids ffprobe requirement at import
 
-    items = tl.GetItemListInTrack("video", 1) or []
+    items = tl.GetItemListInTrack("video", video_track) or []
     seen: set[str] = set()
     problems: list[dict] = []
     for item in items:
@@ -77,18 +77,24 @@ async def _vfr_check(tl, run, emit) -> bool:
     return True
 
 
-async def _extract_audio(tl, run, emit) -> tuple[Path, float] | None:
+async def _extract_audio(
+    tl, run, emit, *, audio_track: int | None = None
+) -> tuple[Path, float] | None:
     await emit(
         run,
         stage="audio_extract",
         status="started",
-        message="Reassembling timeline audio via ffmpeg",
+        message=(
+            f"Reassembling A{audio_track} audio via ffmpeg"
+            if audio_track is not None
+            else "Reassembling timeline audio via ffmpeg"
+        ),
     )
     from ..media.ffmpeg_audio import extract_timeline_audio  # lazy
 
     wav_path = state.audio_path_for(run["run_id"])
     try:
-        result = await asyncio.to_thread(extract_timeline_audio, tl, wav_path)
+        result = await asyncio.to_thread(extract_timeline_audio, tl, wav_path, audio_track)
     except Exception as exc:
         await emit(
             run, stage="audio_extract", status="failed", message=f"ffmpeg extraction failed: {exc}"
@@ -110,6 +116,8 @@ async def _transcribe_per_clip(
     run,
     emit,
     stt_provider: str | None = None,
+    *,
+    audio_track: int | None = None,
 ) -> list[dict] | None:
     """v2-6: run STT per timeline audio item, stitch the results.
 
@@ -131,7 +139,7 @@ async def _transcribe_per_clip(
         message="Extracting audio per timeline item (ffmpeg)",
     )
 
-    specs = build_clip_audio_specs(tl)
+    specs = build_clip_audio_specs(tl, track_index=audio_track)
     if not specs:
         await emit(
             run,
@@ -433,7 +441,9 @@ async def _scrub_stage(words: list[dict], params: ScrubParams, run, emit) -> lis
     return result.kept
 
 
-async def _shot_tag_stage(tl, scrubbed_words: list[dict], run, emit) -> list[dict]:
+async def _shot_tag_stage(
+    tl, scrubbed_words: list[dict], run, emit, *, video_track: int | None = None
+) -> list[dict]:
     """v4 Layer C — tag each timeline video item with Gemini vision.
 
     Annotates every scrubbed word with a ``shot_tag`` dict and persists
@@ -460,7 +470,7 @@ async def _shot_tag_stage(tl, scrubbed_words: list[dict], run, emit) -> list[dic
     )
 
     try:
-        specs = await asyncio.to_thread(build_video_item_specs, tl)
+        specs = await asyncio.to_thread(build_video_item_specs, tl, None, video_track=video_track)
     except Exception as exc:
         log.warning("shot_tag build_video_item_specs failed: %s", exc)
         await emit(
@@ -557,7 +567,9 @@ async def _shot_tag_stage(tl, scrubbed_words: list[dict], run, emit) -> list[dic
     return annotated_scrubbed
 
 
-async def _audio_cues_stage(tl, scrubbed_words: list[dict], run, emit) -> list[dict]:
+async def _audio_cues_stage(
+    tl, scrubbed_words: list[dict], run, emit, *, audio_track: int | None = None
+) -> list[dict]:
     """v4 Layer Audio — deterministic DSP cues (pauses + RMS + silence).
 
     Runs post-scrub (and post-shot_tag when both are active). Annotates
@@ -594,7 +606,7 @@ async def _audio_cues_stage(tl, scrubbed_words: list[dict], run, emit) -> list[d
         try:
             from ..media.ffmpeg_audio import extract_timeline_audio
 
-            await asyncio.to_thread(extract_timeline_audio, tl, wav_path)
+            await asyncio.to_thread(extract_timeline_audio, tl, wav_path, audio_track)
         except Exception as exc:
             log.warning("audio_cues: timeline audio extract failed: %s", exc)
             await emit(
@@ -671,6 +683,8 @@ async def run_analyze(
     stt_provider: str | None = None,
     layer_c_enabled: bool = False,
     layer_audio_enabled: bool = False,
+    video_track: int | None = None,
+    audio_track: int | None = None,
 ) -> None:
     """Top-level analyze orchestrator.
 
@@ -705,7 +719,61 @@ async def run_analyze(
 
         state.raise_if_cancelled(run_id)
 
-        if not await _vfr_check(tl, run, state.emit):
+        # Auto-pick source tracks from the timeline, or honour explicit
+        # overrides from AnalyzeRequest. The resolved indices are
+        # persisted on the run state so build-plan reads them without
+        # re-detecting.
+        from ..resolve_ops.track_picker import (
+            NoDialogueTrackError,
+            NoSourceTrackError,
+            pick_audio_tracks,
+            pick_video_track,
+        )
+
+        try:
+            picked_video = video_track or pick_video_track(tl)
+        except NoSourceTrackError as exc:
+            await state.emit(
+                run,
+                stage="vfr_check",
+                status="failed",
+                message=f"No source video: {exc}",
+            )
+            run["status"] = "failed"
+            run["error"] = "no_video_track"
+            state.save(run)
+            await state.emit(run, stage="done", status="failed", message="halted")
+            return
+
+        try:
+            picked_audio = audio_track or pick_audio_tracks(tl)[0]
+        except NoDialogueTrackError as exc:
+            await state.emit(
+                run,
+                stage="vfr_check",
+                status="failed",
+                message=(
+                    f"No dialogue track: {exc} — rename a track to "
+                    "'Dialogue' or pick one on the Preset screen."
+                ),
+            )
+            run["status"] = "failed"
+            run["error"] = "no_audio_track"
+            state.save(run)
+            await state.emit(run, stage="done", status="failed", message="halted")
+            return
+
+        run["video_track"] = int(picked_video)
+        run["audio_track"] = int(picked_audio)
+        state.save(run)
+        log.info(
+            "run_analyze: using V%d + A%d for run %s",
+            picked_video,
+            picked_audio,
+            run_id,
+        )
+
+        if not await _vfr_check(tl, run, state.emit, video_track=picked_video):
             run["status"] = "failed"
             run["error"] = "vfr_detected"
             state.save(run)
@@ -722,6 +790,7 @@ async def run_analyze(
                 run,
                 state.emit,
                 stt_provider=stt_provider,
+                audio_track=picked_audio,
             )
             if words is None:
                 run["status"] = "failed"
@@ -743,7 +812,7 @@ async def run_analyze(
                     state.emit,
                 )
         else:
-            audio_result = await _extract_audio(tl, run, state.emit)
+            audio_result = await _extract_audio(tl, run, state.emit, audio_track=picked_audio)
             if audio_result is None:
                 run["status"] = "failed"
                 run["error"] = "audio_extract_failed"
@@ -786,11 +855,13 @@ async def run_analyze(
 
         if layer_c_enabled:
             state.raise_if_cancelled(run_id)
-            scrubbed = await _shot_tag_stage(tl, scrubbed, run, state.emit)
+            scrubbed = await _shot_tag_stage(
+                tl, scrubbed, run, state.emit, video_track=picked_video
+            )
 
         if layer_audio_enabled:
             state.raise_if_cancelled(run_id)
-            await _audio_cues_stage(tl, scrubbed, run, state.emit)
+            await _audio_cues_stage(tl, scrubbed, run, state.emit, audio_track=picked_audio)
 
         run["status"] = "done"
         state.save(run)

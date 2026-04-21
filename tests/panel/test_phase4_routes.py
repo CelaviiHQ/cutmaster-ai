@@ -113,7 +113,7 @@ def test_build_plan_accepts_and_persists_v2_10_format_fields(
 
     monkeypatch.setattr(resolve_mod, "_boilerplate", fake_boilerplate)
     monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl)
-    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs: [])
+    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs, **_kw: [])
 
     r = client.post(
         "/cutmaster/build-plan",
@@ -215,7 +215,7 @@ def test_build_plan_assembled_mode_uses_assembled_director(
             warnings=[],
         ),
     ]
-    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs: resolved_stub)
+    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs, **_kw: resolved_stub)
 
     r = client.post(
         "/cutmaster/build-plan",
@@ -298,7 +298,7 @@ def test_build_plan_assembled_uses_raw_transcript_when_takes_already_scrubbed(
             {"item_index": 0, "source_name": "t.mov", "start_s": 0.0, "end_s": 1.0},
         ],
     )
-    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs: [])
+    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs, **_kw: [])
 
     fake_tl = MagicMock()
     fake_tl.GetSetting.return_value = "24"
@@ -390,7 +390,7 @@ def test_build_plan_clip_hunter_stores_candidates_and_skips_director(
     monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl)
 
     # Distinguish per-candidate resolver output by tagging the source item.
-    def fake_resolver(_tl, segs):
+    def fake_resolver(_tl, segs, **_kw):
         # Each call returns a single resolved segment carrying the segment's
         # start_s so the test can assert the mapping.
         return [
@@ -671,7 +671,7 @@ def test_build_plan_tightener_skips_director_and_returns_stats(
         resolve_mod, "_boilerplate", lambda: (MagicMock(), MagicMock(), MagicMock())
     )
     monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl)
-    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs: [])
+    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs, **_kw: [])
 
     r = client.post(
         "/cutmaster/build-plan",
@@ -1004,7 +1004,7 @@ def test_build_plan_round_trips_speaker_labels(
         "_find_timeline_by_name",
         lambda _p, _n: fake_tl,
     )
-    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs: [])
+    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs, **_kw: [])
 
     r = client.post(
         "/cutmaster/build-plan",
@@ -1140,7 +1140,7 @@ def test_build_plan(client: TestClient, scrubbed_run, monkeypatch):
             warnings=[],
         ),
     ]
-    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs: resolved)
+    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs, **_kw: resolved)
 
     r = client.post(
         "/cutmaster/build-plan",
@@ -1191,7 +1191,7 @@ def test_build_plan_accepts_v2_fields_additively(client, monkeypatch, scrubbed_r
 
     monkeypatch.setattr(resolve_mod, "_boilerplate", fake_boilerplate)
     monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl)
-    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs: [])
+    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs, **_kw: [])
 
     r = client.post(
         "/cutmaster/build-plan",
@@ -1236,7 +1236,7 @@ def test_build_plan_omitted_v2_fields_use_safe_defaults(client, monkeypatch, scr
 
     monkeypatch.setattr(resolve_mod, "_boilerplate", fake_boilerplate)
     monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl)
-    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs: [])
+    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs, **_kw: [])
 
     r = client.post(
         "/cutmaster/build-plan",

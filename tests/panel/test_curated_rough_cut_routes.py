@@ -61,7 +61,7 @@ def _stub_resolve(monkeypatch):
     monkeypatch.setattr(
         routes.build,
         "resolve_segments",
-        lambda _tl, _segs: [
+        lambda _tl, _segs, **_kw: [
             ResolvedCutSegment(
                 start_s=0.0,
                 end_s=0.95,
