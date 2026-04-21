@@ -53,7 +53,7 @@ Order matters:
 1. Open **DaVinci Resolve Studio** and load the project you want to cut
 2. In a terminal, from the repo root:
    ```bash
-   uv run celavii-resolve-panel
+   uv run cutmaster-ai-panel
    ```
    You should see `Connected to DaVinci Resolve Studio 21.x.x`.
 3. Keep that terminal open while you use CutMaster.
@@ -76,14 +76,14 @@ Or paste `http://127.0.0.1:8765/` into any browser. Ideally, position the browse
 Every run writes:
 - A new timeline named `<source>_AI_Cut_<n>` in your current project
 - A snapshot of the project state before building (auto-rollback available)
-- A run record at `~/.celavii/cutmaster/<run_id>.json`
+- A run record at `~/.cutmaster/cutmaster/<run_id>.json`
 
 ## If something breaks
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Backend won't start — "Connected to… failed" | Resolve not running, or wrong edition | Open Resolve Studio; verify edition via `About` menu |
-| Backend starts but panel shows `Backend: ✗` | Backend died; check your terminal for a stack trace | Restart `uv run celavii-resolve-panel`; report the trace |
+| Backend starts but panel shows `Backend: ✗` | Backend died; check your terminal for a stack trace | Restart `uv run cutmaster-ai-panel`; report the trace |
 | Analyze stage hangs at STT | No `GEMINI_API_KEY`, or quota exhausted | Check `.env`; fall back to Deepgram if you have a `DEEPGRAM_API_KEY` |
 | Build succeeds but timeline not in Resolve | Resolve lost focus during Resolve API call | Refresh Resolve's timeline tab — it's there |
 | "VFR detected" error at Analyze | Source is variable-frame-rate (mobile footage, screen recordings) | Transcode to CFR in Resolve first (right-click clip → `Clip Attributes`) |

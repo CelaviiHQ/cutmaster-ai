@@ -31,14 +31,14 @@ This repo ships **two entirely separate "plugins"** that share no files and foll
 
 | # | Name | Where source lives | Built by | Installs to |
 |---|---|---|---|---|
-| 1 | **Claude Code plugin** | [.claude-plugin/plugin.json](../.claude-plugin/plugin.json) + top-level `skills/` / `agents/` / `hooks/` + `.mcp.json` | [scripts/build-plugin.sh](../scripts/build-plugin.sh) → `.zip` | `claude plugin install celavii-resolve-plugin.zip` (Claude Code CLI) |
+| 1 | **Claude Code plugin** | [.claude-plugin/plugin.json](../.claude-plugin/plugin.json) + top-level `skills/` / `agents/` / `hooks/` + `.mcp.json` | [scripts/build-plugin.sh](../scripts/build-plugin.sh) → `.zip` | `claude plugin install cutmaster-ai-plugin.zip` (Claude Code CLI) |
 | 2 | **Resolve Workflow Integration plugin** | [apps/resolve-plugin/](../apps/resolve-plugin/) (placeholder — being rebuilt in v3-6) | Future `scripts/package-resolve-plugin.sh` | `/Library/Application Support/Blackmagic Design/DaVinci Resolve/Workflow Integration Plugins/` (macOS, sudo) |
 
 When you say "plugin" in a commit, PR title, or doc, prefix it: `Claude Code plugin:` or `Resolve plugin:`.
 
 ## Working on the React panel (`apps/panel/`)
 
-The panel is a Vite/React app that lives in [apps/panel/](../apps/panel/) and is served by the FastAPI backend at `celavii-resolve-panel` on port 8765.
+The panel is a Vite/React app that lives in [apps/panel/](../apps/panel/) and is served by the FastAPI backend at `cutmaster-ai-panel` on port 8765.
 
 ```bash
 # First run — install Node deps
@@ -49,7 +49,7 @@ npm run dev                       # → http://localhost:5173
 
 # Production build + ship dist/ into the Python package's static dir
 npm run build                     # writes apps/panel/dist/
-# postbuild script then copies dist → src/celavii_resolve/http/static/
+# postbuild script then copies dist → src/cutmaster_ai/http/static/
 ```
 
 **Architecture:**
@@ -67,7 +67,7 @@ Being rebuilt in v3-6. Don't install the current files — they will not load in
 
 When v3-6 lands, the plugin will be a thin Electron app: `manifest.xml` + `package.json` + a ~25-line `main.js` that opens a `BrowserWindow` at `http://127.0.0.1:8765/`. No Resolve API calls from the plugin itself — all Resolve interaction goes through the Python backend.
 
-> **Why uv?** The committed `.mcp.json` invokes the MCP server as `uv run python -m celavii_resolve`. Without `uv` on PATH, Claude Code / Desktop can't start the server. This is intentional — `uv run` handles virtual-env activation automatically so contributors don't have to edit `.mcp.json` with machine-specific paths.
+> **Why uv?** The committed `.mcp.json` invokes the MCP server as `uv run python -m cutmaster_ai`. Without `uv` on PATH, Claude Code / Desktop can't start the server. This is intentional — `uv run` handles virtual-env activation automatically so contributors don't have to edit `.mcp.json` with machine-specific paths.
 
 ## Responsibility model — where does your feature go?
 
@@ -75,10 +75,10 @@ Every new feature fits exactly one bucket. If it doesn't, it's two features.
 
 | Bucket | Rule | Location |
 |---|---|---|
-| **Atomic Resolve op** | One function = one Resolve SDK call = one MCP tool. No logic. | `src/celavii_resolve/tools/` |
-| **Deterministic compound** | Chains multiple `tools/` ops. No LLM. | `src/celavii_resolve/workflows/` |
-| **Stateless LLM tool** | One MCP call → one LLM roundtrip → one answer. | `src/celavii_resolve/intelligence/` |
-| **Stateful AI product** | Owns state, multi-stage pipeline, optionally its own transport. | `src/celavii_resolve/cutmaster/` |
+| **Atomic Resolve op** | One function = one Resolve SDK call = one MCP tool. No logic. | `src/cutmaster_ai/tools/` |
+| **Deterministic compound** | Chains multiple `tools/` ops. No LLM. | `src/cutmaster_ai/workflows/` |
+| **Stateless LLM tool** | One MCP call → one LLM roundtrip → one answer. | `src/cutmaster_ai/intelligence/` |
+| **Stateful AI product** | Owns state, multi-stage pipeline, optionally its own transport. | `src/cutmaster_ai/cutmaster/` |
 
 ## Adding a new tool
 
@@ -86,27 +86,27 @@ Every new feature fits exactly one bucket. If it doesn't, it's two features.
 2. Scaffold with the `add-tool` or `add-workflow` skill, or by hand:
 
 ```python
-# src/celavii_resolve/tools/my_area.py
+# src/cutmaster_ai/tools/my_area.py
 from ..config import mcp
 from ..errors import safe_resolve_call
 from ..resolve import _boilerplate
 
 @mcp.tool
 @safe_resolve_call
-def celavii_your_tool(param: str, optional: int = 1) -> str:
+def cutmaster_your_tool(param: str, optional: int = 1) -> str:
     """Clear docstring explaining what this does."""
     resolve, project, media_pool = _boilerplate()
     # ... Resolve API calls ...
     return "Result message"
 ```
 
-3. Register: add `from .tools import my_area` to `src/celavii_resolve/__init__.py`.
+3. Register: add `from .tools import my_area` to `src/cutmaster_ai/__init__.py`.
 4. Add a test: `tests/test_my_area.py` (convention tests will enforce naming).
 
 ## Coding conventions
 
 - **Python 3.11+.** Use `X | Y` instead of `Union[X, Y]`.
-- **Namespace every tool** with `celavii_` prefix.
+- **Namespace every tool** with `cutmaster_` prefix.
 - **All tools return `str`** (error strings or success messages / JSON).
 - **Private helpers prefix with `_`** (e.g. `_boilerplate`, `_find_bin`).
 - **Guard None returns from Resolve:** `items = thing.GetClipList() or []`.
@@ -129,7 +129,7 @@ The pre-commit hook blocks `/Users/` and `/home/` paths from being committed —
 This repo is public. Most work should be public from day one — that's the point of open source. For genuinely unannounced strategic work, use a private second remote:
 
 ```bash
-git remote add private git@github.com:CelaviiHQ/celavii-resolve-private.git
+git remote add private git@github.com:CelaviiHQ/cutmaster-ai-private.git
 git push private feature/unannounced-thing
 # When ready, rebase onto public main
 ```
@@ -140,10 +140,10 @@ Scratch space lives in `Implementation/`, `docs/internal/`, `notes/`, `scratch/`
 
 ```bash
 # MCP stdio server (Claude Code / Desktop)
-python -m celavii_resolve
+python -m cutmaster_ai
 
 # Panel HTTP server (React Workflow Integration)
-celavii-resolve-panel
+cutmaster-ai-panel
 # → http://127.0.0.1:8765/ping
 
 # Full test suite

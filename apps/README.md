@@ -1,11 +1,11 @@
 # apps/ — Non-Python deliverables
 
-The Python MCP server + panel backend live in [`src/celavii_resolve/`](../src/celavii_resolve/).
+The Python MCP server + panel backend live in [`src/cutmaster_ai/`](../src/cutmaster_ai/).
 This directory holds the **two client-side artefacts** that ship alongside it.
 
 | App | What | How it talks to the server |
 |---|---|---|
-| [`panel/`](panel/) | React + Vite app that renders CutMaster AI. Runs in a browser today; will run inside Resolve once v3-6 ships. | HTTP/SSE to `celavii-resolve-panel` on `127.0.0.1:8765` |
+| [`panel/`](panel/) | React + Vite app that renders CutMaster AI. Runs in a browser today; will run inside Resolve once v3-6 ships. | HTTP/SSE to `cutmaster-ai-panel` on `127.0.0.1:8765` |
 | [`resolve-plugin/`](resolve-plugin/) | **Placeholder** for the Resolve Workflow Integration plugin that will dock the panel inside Resolve. Not yet loadable — being rebuilt in v3-6. | n/a — plugin just opens a BrowserWindow pointed at the panel |
 
 > **Don't confuse this with the Claude Code plugin.** `scripts/build-plugin.sh` builds the **Claude Code plugin** (skills/agents/hooks shipped to Claude Code users). It has nothing to do with `resolve-plugin/`. See [docs/CONTRIBUTING.md](../docs/CONTRIBUTING.md#two-plugins-one-repo).
@@ -15,12 +15,12 @@ This directory holds the **two client-side artefacts** that ship alongside it.
 ```bash
 # 1. Backend (from project root)
 pip install -e '.[panel]'
-celavii-resolve-panel   # starts on :8765
+cutmaster-ai-panel   # starts on :8765
 
 # 2. Frontend (from apps/panel/)
 cd apps/panel
 npm install
-npm run build:install   # → writes dist/ into src/celavii_resolve/http/static/
+npm run build:install   # → writes dist/ into src/cutmaster_ai/http/static/
 ```
 
 Once `http/static/` is populated, the backend serves the built panel at

@@ -6,8 +6,8 @@ Implementation/
 .claude/commands/
 
 # CutMaster panel — built bundle (run `cd panel && npm run build:install` to populate)
-src/celavii_resolve/http/static/*
-!src/celavii_resolve/http/static/.gitkeep
+src/cutmaster_ai/http/static/*
+!src/cutmaster_ai/http/static/.gitkeep
 
 # CutMaster panel — node dependencies
 apps/panel/node_modules/
@@ -66,8 +66,8 @@ logs/
 *.log
 
 # Plugin builds
-celavii-resolve-plugin-*.zip
-celavii-resolve-v*.zip
+cutmaster-ai-plugin-*.zip
+cutmaster-ai-v*.zip
 
 # Playwright MCP scratch output + screenshots
 .playwright-mcp/

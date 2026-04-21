@@ -1,6 +1,6 @@
 # CutMaster AI — Architecture
 
-This is the map. Read this once before diving into `src/celavii_resolve/cutmaster/` and you'll save yourself an afternoon tracing imports.
+This is the map. Read this once before diving into `src/cutmaster_ai/cutmaster/` and you'll save yourself an afternoon tracing imports.
 
 For **setup** (API keys, running the panel, Claude Code plugin), see [`SETUP.md`](./SETUP.md). For the **chronological how-we-got-here**, see [`Implementation/cutmaster_ai/v2/proposal.md`](../Implementation/cutmaster_ai/v2/proposal.md).
 
@@ -12,8 +12,8 @@ A DaVinci Resolve-side agent that takes a raw (or assembled) timeline and produc
 
 | Entry point | Transport | Consumer |
 |---|---|---|
-| `celavii-resolve` | MCP stdio | Claude Code / Desktop |
-| `celavii-resolve-panel` | HTTP `127.0.0.1:8765` | React panel bundled inside Resolve's Workflow Integration (or a browser tab) |
+| `cutmaster-ai` | MCP stdio | Claude Code / Desktop |
+| `cutmaster-ai-panel` | HTTP `127.0.0.1:8765` | React panel bundled inside Resolve's Workflow Integration (or a browser tab) |
 
 Every CutMaster function is a plain Python function the HTTP panel calls directly; MCP gets thin `@mcp.tool` adapters.
 
@@ -45,7 +45,7 @@ Every CutMaster function is a plain Python function the HTTP panel calls directl
     │  scrubber.py → filler / dead-air / restart removal       │
     └───────────────┬──────────────────────────────────────────┘
                     │  run["transcript"], run["scrubbed"]
-                    │  (persisted to ~/.celavii/cutmaster/<id>.json)
+                    │  (persisted to ~/.cutmaster/cutmaster/<id>.json)
                     ▼
     ┌──────────────────────────────────────────────────────────┐
     │  Configure screen (UI)                                   │
@@ -94,7 +94,7 @@ Every CutMaster function is a plain Python function the HTTP panel calls directl
 
 Every `POST /cutmaster/analyze` creates a **run** identified by a 12-char hex ID. Everything else is keyed by that run.
 
-**On disk** (`~/.celavii/cutmaster/<run_id>.json`):
+**On disk** (`~/.cutmaster/cutmaster/<run_id>.json`):
 
 ```python
 {
@@ -141,7 +141,7 @@ Debug artefacts next to the run state:
 ### 4.1 Add an STT provider
 
 ```python
-# src/celavii_resolve/cutmaster/stt/whisper.py
+# src/cutmaster_ai/cutmaster/stt/whisper.py
 from .stt import TranscriptResponse, TranscriptWord
 
 
@@ -333,10 +333,10 @@ http/routes/cutmaster/      feature-split FastAPI package
 Thirty minutes to build a mental model:
 
 1. This file.
-2. [`cutmaster/core/pipeline.py`](../src/celavii_resolve/cutmaster/core/pipeline.py) — top-down, `run_analyze` orchestrator.
-3. [`cutmaster/core/director.py`](../src/celavii_resolve/cutmaster/core/director.py) — three prompt variants; read the docstrings before the prompt bodies.
-4. [`cutmaster/core/execute.py`](../src/celavii_resolve/cutmaster/core/execute.py) — how a plan becomes a real Resolve timeline.
-5. [`http/routes/cutmaster/build.py`](../src/celavii_resolve/http/routes/cutmaster/build.py) — the best place to see all preset branches at once.
+2. [`cutmaster/core/pipeline.py`](../src/cutmaster_ai/cutmaster/core/pipeline.py) — top-down, `run_analyze` orchestrator.
+3. [`cutmaster/core/director.py`](../src/cutmaster_ai/cutmaster/core/director.py) — three prompt variants; read the docstrings before the prompt bodies.
+4. [`cutmaster/core/execute.py`](../src/cutmaster_ai/cutmaster/core/execute.py) — how a plan becomes a real Resolve timeline.
+5. [`http/routes/cutmaster/build.py`](../src/cutmaster_ai/http/routes/cutmaster/build.py) — the best place to see all preset branches at once.
 6. The panel: [`apps/panel/src/App.tsx`](../apps/panel/src/App.tsx) → any screen you touched.
 
 Then pick one item from §4's extension points and add it. Shipping a new preset is the fastest way to understand the whole data flow.

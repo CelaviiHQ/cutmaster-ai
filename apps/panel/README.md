@@ -1,6 +1,6 @@
 # CutMaster AI React Panel
 
-Vite + React + TypeScript. The frontend half of CutMaster AI. Talks to the FastAPI backend ([`celavii-resolve-panel`](../../src/celavii_resolve/http/)) over HTTP + SSE on `127.0.0.1:8765`.
+Vite + React + TypeScript. The frontend half of CutMaster AI. Talks to the FastAPI backend ([`cutmaster-ai-panel`](../../src/cutmaster_ai/http/)) over HTTP + SSE on `127.0.0.1:8765`.
 
 End-user install: see [docs/CUTMASTER_SETUP.md](../../docs/CUTMASTER_SETUP.md).
 Contributor guide: see [docs/CONTRIBUTING.md — Working on the React panel](../../docs/CONTRIBUTING.md#working-on-the-react-panel-appspanel).
@@ -17,10 +17,10 @@ npm install
 npm run dev                 # → http://localhost:5173
 
 # Production build + ship to the Python package
-npm run build               # → dist/ → src/celavii_resolve/http/static/
+npm run build               # → dist/ → src/cutmaster_ai/http/static/
 ```
 
-The Python backend must be running separately (`uv run celavii-resolve-panel`) for any `/cutmaster/*` call to succeed.
+The Python backend must be running separately (`uv run cutmaster-ai-panel`) for any `/cutmaster/*` call to succeed.
 
 ## File layout
 
@@ -69,9 +69,9 @@ Routed at `?gate=tokens`, e.g. `http://127.0.0.1:8765/?gate=tokens`. Renders all
 `npm run build` runs `tsc --noEmit && vite build`, then a postbuild script:
 
 ```bash
-rm -rf ../../src/celavii_resolve/http/static
-cp -r dist ../../src/celavii_resolve/http/static
-touch ../../src/celavii_resolve/http/static/.gitkeep
+rm -rf ../../src/cutmaster_ai/http/static
+cp -r dist ../../src/cutmaster_ai/http/static
+touch ../../src/cutmaster_ai/http/static/.gitkeep
 ```
 
 This is how the FastAPI backend gets the panel bundle to serve at `/`. The `.gitkeep` is important — without it, `git clean` wipes the directory.

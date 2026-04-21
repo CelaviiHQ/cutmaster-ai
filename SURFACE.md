@@ -1,6 +1,6 @@
 # Plugin & Embedding Surface
 
-This document enumerates the **stable** contract that external consumers — most notably the Celavii Studio bundle and any third-party plugin author — depend on. Anything listed here is covered by semantic versioning: breaking changes require a **major** version bump and a changelog entry under `## [Unreleased]`. Everything else in `src/celavii_resolve/` is internal and may be restructured without notice.
+This document enumerates the **stable** contract that external consumers — most notably the Celavii Studio bundle and any third-party plugin author — depend on. Anything listed here is covered by semantic versioning: breaking changes require a **major** version bump and a changelog entry under `## [Unreleased]`. Everything else in `src/cutmaster_ai/` is internal and may be restructured without notice.
 
 > **Scope:** this file describes consumption patterns, not the full tool catalogue. For the MCP tool list see [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md).
 
@@ -10,7 +10,7 @@ This document enumerates the **stable** contract that external consumers — mos
 
 The package advertises **two** entry-point groups. A plugin may register into one, the other, or both.
 
-### `celavii_resolve.tools`
+### `cutmaster_ai.tools`
 
 Register signature:
 
@@ -22,13 +22,13 @@ def register_tools(mcp: fastmcp.FastMCP) -> None:
 Declared in `pyproject.toml`:
 
 ```toml
-[project.entry-points."celavii_resolve.tools"]
+[project.entry-points."cutmaster_ai.tools"]
 my_plugin = "my_plugin:register_tools"
 ```
 
-Consumed by: MCP clients (Claude Desktop, Claude Code, Cursor, any FastMCP host). Called once during `celavii_resolve.__init__` after OSS tools have registered.
+Consumed by: MCP clients (Claude Desktop, Claude Code, Cursor, any FastMCP host). Called once during `cutmaster_ai.__init__` after OSS tools have registered.
 
-### `celavii_resolve.panel_routes`
+### `cutmaster_ai.panel_routes`
 
 Register signature:
 
@@ -40,17 +40,17 @@ def register_routes(app: fastapi.FastAPI) -> None:
 Declared in `pyproject.toml`:
 
 ```toml
-[project.entry-points."celavii_resolve.panel_routes"]
+[project.entry-points."cutmaster_ai.panel_routes"]
 my_plugin = "my_plugin:register_routes"
 ```
 
-Consumed by: the Panel HTTP server (Celavii Studio bundle, React panel inside Resolve's Workflow Integration webview). Called once inside `celavii_resolve.http.app.create_app()` **after** OSS routes register, so plugins cannot shadow built-in paths.
+Consumed by: the Panel HTTP server (Celavii Studio bundle, React panel inside Resolve's Workflow Integration webview). Called once inside `cutmaster_ai.http.app.create_app()` **after** OSS routes register, so plugins cannot shadow built-in paths.
 
 ### Contract guarantees
 
 - Registration is best-effort. A plugin that raises during load or register is **logged and skipped** — it will never prevent OSS from starting.
-- The list of successfully-registered names is exposed at `GET /pro/status` and via `celavii_resolve.plugins.registered_plugins()`.
-- Existence of any registered plugin flips `celavii_resolve.licensing.current_tier()` from `"oss"` to `"standard"`.
+- The list of successfully-registered names is exposed at `GET /pro/status` and via `cutmaster_ai.plugins.registered_plugins()`.
+- Existence of any registered plugin flips `cutmaster_ai.licensing.current_tier()` from `"oss"` to `"standard"`.
 - OSS has **no hardcoded references** to specific plugin module names. Discovery is entry-point-only.
 
 ---
@@ -88,25 +88,25 @@ Breaking any of these requires a major bump.
 
 ## 3. Stdout protocol
 
-`python -m celavii_resolve.http` (equivalently, the `celavii-resolve-panel` console script) emits the following **as the first stdout line** at startup:
+`python -m cutmaster_ai.http` (equivalently, the `cutmaster-ai-panel` console script) emits the following **as the first stdout line** at startup:
 
 ```
 PANEL_READY http://<host>:<port>
 ```
 
-Supervisors parse this line to discover the bound URL — particularly important when `CELAVII_PANEL_PORT=0` is set to request a random free port. No other output (log lines, banners) will precede this line on stdout; logging goes to stderr after the line is flushed.
+Supervisors parse this line to discover the bound URL — particularly important when `CUTMASTER_PANEL_PORT=0` is set to request a random free port. No other output (log lines, banners) will precede this line on stdout; logging goes to stderr after the line is flushed.
 
 Environment:
 
-- `CELAVII_PANEL_HOST` — bind host, default `127.0.0.1`.
-- `CELAVII_PANEL_PORT` — bind port; default `8765`. Set to `0` for random.
-- `CELAVII_PANEL_DB` — SQLite path for the panel state database. Default `~/.celavii/panel/state.db`.
+- `CUTMASTER_PANEL_HOST` — bind host, default `127.0.0.1`.
+- `CUTMASTER_PANEL_PORT` — bind port; default `8765`. Set to `0` for random.
+- `CUTMASTER_PANEL_DB` — SQLite path for the panel state database. Default `~/.cutmaster/panel/state.db`.
 
 ---
 
 ## 4. Stable Python imports
 
-Third-party code **must** import Pydantic request/response models from `celavii_resolve.http.models`, not from the private `celavii_resolve.http.routes.*._models` modules. The re-export list is versioned; additions are non-breaking, removals or shape changes are breaking.
+Third-party code **must** import Pydantic request/response models from `cutmaster_ai.http.models`, not from the private `cutmaster_ai.http.routes.*._models` modules. The re-export list is versioned; additions are non-breaking, removals or shape changes are breaking.
 
 Current re-exports include (non-exhaustive — check `http/models.py` for the full `__all__`):
 
@@ -120,16 +120,16 @@ Current re-exports include (non-exhaustive — check `http/models.py` for the fu
 
 Other stable top-level imports:
 
-- `celavii_resolve.__version__` — package version string.
-- `celavii_resolve.plugins.discover_tools(mcp)` / `.discover_panel_routes(app)` — manual re-invocation (rare).
-- `celavii_resolve.plugins.registered_plugins()` — snapshot dict.
-- `celavii_resolve.licensing.current_tier()` — returns `"oss"` or `"standard"`.
+- `cutmaster_ai.__version__` — package version string.
+- `cutmaster_ai.plugins.discover_tools(mcp)` / `.discover_panel_routes(app)` — manual re-invocation (rare).
+- `cutmaster_ai.plugins.registered_plugins()` — snapshot dict.
+- `cutmaster_ai.licensing.current_tier()` — returns `"oss"` or `"standard"`.
 
 ---
 
 ## 5. Migrations
 
-The Panel boots with an idempotent SQLite migration runner at `celavii_resolve.migrations.runner.apply_migrations(db_path)`. It applies every file in `celavii_resolve/migrations/` matching the pattern `NNNN_*.sql`, in numeric order, tracking applied files in `_celavii_schema_migrations`.
+The Panel boots with an idempotent SQLite migration runner at `cutmaster_ai.migrations.runner.apply_migrations(db_path)`. It applies every file in `cutmaster_ai/migrations/` matching the pattern `NNNN_*.sql`, in numeric order, tracking applied files in `_cutmaster_schema_migrations`.
 
 OSS owns the un-prefixed tables (`recent_projects`, `custom_presets`, `cutmaster_sessions`, `panel_state`, …). The `studio_` table prefix is **reserved for the Celavii Studio bundle**. Third-party plugins that need their own tables should use a namespaced prefix matching their package, e.g. `myplugin_recent_items`.
 
@@ -141,10 +141,10 @@ Breaking changes to any OSS table require a new forward-only migration and a maj
 
 Anything not listed above is internal and may change between minor versions. Notably:
 
-- Module paths under `celavii_resolve.cutmaster.*`, `celavii_resolve.tools.*`, `celavii_resolve.workflows.*`, `celavii_resolve.intelligence.*` — all free to move.
-- Private request/response models under `http.routes.*._models` — use `celavii_resolve.http.models` instead.
+- Module paths under `cutmaster_ai.cutmaster.*`, `cutmaster_ai.tools.*`, `cutmaster_ai.workflows.*`, `cutmaster_ai.intelligence.*` — all free to move.
+- Private request/response models under `http.routes.*._models` — use `cutmaster_ai.http.models` instead.
 - FastMCP registry internals — tools are the product, not the specific `_tools` dict shape.
-- Filesystem cache locations under `~/.celavii/` — treated as implementation detail.
+- Filesystem cache locations under `~/.cutmaster/` — treated as implementation detail.
 - Logging format and logger names.
 
 If you find yourself importing something that isn't documented here, file an issue requesting promotion to the stable surface rather than depending on it silently.

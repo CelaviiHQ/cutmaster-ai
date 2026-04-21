@@ -383,7 +383,7 @@ export default function App() {
                                 ? "pinging backend…"
                                 : backendOk
                                     ? "backend: connected"
-                                    : "backend: unreachable — start celavii-resolve-panel"
+                                    : "backend: unreachable — start cutmaster-ai-panel"
                         }
                     />
                 </div>

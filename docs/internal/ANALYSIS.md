@@ -263,7 +263,7 @@ Six DaVinci Resolve MCP repos were analyzed to inform the design of Celavii-Reso
 
 ### Core Architecture
 ```
-celavii-resolve/
+cutmaster-ai/
   src/
     server.py              # FastMCP entry point, mode selection
     config.py              # Constants, enums, MCP instance

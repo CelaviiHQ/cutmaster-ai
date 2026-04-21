@@ -140,9 +140,9 @@ Open the config file (create it if it doesn't exist) and add:
 ```json
 {
   "mcpServers": {
-    "celavii-resolve": {
+    "cutmaster-ai": {
       "command": "/path/to/cutmaster-ai/.venv/bin/python3",
-      "args": ["-m", "celavii_resolve"],
+      "args": ["-m", "cutmaster_ai"],
       "cwd": "/path/to/cutmaster-ai"
     }
   }
@@ -156,12 +156,12 @@ Replace `/path/to/cutmaster-ai` with the actual path where you cloned the repo.
 ```json
 {
   "mcpServers": {
-    "celavii-resolve": {
+    "cutmaster-ai": {
       "command": "uv",
       "args": [
         "run",
         "--directory", "/path/to/cutmaster-ai",
-        "python", "-m", "celavii_resolve"
+        "python", "-m", "cutmaster_ai"
       ]
     }
   }
@@ -173,7 +173,7 @@ Replace `/path/to/cutmaster-ai` with the actual path where you cloned the repo.
 1. Restart Claude Desktop completely (Cmd+Q on macOS, not just close the window)
 2. Open a new conversation
 3. You should see the MCP tools icon in the input bar
-4. Test with: *"Use celavii_get_version to check the Resolve connection"*
+4. Test with: *"Use cutmaster_get_version to check the Resolve connection"*
 
 ### 3.2 Claude Code (CLI)
 
@@ -192,12 +192,12 @@ The included `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "celavii-resolve": {
+    "cutmaster-ai": {
       "command": "uv",
       "args": [
         "run",
         "--directory", "${CLAUDE_PROJECT_ROOT}",
-        "python", "-m", "celavii_resolve"
+        "python", "-m", "cutmaster_ai"
       ]
     }
   }
@@ -211,9 +211,9 @@ Add to `~/.claude/settings.json`:
 ```json
 {
   "mcpServers": {
-    "celavii-resolve": {
+    "cutmaster-ai": {
       "command": "/path/to/cutmaster-ai/.venv/bin/python3",
-      "args": ["-m", "celavii_resolve"],
+      "args": ["-m", "cutmaster_ai"],
       "cwd": "/path/to/cutmaster-ai"
     }
   }
@@ -227,9 +227,9 @@ Add to `~/.claude/settings.json`:
 ```json
 {
   "mcpServers": {
-    "celavii-resolve": {
+    "cutmaster-ai": {
       "command": "/path/to/cutmaster-ai/.venv/bin/python3",
-      "args": ["-m", "celavii_resolve"],
+      "args": ["-m", "cutmaster_ai"],
       "cwd": "/path/to/cutmaster-ai"
     }
   }
@@ -241,9 +241,9 @@ Add to `~/.claude/settings.json`:
 ```json
 {
   "servers": {
-    "celavii-resolve": {
+    "cutmaster-ai": {
       "command": "/path/to/cutmaster-ai/.venv/bin/python3",
-      "args": ["-m", "celavii_resolve"],
+      "args": ["-m", "cutmaster_ai"],
       "cwd": "/path/to/cutmaster-ai"
     }
   }
@@ -255,9 +255,9 @@ Add to `~/.claude/settings.json`:
 ```json
 {
   "mcpServers": {
-    "celavii-resolve": {
+    "cutmaster-ai": {
       "command": "/path/to/cutmaster-ai/.venv/bin/python3",
-      "args": ["-m", "celavii_resolve"],
+      "args": ["-m", "cutmaster_ai"],
       "cwd": "/path/to/cutmaster-ai"
     }
   }
@@ -269,10 +269,10 @@ Add to `~/.claude/settings.json`:
 ```json
 {
   "context_servers": {
-    "celavii-resolve": {
+    "cutmaster-ai": {
       "command": {
         "path": "/path/to/cutmaster-ai/.venv/bin/python3",
-        "args": ["-m", "celavii_resolve"],
+        "args": ["-m", "cutmaster_ai"],
         "env": {
           "PYTHONPATH": "/path/to/cutmaster-ai/src"
         }
@@ -384,9 +384,9 @@ cp hooks/hooks.json ~/.claude/settings.json
 ```json
 {
   "mcpServers": {
-    "celavii-resolve": {
+    "cutmaster-ai": {
       "command": "/path/to/cutmaster-ai/.venv/bin/python3",
-      "args": ["-m", "celavii_resolve"],
+      "args": ["-m", "cutmaster_ai"],
       "cwd": "/path/to/cutmaster-ai"
     }
   }
@@ -412,10 +412,10 @@ bash scripts/build-plugin.sh --skills-only
 bash scripts/build-plugin.sh --venv /path/to/.venv --output ~/Desktop
 ```
 
-This creates `celavii-resolve-plugin-v0.1.0.zip` containing:
+This creates `cutmaster-ai-plugin-v0.1.0.zip` containing:
 
 ```
-celavii-resolve-plugin-v0.1.0.zip
+cutmaster-ai-plugin-v0.1.0.zip
 ├── .claude-plugin/
 │   └── plugin.json        # Plugin manifest (name, version, author)
 ├── .mcp.json              # MCP server config (stdio)
@@ -436,15 +436,15 @@ celavii-resolve-plugin-v0.1.0.zip
 The recipient installs the plugin with a single command:
 
 ```bash
-claude plugin install ./celavii-resolve-plugin-v0.1.0.zip
+claude plugin install ./cutmaster-ai-plugin-v0.1.0.zip
 ```
 
 Once installed, all 9 skills become available as namespaced slash commands:
 
 ```
-/celavii-resolve:deliver
-/celavii-resolve:grade-log
-/celavii-resolve:color-assist
+/cutmaster-ai:deliver
+/cutmaster-ai:grade-log
+/cutmaster-ai:color-assist
 ...
 ```
 
@@ -475,13 +475,13 @@ bash scripts/setup.sh --launchagent
 1. **Copy the plist template:**
 
 ```bash
-cp scripts/launchd/com.celavii.resolve-mcp.plist ~/Library/LaunchAgents/
+cp scripts/launchd/ai.cutmaster.mcp.plist ~/Library/LaunchAgents/
 ```
 
 2. **Edit the plist** to set your actual paths:
 
 ```bash
-nano ~/Library/LaunchAgents/com.celavii.resolve-mcp.plist
+nano ~/Library/LaunchAgents/ai.cutmaster.mcp.plist
 ```
 
 Replace the placeholder paths with your actual install location. The template uses `__VENV_PYTHON__` and `__PROJECT_DIR__` as placeholders.
@@ -489,34 +489,34 @@ Replace the placeholder paths with your actual install location. The template us
 3. **Load the LaunchAgent:**
 
 ```bash
-launchctl load ~/Library/LaunchAgents/com.celavii.resolve-mcp.plist
+launchctl load ~/Library/LaunchAgents/ai.cutmaster.mcp.plist
 ```
 
 4. **Verify it's running:**
 
 ```bash
-launchctl list | grep celavii
+launchctl list | grep cutmaster
 ```
 
 ### Managing the LaunchAgent
 
 ```bash
 # Start
-launchctl load ~/Library/LaunchAgents/com.celavii.resolve-mcp.plist
+launchctl load ~/Library/LaunchAgents/ai.cutmaster.mcp.plist
 
 # Stop
-launchctl unload ~/Library/LaunchAgents/com.celavii.resolve-mcp.plist
+launchctl unload ~/Library/LaunchAgents/ai.cutmaster.mcp.plist
 
 # Check status
-launchctl list | grep celavii
+launchctl list | grep cutmaster
 
 # View logs
-cat /tmp/celavii-resolve-mcp.out.log
-cat /tmp/celavii-resolve-mcp.err.log
+cat /tmp/cutmaster-ai-mcp.out.log
+cat /tmp/cutmaster-ai-mcp.err.log
 
 # Remove completely
-launchctl unload ~/Library/LaunchAgents/com.celavii.resolve-mcp.plist
-rm ~/Library/LaunchAgents/com.celavii.resolve-mcp.plist
+launchctl unload ~/Library/LaunchAgents/ai.cutmaster.mcp.plist
+rm ~/Library/LaunchAgents/ai.cutmaster.mcp.plist
 ```
 
 ---
@@ -529,7 +529,7 @@ To share Celavii-Resolve with others (e.g. team members, clients), create a dist
 bash scripts/package.sh
 ```
 
-This creates `celavii-resolve-v0.1.0.zip` containing:
+This creates `cutmaster-ai-v0.1.0.zip` containing:
 - All source code
 - Skills, agents, hooks
 - Install script
@@ -540,7 +540,7 @@ This creates `celavii-resolve-v0.1.0.zip` containing:
 The recipient can then:
 
 ```bash
-unzip celavii-resolve-v0.1.0.zip
+unzip cutmaster-ai-v0.1.0.zip
 cd cutmaster-ai
 bash scripts/setup.sh
 ```
@@ -548,7 +548,7 @@ bash scripts/setup.sh
 ### What's included in the package
 
 ```
-celavii-resolve-v0.1.0.zip
+cutmaster-ai-v0.1.0.zip
 ├── src/                    # All MCP tools (233 tools)
 ├── skills/                 # 9 Claude Code skills
 ├── agents/                 # 7 domain agents
@@ -559,7 +559,7 @@ celavii-resolve-v0.1.0.zip
 │   ├── setup.sh           # One-command setup
 │   ├── package.sh         # Creates this zip
 │   └── launchd/
-│       └── com.celavii.resolve-mcp.plist
+│       └── ai.cutmaster.mcp.plist
 ├── docs/
 │   └── SETUP.md           # This guide
 ├── pyproject.toml         # Package config
@@ -588,7 +588,7 @@ cd cutmaster-ai
 source .venv/bin/activate
 python -c "
 import sys; sys.path.insert(0, 'src')
-from celavii_resolve.resolve import get_resolve
+from cutmaster_ai.resolve import get_resolve
 r = get_resolve()
 print(f'Connected: {r.GetProductName()} {r.GetVersionString()}')
 "
@@ -600,7 +600,7 @@ Expected output: `Connected: DaVinci Resolve Studio 20.x.x.x`
 
 ```bash
 source .venv/bin/activate
-python -m celavii_resolve
+python -m cutmaster_ai
 # Should start without errors. Ctrl+C to stop.
 ```
 
@@ -616,7 +616,7 @@ pytest tests/ -v
 
 Open Claude Desktop, start a new conversation, and try:
 
-> "Use the celavii_get_version tool to check the Resolve connection"
+> "Use the cutmaster_get_version tool to check the Resolve connection"
 
 You should see the tool being called and returning the Resolve version.
 
@@ -631,7 +631,7 @@ Then type:
 
 ```
 > /grade-log
-> Use celavii_get_version to check the connection
+> Use cutmaster_get_version to check the connection
 ```
 
 ---
@@ -668,7 +668,7 @@ pip install -e ".[dev]"
 ### "Permission denied" for LaunchAgent
 
 ```bash
-chmod 644 ~/Library/LaunchAgents/com.celavii.resolve-mcp.plist
+chmod 644 ~/Library/LaunchAgents/ai.cutmaster.mcp.plist
 ```
 
 ### Skills not appearing in Claude Code

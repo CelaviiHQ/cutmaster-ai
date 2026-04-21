@@ -1,4 +1,4 @@
-/** Typed HTTP client for the celavii-resolve-panel backend. */
+/** Typed HTTP client for the cutmaster-ai-panel backend. */
 
 import type {
   BuildPlanResult,

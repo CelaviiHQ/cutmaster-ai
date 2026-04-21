@@ -6,8 +6,8 @@
  * That keeps the browser's view consistent with the server's view.
  */
 
-const KEY_RUN_ID = "celavii.cutmaster.lastRunId";
-const KEY_SAVED_AT = "celavii.cutmaster.savedAt";
+const KEY_RUN_ID = "cutmaster.lastRunId";
+const KEY_SAVED_AT = "cutmaster.savedAt";
 
 export function saveRunPointer(runId: string) {
     try {

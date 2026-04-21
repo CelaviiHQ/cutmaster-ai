@@ -1,5 +1,5 @@
 {
-  "name": "celavii-cutmaster-panel",
+  "name": "cutmaster-ai-panel",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "postbuild": "rm -rf ../../src/celavii_resolve/http/static && cp -r dist ../../src/celavii_resolve/http/static && touch ../../src/celavii_resolve/http/static/.gitkeep",
+    "postbuild": "rm -rf ../../src/cutmaster_ai/http/static && cp -r dist ../../src/cutmaster_ai/http/static && touch ../../src/cutmaster_ai/http/static/.gitkeep",
     "preview": "vite preview",
     "build:install": "npm run build"
   },

@@ -6,8 +6,8 @@ Celavii-Resolve is a **maximum-control MCP server for DaVinci Resolve Studio**. 
 
 | Deliverable | What | Consumer |
 |---|---|---|
-| **`celavii-resolve`** | MCP stdio server | Claude Code / Desktop / Cursor / any MCP client |
-| **`celavii-resolve-panel`** | HTTP/SSE server on `127.0.0.1:8765` | React panel inside DaVinci Resolve |
+| **`cutmaster-ai`** | MCP stdio server | Claude Code / Desktop / Cursor / any MCP client |
+| **`cutmaster-ai-panel`** | HTTP/SSE server on `127.0.0.1:8765` | React panel inside DaVinci Resolve |
 | **Resolve plugin** | Workflow Integration panel wrapper | DaVinci Resolve Studio 18.5+ |
 
 The MCP server and panel backend **share the same Python package** — adding a new feature makes it available via both surfaces.
@@ -25,7 +25,7 @@ The MCP server and panel backend **share the same Python package** — adding a 
           │                   │                     │
           ▼                   ▼                     ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  src/celavii_resolve/                                            │
+│  src/cutmaster_ai/                                            │
 │                                                                  │
 │  Kernel:   config.py  resolve.py  errors.py  constants.py       │
 │                                                                  │
@@ -64,15 +64,15 @@ Every feature fits exactly one bucket. This is the rule we use to decide where n
 
 | Bucket | Rule | Location | Example |
 |---|---|---|---|
-| **Atomic Resolve op** | One function = one Resolve SDK call = one MCP tool. No logic. | `tools/` | `celavii_add_node`, `celavii_set_cdl` |
-| **Deterministic compound** | Chains `tools/` ops. No LLM. | `workflows/` | `celavii_quick_assembly` |
-| **Stateless LLM tool** | One MCP call → one LLM roundtrip → one answer. | `intelligence/` | `celavii_analyze_frame`, `celavii_color_assist` |
+| **Atomic Resolve op** | One function = one Resolve SDK call = one MCP tool. No logic. | `tools/` | `cutmaster_add_node`, `cutmaster_set_cdl` |
+| **Deterministic compound** | Chains `tools/` ops. No LLM. | `workflows/` | `cutmaster_quick_assembly` |
+| **Stateless LLM tool** | One MCP call → one LLM roundtrip → one answer. | `intelligence/` | `cutmaster_analyze_frame`, `cutmaster_color_assist` |
 | **Stateful AI product** | Owns state, multi-stage pipeline, optionally its own transport. | `cutmaster/` | Entire CutMaster workflow |
 
 ## Package layout
 
 ```
-src/celavii_resolve/
+src/cutmaster_ai/
 ├── config.py           FastMCP singleton, Gemini client factory, constants
 ├── resolve.py          Connection management, _boilerplate() helper
 ├── errors.py           Exception hierarchy + @safe_resolve_call decorator

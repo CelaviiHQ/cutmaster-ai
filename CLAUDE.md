@@ -9,7 +9,7 @@ compound workflow tools, AI-enhanced features, and Claude Code skills/agents.
 ## Architecture
 
 ```
-src/celavii_resolve/
+src/cutmaster_ai/
 ├── config.py         FastMCP singleton, constants, optional AI clients
 ├── resolve.py        Connection management, _boilerplate(), media pool helpers
 ├── errors.py         Exception hierarchy, @safe_resolve_call decorator
@@ -44,11 +44,11 @@ Two distinct roles, by design:
 
 | Consumer | Transport | Entry point | Install |
 |---|---|---|---|
-| **MCP clients** (Claude Code / Desktop, Cursor) | MCP stdio | `celavii-resolve` | `pip install celavii-resolve` |
-| **Resolve Workflow Integration panel** (React UI, in-Resolve webview) | HTTP on `127.0.0.1:8765` | `celavii-resolve-panel` | `pip install 'celavii-resolve[panel]'` |
-| **Celavii Studio** (closed-source native macOS app — separate repo) | HTTP via bundled Python | `celavii-resolve-panel` embedded | Web download from celavii.com |
+| **MCP clients** (Claude Code / Desktop, Cursor) | MCP stdio | `cutmaster-ai` | `pip install cutmaster-ai` |
+| **Resolve Workflow Integration panel** (React UI, in-Resolve webview) | HTTP on `127.0.0.1:8765` | `cutmaster-ai-panel` | `pip install 'cutmaster-ai[panel]'` |
+| **Celavii Studio** (closed-source native macOS app — separate repo) | HTTP via bundled Python | `cutmaster-ai-panel` embedded | Web download from celavii.com |
 
-Studio doesn't fork or patch this repo — it **pins a PyPI release** of `celavii-resolve` and ships it alongside a private `celavii_studio_pro` wheel that registers extra capabilities via **entry points**. The OSS package keeps running exactly as it does today for everyone else; Studio just happens to be the most demanding consumer. See [SURFACE.md](SURFACE.md) for the versioned contract and [`src/celavii_resolve/plugins.py`](src/celavii_resolve/plugins.py) for discovery.
+Studio doesn't fork or patch this repo — it **pins a PyPI release** of `cutmaster-ai` and ships it alongside a private `cutmaster_studio_pro` wheel that registers extra capabilities via **entry points**. The OSS package keeps running exactly as it does today for everyone else; Studio just happens to be the most demanding consumer. See [SURFACE.md](SURFACE.md) for the versioned contract and [`src/cutmaster_ai/plugins.py`](src/cutmaster_ai/plugins.py) for discovery.
 
 All three consumers call the same underlying Resolve logic. Every tool function under `cutmaster/` exposes a **plain Python function** (callable from `http/`) and a thin `@mcp.tool` wrapper (callable over MCP). When adding a new primitive that both consumers need, keep the business logic in the plain function and make the `@mcp.tool` a thin adapter.
 
@@ -72,7 +72,7 @@ Every new feature fits into exactly one of these four. If it doesn't, it's two f
 ```python
 @mcp.tool
 @safe_resolve_call
-def celavii_your_tool(param: str, optional: int = 1) -> str:
+def cutmaster_your_tool(param: str, optional: int = 1) -> str:
     """Clear docstring explaining what this does."""
     resolve, project, media_pool = _boilerplate()
     # ... Resolve API calls ...
@@ -84,7 +84,7 @@ def celavii_your_tool(param: str, optional: int = 1) -> str:
 ## Coding Conventions
 
 - Python 3.11+ (no type stubs needed)
-- All tools prefixed with `celavii_` (namespace)
+- All tools prefixed with `cutmaster_` (namespace)
 - All tools return `str` (not dicts) — error strings or success messages / JSON
 - Private helpers prefixed with `_` (e.g. `_boilerplate`, `_find_bin`)
 - Guard Resolve's None returns: `items = thing.GetClipList() or []`
@@ -106,12 +106,12 @@ Use conventional format:
 
 ```bash
 # MCP stdio server (Claude Code / Desktop)
-uv run python -m celavii_resolve
+uv run python -m cutmaster_ai
 
 # Panel HTTP server (React Workflow Integration)
-uv run celavii-resolve-panel
+uv run cutmaster-ai-panel
 # → http://127.0.0.1:8765/ping
-# Override via CELAVII_PANEL_HOST / CELAVII_PANEL_PORT
+# Override via CUTMASTER_PANEL_HOST / CUTMASTER_PANEL_PORT
 
 # Tests
 uv run pytest tests/ -v

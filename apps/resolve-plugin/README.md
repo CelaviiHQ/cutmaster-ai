@@ -29,7 +29,7 @@ Key facts (verified 2026-04-18 on Resolve 21.0.0b.20):
 |---|---|
 | Install path (macOS) | `/Library/Application Support/Blackmagic Design/DaVinci Resolve/Workflow Integration Plugins/` |
 | Install path (Windows) | `%PROGRAMDATA%\Blackmagic Design\DaVinci Resolve\Support\Workflow Integration Plugins\` |
-| Folder name convention | Reverse-DNS: `com.celavii.cutmaster/` |
+| Folder name convention | Reverse-DNS: `ai.cutmaster/` |
 | Required files | `manifest.xml`, `package.json`, `main.js`, `index.html` |
 | Electron version (Resolve 20.1+) | 36.3.2 — sandboxed + context-isolated |
 | Dev-mode toggle | **None.** `resolve:SetDeveloperMode()` was removed. Plugins just load. |
@@ -39,7 +39,7 @@ Key facts (verified 2026-04-18 on Resolve 21.0.0b.20):
 Since the plugin is not yet functional, use the panel directly in a browser:
 
 ```bash
-uv run celavii-resolve-panel   # starts backend on :8765
+uv run cutmaster-ai-panel   # starts backend on :8765
 open http://127.0.0.1:8765/     # opens the panel in your default browser
 ```
 

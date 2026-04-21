@@ -26,8 +26,8 @@ Celavii-Resolve is pre-1.0. Only the latest `main` branch receives security upda
 ## Scope
 
 **In scope:**
-- The Python MCP server (`celavii_resolve` package)
-- The HTTP panel backend (`celavii-resolve-panel`)
+- The Python MCP server (`cutmaster_ai` package)
+- The HTTP panel backend (`cutmaster-ai-panel`)
 - The installer (`scripts/install.py`)
 - Build and packaging scripts
 

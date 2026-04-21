@@ -7,25 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### BREAKING
+
+- **Renamed Python distribution from `celavii-resolve` to `cutmaster-ai`.**
+  Users must `pip uninstall celavii-resolve && pip install cutmaster-ai`.
+  Imports change from `celavii_resolve` to `cutmaster_ai`.
+  Entry-point groups for third-party plugins renamed to
+  `cutmaster_ai.tools` and `cutmaster_ai.panel_routes`. Console scripts
+  are `cutmaster-ai` and `cutmaster-ai-panel`.
+- **MCP tool names renamed** from `celavii_*` prefix to `cutmaster_*`
+  prefix (~280 tools). Downstream skills, agents, and hook matchers
+  using `mcp__celavii-resolve__celavii_*` must update to
+  `mcp__cutmaster-ai__cutmaster_*`.
+- **Environment variables renamed** `CELAVII_PANEL_HOST` / `_PORT` / `_DB`
+  → `CUTMASTER_PANEL_HOST` / `_PORT` / `_DB`. Same for all other
+  `CELAVII_*` config (`_LOG_FORMAT`, `_STT_PROVIDER`, `_DEEPGRAM_*`,
+  `_VISION_CONCURRENCY`, `_<AGENT>_MODEL`, etc.).
+- **Default filesystem paths renamed** `~/.celavii/panel/state.db` →
+  `~/.cutmaster/panel/state.db`; `~/.celavii/cutmaster/` cache roots
+  → `~/.cutmaster/cutmaster/`; `~/Documents/celavii-*` → `~/Documents/cutmaster-*`.
+- **launchd Label + plist filename** `com.celavii.resolve-mcp` →
+  `ai.cutmaster.mcp`; plist file renamed accordingly. Existing users
+  need `launchctl unload` the old plist and re-install the new one.
+- **LUT vendor directory** renamed `~/Library/.../LUT/Celavii/` →
+  `~/Library/.../LUT/CutMaster/`.
+- **Claude Code plugin name** in `.claude-plugin/plugin.json` renamed
+  to `cutmaster-ai` — users who installed the old plugin will see two
+  entries until they uninstall the old one.
+
+The Celavii (company / parent org) brand is retained for: author field,
+contact emails (`engineering@celavii.com`, `security@celavii.com`),
+GitHub organisation `CelaviiHQ`, and the SQLite table prefix `studio_`
+reserved for the closed-source Studio bundle. See `docs/naming.md` in
+the private `cutmaster-studio` repo for the full brand hierarchy.
+
 ### Added
 
-- Plugin discovery via two entry-point groups: `celavii_resolve.tools` (FastMCP)
-  and `celavii_resolve.panel_routes` (FastAPI). Third-party packages can
+- Plugin discovery via two entry-point groups: `cutmaster_ai.tools` (FastMCP)
+  and `cutmaster_ai.panel_routes` (FastAPI). Third-party packages can
   register capabilities on either surface without touching OSS code. See
-  [SURFACE.md](SURFACE.md) and `src/celavii_resolve/plugins.py`.
+  [SURFACE.md](SURFACE.md) and `src/cutmaster_ai/plugins.py`.
 - `GET /pro/status` endpoint on the Panel HTTP server reporting
   `{tier, plugins: {tools, panel_routes}}`.
-- `celavii_resolve.licensing.current_tier()` — returns `"oss"` or
+- `cutmaster_ai.licensing.current_tier()` — returns `"oss"` or
   `"standard"` based on whether any plugin has registered.
-- `celavii-resolve-panel` emits `PANEL_READY http://host:port` as its
+- `cutmaster-ai-panel` emits `PANEL_READY http://host:port` as its
   first stdout line so supervisors can discover a randomly assigned port
-  (`CELAVII_PANEL_PORT=0` picks a free port).
+  (`CUTMASTER_PANEL_PORT=0` picks a free port).
 - Idempotent SQLite migration runner at
-  `celavii_resolve.migrations.runner.apply_migrations(db_path)` plus
+  `cutmaster_ai.migrations.runner.apply_migrations(db_path)` plus
   `0001_init.sql` creating the initial panel state tables
   (`recent_projects`, `custom_presets`, `cutmaster_sessions`,
-  `panel_state`). Runs at Panel boot; path via `CELAVII_PANEL_DB`.
-- Stable Pydantic model re-exports at `celavii_resolve.http.models` —
+  `panel_state`). Runs at Panel boot; path via `CUTMASTER_PANEL_DB`.
+- Stable Pydantic model re-exports at `cutmaster_ai.http.models` —
   plugins should import from here instead of the private
   `http.routes.*._models`.
 - `SURFACE.md` documenting the versioned consumption contract for
@@ -52,7 +86,7 @@ Major restructuring pass to prepare the repo for open-source release. No behavio
 - **`http/routes/cutmaster.py` (1,020 LOC) → `http/routes/cutmaster/` package** with feature-split modules (`analyze`, `presets`, `info`, `build`, `execute`). URL prefix `/cutmaster/*` preserved — no panel client changes.
 - **`panel/` → `apps/panel/`** and **`panel/resolve-plugin/` → `apps/resolve-plugin/`**. Non-Python deliverables now live under `apps/`.
 - **`install.py` / `build-plugin.sh` → `scripts/`**. Top-level is cleaner.
-- **`src/celavii_resolve/lut_registry.py` → `src/celavii_resolve/tools/lut_registry.py`** — it's a tool module, belongs with its siblings.
+- **`src/cutmaster_ai/lut_registry.py` → `src/cutmaster_ai/tools/lut_registry.py`** — it's a tool module, belongs with its siblings.
 - **`launchd/` → `scripts/launchd/`**.
 
 ### Added

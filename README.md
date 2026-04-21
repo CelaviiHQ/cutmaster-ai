@@ -18,8 +18,8 @@ A DaVinci Resolve toolkit with two faces: an **MCP server** (for AI clients like
 
 | Artifact | What it does | Who consumes it |
 |---|---|---|
-| **MCP server** (`celavii-resolve`) | 233 stdio tools wrapping the Resolve API | Claude Code, Claude Desktop, Cursor, any MCP client |
-| **Panel backend** (`celavii-resolve-panel`) | FastAPI HTTP server on `127.0.0.1:8765` that drives CutMaster AI | The React panel |
+| **MCP server** (`cutmaster-ai`) | 233 stdio tools wrapping the Resolve API | Claude Code, Claude Desktop, Cursor, any MCP client |
+| **Panel backend** (`cutmaster-ai-panel`) | FastAPI HTTP server on `127.0.0.1:8765` that drives CutMaster AI | The React panel |
 | **React panel** ([apps/panel/](apps/panel/)) | The CutMaster UI | A browser, or Resolve's Workflow Integration webview |
 | **Resolve Workflow Integration plugin** ([apps/resolve-plugin/](apps/resolve-plugin/)) | Thin Electron wrapper that opens the panel inside Resolve's docked webview | DaVinci Resolve Studio 21+ |
 | **Claude Code plugin** ([.claude-plugin/](.claude-plugin/) + `skills/` + `agents/` + `hooks/`) | Packaged skills (`/deliver`, `/grade-log` etc.), domain agents, safety hooks | Claude Code CLI |
@@ -30,11 +30,11 @@ A DaVinci Resolve toolkit with two faces: an **MCP server** (for AI clients like
 
 | # | Name | Audience | Source | Distribution |
 |---|---|---|---|---|
-| 1 | **Celavii MCP** (Claude Code plugin) | AI engineers, Claude Code users | This repo | `pip install celavii-resolve` + Claude Code marketplace |
+| 1 | **Celavii MCP** (Claude Code plugin) | AI engineers, Claude Code users | This repo | `pip install cutmaster-ai` + Claude Code marketplace |
 | 2 | **Celavii Resolve Workflow plugin** | Any Resolve 21+ user | This repo | Copy into Resolve's plugin folder |
 | 3 | **Celavii Studio** (paid macOS app) | Colorists, editors, designers | Separate private repo | Notarized DMG from [celavii.com](https://celavii.com) — pins a PyPI version of this package |
 
-Studio extends the OSS core via two **entry-point groups** (`celavii_resolve.tools` and `celavii_resolve.panel_routes`) — third-party plugins can register the same way. See [SURFACE.md](SURFACE.md) for the contract and [`src/celavii_resolve/plugins.py`](src/celavii_resolve/plugins.py) for the discovery code.
+Studio extends the OSS core via two **entry-point groups** (`cutmaster_ai.tools` and `cutmaster_ai.panel_routes`) — third-party plugins can register the same way. See [SURFACE.md](SURFACE.md) for the contract and [`src/cutmaster_ai/plugins.py`](src/cutmaster_ai/plugins.py) for the discovery code.
 
 ---
 
@@ -96,9 +96,9 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "celavii-resolve": {
+    "cutmaster-ai": {
       "command": "/path/to/cutmaster-ai/.venv/bin/python3",
-      "args": ["-m", "celavii_resolve"],
+      "args": ["-m", "cutmaster_ai"],
       "cwd": "/path/to/cutmaster-ai"
     }
   }
@@ -136,7 +136,7 @@ Start the MCP server automatically on login:
 bash scripts/setup.sh --launchagent
 ```
 
-This installs a LaunchAgent at `~/Library/LaunchAgents/com.celavii.resolve-mcp.plist`. See [Setup Guide](docs/SETUP.md#5-auto-start-with-launchagent-macos).
+This installs a LaunchAgent at `~/Library/LaunchAgents/ai.cutmaster.mcp.plist`. See [Setup Guide](docs/SETUP.md#5-auto-start-with-launchagent-macos).
 
 ### Claude Code Plugin
 
@@ -144,10 +144,10 @@ Build and install as a Claude Code plugin:
 
 ```bash
 bash scripts/build-plugin.sh
-claude plugin install ./celavii-resolve-plugin-v0.1.0.zip
+claude plugin install ./cutmaster-ai-plugin-v0.1.0.zip
 ```
 
-Skills become available as `/celavii-resolve:deliver`, `/celavii-resolve:grade-log`, etc. See [Setup Guide](docs/SETUP.md#5-claude-code-plugin).
+Skills become available as `/cutmaster-ai:deliver`, `/cutmaster-ai:grade-log`, etc. See [Setup Guide](docs/SETUP.md#5-claude-code-plugin).
 
 ### Creating a Distributable Package
 
@@ -157,7 +157,7 @@ Share with team members:
 bash scripts/package.sh
 ```
 
-Creates `celavii-resolve-v0.1.0.zip` — the recipient runs `bash scripts/setup.sh` and they're ready.
+Creates `cutmaster-ai-v0.1.0.zip` — the recipient runs `bash scripts/setup.sh` and they're ready.
 
 ## Requirements
 
@@ -197,40 +197,40 @@ Creates `celavii-resolve-v0.1.0.zip` — the recipient runs `bash scripts/setup.
 
 | Tool | Description |
 |------|-------------|
-| `celavii_ingest_media` | Scan folder, import, organise bins, set metadata |
-| `celavii_ingest_with_bins` | Mirror folder structure as media pool bins |
-| `celavii_quick_assembly` | Create timeline from clips or bin |
-| `celavii_assembly_from_bin` | Timeline with track configuration |
-| `celavii_quick_deliver` | One-command render with preset shorthands |
-| `celavii_batch_deliver` | Multi-format render (h264 + prores + proxy) |
-| `celavii_render_status` | Poll render queue progress |
-| `celavii_conform_timeline` | Import EDL/XML + relink + verify |
-| `celavii_relink_offline_clips` | Fix offline media |
-| `celavii_verify_timeline_media` | Check all clips online |
-| `celavii_quick_grade` | Apply LUT + CDL + grab still |
-| `celavii_batch_apply_lut` | LUT to multiple clips |
-| `celavii_copy_grade_to_all` | Copy grade from one clip to all |
-| `celavii_setup_log_grade` | 6-node structure: WB/EXP/SAT/CURVES/CST/LUT |
-| `celavii_list_cst_luts` | List available camera CST LUTs and film looks |
-| `celavii_lut_library_status` | Show installed vs available LUTs for all cameras |
-| `celavii_install_lut_file` | Install a downloaded .cube/.zip LUT into the library |
-| `celavii_get_lut_install_guide` | Step-by-step guide for a camera's LUT |
-| `celavii_scan_lut_folder` | Scan all Resolve LUT folders |
+| `cutmaster_ingest_media` | Scan folder, import, organise bins, set metadata |
+| `cutmaster_ingest_with_bins` | Mirror folder structure as media pool bins |
+| `cutmaster_quick_assembly` | Create timeline from clips or bin |
+| `cutmaster_assembly_from_bin` | Timeline with track configuration |
+| `cutmaster_quick_deliver` | One-command render with preset shorthands |
+| `cutmaster_batch_deliver` | Multi-format render (h264 + prores + proxy) |
+| `cutmaster_render_status` | Poll render queue progress |
+| `cutmaster_conform_timeline` | Import EDL/XML + relink + verify |
+| `cutmaster_relink_offline_clips` | Fix offline media |
+| `cutmaster_verify_timeline_media` | Check all clips online |
+| `cutmaster_quick_grade` | Apply LUT + CDL + grab still |
+| `cutmaster_batch_apply_lut` | LUT to multiple clips |
+| `cutmaster_copy_grade_to_all` | Copy grade from one clip to all |
+| `cutmaster_setup_log_grade` | 6-node structure: WB/EXP/SAT/CURVES/CST/LUT |
+| `cutmaster_list_cst_luts` | List available camera CST LUTs and film looks |
+| `cutmaster_lut_library_status` | Show installed vs available LUTs for all cameras |
+| `cutmaster_install_lut_file` | Install a downloaded .cube/.zip LUT into the library |
+| `cutmaster_get_lut_install_guide` | Step-by-step guide for a camera's LUT |
+| `cutmaster_scan_lut_folder` | Scan all Resolve LUT folders |
 
 ### AI Tools (requires GEMINI_API_KEY)
 
 | Tool | Description |
 |------|-------------|
-| `celavii_analyze_frame` | Gemini vision analysis of current frame |
-| `celavii_ocr_frame` | Extract text from current frame |
-| `celavii_describe_shot` | Cinematography breakdown |
-| `celavii_compare_frames` | A/B comparison with reference image |
-| `celavii_frame_info` | Frame metadata (no API key needed) |
-| `celavii_color_assist` | AI CDL recommendations with auto-apply |
-| `celavii_match_to_reference` | Color match to reference image |
-| `celavii_timeline_critique` | AI editorial feedback |
-| `celavii_suggest_markers` | AI marker suggestions |
-| `celavii_visual_continuity_check` | Cut point analysis |
+| `cutmaster_analyze_frame` | Gemini vision analysis of current frame |
+| `cutmaster_ocr_frame` | Extract text from current frame |
+| `cutmaster_describe_shot` | Cinematography breakdown |
+| `cutmaster_compare_frames` | A/B comparison with reference image |
+| `cutmaster_frame_info` | Frame metadata (no API key needed) |
+| `cutmaster_color_assist` | AI CDL recommendations with auto-apply |
+| `cutmaster_match_to_reference` | Color match to reference image |
+| `cutmaster_timeline_critique` | AI editorial feedback |
+| `cutmaster_suggest_markers` | AI marker suggestions |
+| `cutmaster_visual_continuity_check` | Cut point analysis |
 
 ## Skills (Claude Code)
 
@@ -278,14 +278,14 @@ pip install -e ".[dev]"
 pytest tests/ -v          # Run tests (no Resolve needed)
 ruff check src/ --fix     # Lint
 ruff format src/          # Format
-python -m celavii_resolve # Run server
+python -m cutmaster_ai # Run server
 ```
 
 ## Project Structure
 
 ```
 cutmaster-ai/
-├── src/celavii_resolve/
+├── src/cutmaster_ai/
 │   ├── config.py          # FastMCP server, constants
 │   ├── resolve.py         # Connection management, helpers
 │   ├── errors.py          # Exception hierarchy, @safe_resolve_call
@@ -303,7 +303,7 @@ cutmaster-ai/
 ├── agents/                # Domain agents (plugin distribution)
 ├── hooks/                 # Safety hooks (plugin distribution)
 ├── apps/
-│   ├── panel/             # React panel (Vite, talks to celavii-resolve-panel)
+│   ├── panel/             # React panel (Vite, talks to cutmaster-ai-panel)
 │   └── resolve-plugin/    # DaVinci Resolve Workflow Integration manifest
 ├── scripts/
 │   ├── install.py         # Universal installer (10 MCP clients)
@@ -311,7 +311,7 @@ cutmaster-ai/
 │   ├── setup.sh           # One-command setup (macOS/Linux)
 │   ├── package.sh         # Create distributable zip
 │   └── launchd/
-│       └── com.celavii.resolve-mcp.plist  # macOS auto-start
+│       └── ai.cutmaster.mcp.plist  # macOS auto-start
 ├── docs/
 │   └── SETUP.md           # Complete setup guide
 ├── tests/                 # Test suite
