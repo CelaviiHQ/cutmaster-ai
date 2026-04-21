@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Pre-merge CI workflow (`.github/workflows/ci.yml`) with four parallel
+  jobs — ruff lint + format check, pytest matrix on Python 3.11 and 3.12,
+  gitleaks secrets scan, and an absolute home-path hygiene grep to catch
+  `/Users/<name>/` leaks before they ship.
+
 ## [0.3.0] — 2026-04-20
 
 ### BREAKING

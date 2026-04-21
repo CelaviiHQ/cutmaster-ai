@@ -436,7 +436,7 @@ def test_tier3_breaks_tie_in_ambiguous_band(monkeypatch):
 
     monkeypatch.setattr(ad_mod, "classify_opening_sentence", _tier3_picks_tutorial)
 
-    words = _sentence("Today we are building a simple recipe box".split(), 0.0, "S1")
+    words = _sentence(["Today", "we", "are", "building", "a", "simple", "recipe", "box"], 0.0, "S1")
     rec = detect_preset(words)
     # Tier 3 injecting 0.95 into tutorial must tip the cascade over from
     # vlog (Tier 1+2 leader) to tutorial. Reasoning path should reflect

@@ -1,0 +1,117 @@
+name: CI
+
+# Pre-merge gate for cutmaster-ai. Every PR and every push to main runs:
+#
+#   - lint        ruff check + format verification
+#   - test        pytest on Python 3.11 and 3.12 (no Resolve needed — smoke
+#                 tests and convention tests run without a live connection)
+#   - secrets     gitleaks scan of the full history on the PR branch
+#   - conventions repo-wide grep for absolute user paths and other OSS leaks
+#
+# All four jobs run in parallel. If any fails, merging is blocked. The
+# existing changelog-check.yml runs independently and enforces CHANGELOG
+# updates when src/ changes.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Ruff lint + format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.11"
+
+      - name: Install dev dependencies
+        run: uv sync --extra dev
+
+      - name: Ruff check
+        run: uv run ruff check src/ tests/ scripts/
+
+      - name: Ruff format --check
+        run: uv run ruff format --check src/ tests/ scripts/
+
+  test:
+    name: Pytest (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Python 3.13+ has ABI issues with fusionscript — see CLAUDE.md.
+        # Matches the classifiers in pyproject.toml.
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install all extras + dev dependencies
+        # Installing every extra catches import-time errors in optional
+        # code paths (ai / interchange / panel) before they reach users.
+        run: uv sync --extra dev --extra ai --extra interchange --extra panel
+
+      - name: Run pytest
+        run: uv run pytest tests/ -v
+
+  secrets:
+    name: Gitleaks secrets scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  conventions:
+    name: OSS hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: No absolute home-directory paths in shipped code
+        # Leaking a contributor's actual username (in /Users/ or /home/)
+        # happens easily via copy-pasted paths and breaks on other machines.
+        # Placeholder names (someone, user, example, test, you, username)
+        # are allowed because tests and docs legitimately use them as
+        # fixtures. Allowed in docs/ because tutorials may quote install
+        # paths verbatim. Binaries and build artifacts are skipped so the
+        # check is also safe to run locally (via pre-commit) where .pyc
+        # files may contain compiled absolute paths.
+        run: |
+          PLACEHOLDER='(someone|user|username|example|test|you)'
+          matches=$(grep -rnIE \
+              --exclude-dir=__pycache__ \
+              --exclude-dir=.venv \
+              --exclude-dir=node_modules \
+              --exclude-dir=dist \
+              "/(Users|home)/[a-zA-Z0-9_.-]+" src/ tests/ scripts/ 2>/dev/null \
+            | grep -vE "/(Users|home)/${PLACEHOLDER}(/|\"|'|\\\$|$)" || true)
+          if [ -n "$matches" ]; then
+            echo "::error::Hardcoded absolute home path found — use \$HOME, pathlib.Path.home(), or a placeholder username. Offending lines:" >&2
+            echo "$matches" >&2
+            exit 1
+          fi
