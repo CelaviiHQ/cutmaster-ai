@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "celavii-resolve": {
+    "cutmaster-ai": {
       "command": "uv",
-      "args": ["run", "python", "-m", "celavii_resolve"]
+      "args": ["run", "python", "-m", "cutmaster_ai"]
     },
     "mcp-playwright": {
       "command": "npx",

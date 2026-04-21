@@ -4,36 +4,36 @@ description: Production manager for DaVinci Resolve. Handles project overview, s
 when_to_use: Use when the user needs project status, media pool overview, database management, project settings, import/export projects, or general project administration.
 color: "#1ABC9C"
 tools:
-  - mcp__celavii-resolve__celavii_get_version
-  - mcp__celavii-resolve__celavii_switch_page
-  - mcp__celavii-resolve__celavii_list_projects
-  - mcp__celavii-resolve__celavii_get_current_project
-  - mcp__celavii-resolve__celavii_create_project
-  - mcp__celavii-resolve__celavii_open_project
-  - mcp__celavii-resolve__celavii_save_project
-  - mcp__celavii-resolve__celavii_close_project
-  - mcp__celavii-resolve__celavii_export_project
-  - mcp__celavii-resolve__celavii_import_project
-  - mcp__celavii-resolve__celavii_archive_project
-  - mcp__celavii-resolve__celavii_restore_project
-  - mcp__celavii-resolve__celavii_list_project_folders
-  - mcp__celavii-resolve__celavii_get_current_database
-  - mcp__celavii-resolve__celavii_list_databases
-  - mcp__celavii-resolve__celavii_switch_database
-  - mcp__celavii-resolve__celavii_get_project_setting
-  - mcp__celavii-resolve__celavii_set_project_setting
-  - mcp__celavii-resolve__celavii_list_timelines
-  - mcp__celavii-resolve__celavii_get_current_timeline
-  - mcp__celavii-resolve__celavii_list_bins
-  - mcp__celavii-resolve__celavii_list_clips
-  - mcp__celavii-resolve__celavii_search_clips
-  - mcp__celavii-resolve__celavii_get_clip_info
-  - mcp__celavii-resolve__celavii_list_volumes
-  - mcp__celavii-resolve__celavii_get_render_jobs
-  - mcp__celavii-resolve__celavii_is_rendering
-  - mcp__celavii-resolve__celavii_render_status
-  - mcp__celavii-resolve__celavii_verify_timeline_media
-  - mcp__celavii-resolve__celavii_frame_info
+  - mcp__cutmaster-ai__celavii_get_version
+  - mcp__cutmaster-ai__celavii_switch_page
+  - mcp__cutmaster-ai__celavii_list_projects
+  - mcp__cutmaster-ai__celavii_get_current_project
+  - mcp__cutmaster-ai__celavii_create_project
+  - mcp__cutmaster-ai__celavii_open_project
+  - mcp__cutmaster-ai__celavii_save_project
+  - mcp__cutmaster-ai__celavii_close_project
+  - mcp__cutmaster-ai__celavii_export_project
+  - mcp__cutmaster-ai__celavii_import_project
+  - mcp__cutmaster-ai__celavii_archive_project
+  - mcp__cutmaster-ai__celavii_restore_project
+  - mcp__cutmaster-ai__celavii_list_project_folders
+  - mcp__cutmaster-ai__celavii_get_current_database
+  - mcp__cutmaster-ai__celavii_list_databases
+  - mcp__cutmaster-ai__celavii_switch_database
+  - mcp__cutmaster-ai__celavii_get_project_setting
+  - mcp__cutmaster-ai__celavii_set_project_setting
+  - mcp__cutmaster-ai__celavii_list_timelines
+  - mcp__cutmaster-ai__celavii_get_current_timeline
+  - mcp__cutmaster-ai__celavii_list_bins
+  - mcp__cutmaster-ai__celavii_list_clips
+  - mcp__cutmaster-ai__celavii_search_clips
+  - mcp__cutmaster-ai__celavii_get_clip_info
+  - mcp__cutmaster-ai__celavii_list_volumes
+  - mcp__cutmaster-ai__celavii_get_render_jobs
+  - mcp__cutmaster-ai__celavii_is_rendering
+  - mcp__cutmaster-ai__celavii_render_status
+  - mcp__cutmaster-ai__celavii_verify_timeline_media
+  - mcp__cutmaster-ai__celavii_frame_info
 ---
 
 # Producer Agent

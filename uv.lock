@@ -139,66 +139,6 @@ wheels = [
 ]
 
 [[package]]
-name = "celavii-resolve"
-version = "0.2.0"
-source = { editable = "." }
-dependencies = [
-    { name = "fastmcp" },
-    { name = "pydantic" },
-    { name = "python-dotenv" },
-]
-
-[package.optional-dependencies]
-ai = [
-    { name = "google-genai" },
-]
-all = [
-    { name = "anthropic" },
-    { name = "fastapi" },
-    { name = "google-genai" },
-    { name = "opentimelineio" },
-    { name = "otio-fcp-adapter" },
-    { name = "sse-starlette" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-dev = [
-    { name = "pre-commit" },
-    { name = "pyright" },
-    { name = "pytest" },
-    { name = "ruff" },
-]
-interchange = [
-    { name = "opentimelineio" },
-    { name = "otio-fcp-adapter" },
-]
-panel = [
-    { name = "anthropic" },
-    { name = "fastapi" },
-    { name = "sse-starlette" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "anthropic", marker = "extra == 'panel'", specifier = ">=0.40" },
-    { name = "celavii-resolve", extras = ["ai", "interchange", "panel"], marker = "extra == 'all'" },
-    { name = "fastapi", marker = "extra == 'panel'", specifier = ">=0.115" },
-    { name = "fastmcp", specifier = ">=3.0.0" },
-    { name = "google-genai", marker = "extra == 'ai'", specifier = ">=1.64.0" },
-    { name = "opentimelineio", marker = "extra == 'interchange'", specifier = ">=0.18.1" },
-    { name = "otio-fcp-adapter", marker = "extra == 'interchange'", specifier = ">=1.0.0" },
-    { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.0" },
-    { name = "pydantic", specifier = ">=2.0" },
-    { name = "pyright", marker = "extra == 'dev'", specifier = ">=1.1" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "python-dotenv", specifier = ">=1.2.1" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.9.0" },
-    { name = "sse-starlette", marker = "extra == 'panel'", specifier = ">=2.0" },
-    { name = "uvicorn", extras = ["standard"], marker = "extra == 'panel'", specifier = ">=0.30" },
-]
-provides-extras = ["ai", "interchange", "panel", "all", "dev"]
-
-[[package]]
 name = "certifi"
 version = "2026.2.25"
 source = { registry = "https://pypi.org/simple" }
@@ -454,6 +394,66 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/f4/72/05aa5832b82dd341969e9a734d1812a6aadb088d9eb6f0430fc337cc5a8f/cryptography-46.0.7-pp311-pypy311_pp73-manylinux_2_34_x86_64.whl", hash = "sha256:3986ac1dee6def53797289999eabe84798ad7817f3e97779b5061a95b0ee4968", size = 4385479, upload-time = "2026-04-08T01:57:46.86Z" },
     { url = "https://files.pythonhosted.org/packages/20/2a/1b016902351a523aa2bd446b50a5bc1175d7a7d1cf90fe2ef904f9b84ebc/cryptography-46.0.7-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:258514877e15963bd43b558917bc9f54cf7cf866c38aa576ebf47a77ddbc43a4", size = 3412829, upload-time = "2026-04-08T01:57:48.874Z" },
 ]
+
+[[package]]
+name = "cutmaster-ai"
+version = "0.2.0"
+source = { editable = "." }
+dependencies = [
+    { name = "fastmcp" },
+    { name = "pydantic" },
+    { name = "python-dotenv" },
+]
+
+[package.optional-dependencies]
+ai = [
+    { name = "google-genai" },
+]
+all = [
+    { name = "anthropic" },
+    { name = "fastapi" },
+    { name = "google-genai" },
+    { name = "opentimelineio" },
+    { name = "otio-fcp-adapter" },
+    { name = "sse-starlette" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+dev = [
+    { name = "pre-commit" },
+    { name = "pyright" },
+    { name = "pytest" },
+    { name = "ruff" },
+]
+interchange = [
+    { name = "opentimelineio" },
+    { name = "otio-fcp-adapter" },
+]
+panel = [
+    { name = "anthropic" },
+    { name = "fastapi" },
+    { name = "sse-starlette" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "anthropic", marker = "extra == 'panel'", specifier = ">=0.40" },
+    { name = "cutmaster-ai", extras = ["ai", "interchange", "panel"], marker = "extra == 'all'" },
+    { name = "fastapi", marker = "extra == 'panel'", specifier = ">=0.115" },
+    { name = "fastmcp", specifier = ">=3.0.0" },
+    { name = "google-genai", marker = "extra == 'ai'", specifier = ">=1.64.0" },
+    { name = "opentimelineio", marker = "extra == 'interchange'", specifier = ">=0.18.1" },
+    { name = "otio-fcp-adapter", marker = "extra == 'interchange'", specifier = ">=1.0.0" },
+    { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.0" },
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "pyright", marker = "extra == 'dev'", specifier = ">=1.1" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
+    { name = "python-dotenv", specifier = ">=1.2.1" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.9.0" },
+    { name = "sse-starlette", marker = "extra == 'panel'", specifier = ">=2.0" },
+    { name = "uvicorn", extras = ["standard"], marker = "extra == 'panel'", specifier = ">=0.30" },
+]
+provides-extras = ["ai", "interchange", "panel", "all", "dev"]
 
 [[package]]
 name = "cyclopts"

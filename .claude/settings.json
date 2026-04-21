@@ -11,7 +11,7 @@
         ]
       },
       {
-        "matcher": "mcp__celavii-resolve__celavii_delete_project|mcp__celavii-resolve__celavii_delete_timelines|mcp__celavii-resolve__celavii_delete_clips|mcp__celavii-resolve__celavii_delete_bins|mcp__celavii-resolve__celavii_delete_stills|mcp__celavii-resolve__celavii_delete_render_job|mcp__celavii-resolve__celavii_delete_all_render_jobs|mcp__celavii-resolve__celavii_delete_project_folder|mcp__celavii-resolve__celavii_delete_color_group|mcp__celavii-resolve__celavii_delete_fusion_comp|mcp__celavii-resolve__celavii_fusion_delete_tool|mcp__celavii-resolve__celavii_delete_track|mcp__celavii-resolve__celavii_delete_version",
+        "matcher": "mcp__cutmaster-ai__celavii_delete_project|mcp__cutmaster-ai__celavii_delete_timelines|mcp__cutmaster-ai__celavii_delete_clips|mcp__cutmaster-ai__celavii_delete_bins|mcp__cutmaster-ai__celavii_delete_stills|mcp__cutmaster-ai__celavii_delete_render_job|mcp__cutmaster-ai__celavii_delete_all_render_jobs|mcp__cutmaster-ai__celavii_delete_project_folder|mcp__cutmaster-ai__celavii_delete_color_group|mcp__cutmaster-ai__celavii_delete_fusion_comp|mcp__cutmaster-ai__celavii_fusion_delete_tool|mcp__cutmaster-ai__celavii_delete_track|mcp__cutmaster-ai__celavii_delete_version",
         "hooks": [
           {
             "type": "command",
@@ -20,7 +20,7 @@
         ]
       },
       {
-        "matcher": "mcp__celavii-resolve__celavii_execute_python|mcp__celavii-resolve__celavii_execute_lua",
+        "matcher": "mcp__cutmaster-ai__celavii_execute_python|mcp__cutmaster-ai__celavii_execute_lua",
         "hooks": [
           {
             "type": "command",

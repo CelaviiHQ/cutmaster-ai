@@ -4,32 +4,32 @@ description: VFX artist for DaVinci Resolve Fusion. Handles compositing, node gr
 when_to_use: Use when the user needs Fusion compositions, node graph manipulation, visual effects, motion graphics, compositing, or any work on the Fusion page.
 color: "#9B59B6"
 tools:
-  - mcp__celavii-resolve__celavii_switch_page
-  - mcp__celavii-resolve__celavii_get_current_timeline
-  - mcp__celavii-resolve__celavii_list_timeline_items
-  - mcp__celavii-resolve__celavii_get_fusion_comp_count
-  - mcp__celavii-resolve__celavii_add_fusion_comp
-  - mcp__celavii-resolve__celavii_import_fusion_comp
-  - mcp__celavii-resolve__celavii_export_fusion_comp
-  - mcp__celavii-resolve__celavii_delete_fusion_comp
-  - mcp__celavii-resolve__celavii_load_fusion_comp
-  - mcp__celavii-resolve__celavii_rename_fusion_comp
-  - mcp__celavii-resolve__celavii_fusion_add_tool
-  - mcp__celavii-resolve__celavii_fusion_find_tool
-  - mcp__celavii-resolve__celavii_fusion_delete_tool
-  - mcp__celavii-resolve__celavii_fusion_connect
-  - mcp__celavii-resolve__celavii_fusion_set_input
-  - mcp__celavii-resolve__celavii_fusion_get_input
-  - mcp__celavii-resolve__celavii_fusion_get_tool_list
-  - mcp__celavii-resolve__celavii_fusion_get_comp_info
-  - mcp__celavii-resolve__celavii_fusion_render
-  - mcp__celavii-resolve__celavii_fusion_undo
-  - mcp__celavii-resolve__celavii_fusion_end_undo
-  - mcp__celavii-resolve__celavii_insert_fusion_comp_into_timeline
-  - mcp__celavii-resolve__celavii_insert_fusion_generator
-  - mcp__celavii-resolve__celavii_insert_fusion_title
-  - mcp__celavii-resolve__celavii_create_fusion_clip
-  - mcp__celavii-resolve__celavii_execute_lua
+  - mcp__cutmaster-ai__celavii_switch_page
+  - mcp__cutmaster-ai__celavii_get_current_timeline
+  - mcp__cutmaster-ai__celavii_list_timeline_items
+  - mcp__cutmaster-ai__celavii_get_fusion_comp_count
+  - mcp__cutmaster-ai__celavii_add_fusion_comp
+  - mcp__cutmaster-ai__celavii_import_fusion_comp
+  - mcp__cutmaster-ai__celavii_export_fusion_comp
+  - mcp__cutmaster-ai__celavii_delete_fusion_comp
+  - mcp__cutmaster-ai__celavii_load_fusion_comp
+  - mcp__cutmaster-ai__celavii_rename_fusion_comp
+  - mcp__cutmaster-ai__celavii_fusion_add_tool
+  - mcp__cutmaster-ai__celavii_fusion_find_tool
+  - mcp__cutmaster-ai__celavii_fusion_delete_tool
+  - mcp__cutmaster-ai__celavii_fusion_connect
+  - mcp__cutmaster-ai__celavii_fusion_set_input
+  - mcp__cutmaster-ai__celavii_fusion_get_input
+  - mcp__cutmaster-ai__celavii_fusion_get_tool_list
+  - mcp__cutmaster-ai__celavii_fusion_get_comp_info
+  - mcp__cutmaster-ai__celavii_fusion_render
+  - mcp__cutmaster-ai__celavii_fusion_undo
+  - mcp__cutmaster-ai__celavii_fusion_end_undo
+  - mcp__cutmaster-ai__celavii_insert_fusion_comp_into_timeline
+  - mcp__cutmaster-ai__celavii_insert_fusion_generator
+  - mcp__cutmaster-ai__celavii_insert_fusion_title
+  - mcp__cutmaster-ai__celavii_create_fusion_clip
+  - mcp__cutmaster-ai__celavii_execute_lua
 ---
 
 # VFX Agent

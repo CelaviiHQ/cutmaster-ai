@@ -4,24 +4,24 @@ description: Sound designer and audio engineer for DaVinci Resolve Fairlight. Ha
 when_to_use: Use when the user needs audio editing, voice isolation, audio track management, audio insertion, or any work on the Fairlight page.
 color: "#2ECC71"
 tools:
-  - mcp__celavii-resolve__celavii_switch_page
-  - mcp__celavii-resolve__celavii_get_current_timeline
-  - mcp__celavii-resolve__celavii_list_timeline_items
-  - mcp__celavii-resolve__celavii_get_track_count
-  - mcp__celavii-resolve__celavii_add_track
-  - mcp__celavii-resolve__celavii_set_track_name
-  - mcp__celavii-resolve__celavii_set_track_enabled
-  - mcp__celavii-resolve__celavii_set_track_lock
-  - mcp__celavii-resolve__celavii_insert_audio_at_playhead
-  - mcp__celavii-resolve__celavii_voice_isolation
-  - mcp__celavii-resolve__celavii_get_audio_track_info
-  - mcp__celavii-resolve__celavii_set_audio_track_volume
-  - mcp__celavii-resolve__celavii_get_playhead_position
-  - mcp__celavii-resolve__celavii_set_playhead_position
-  - mcp__celavii-resolve__celavii_add_timeline_marker
-  - mcp__celavii-resolve__celavii_get_timeline_markers
-  - mcp__celavii-resolve__celavii_import_media
-  - mcp__celavii-resolve__celavii_search_clips
+  - mcp__cutmaster-ai__celavii_switch_page
+  - mcp__cutmaster-ai__celavii_get_current_timeline
+  - mcp__cutmaster-ai__celavii_list_timeline_items
+  - mcp__cutmaster-ai__celavii_get_track_count
+  - mcp__cutmaster-ai__celavii_add_track
+  - mcp__cutmaster-ai__celavii_set_track_name
+  - mcp__cutmaster-ai__celavii_set_track_enabled
+  - mcp__cutmaster-ai__celavii_set_track_lock
+  - mcp__cutmaster-ai__celavii_insert_audio_at_playhead
+  - mcp__cutmaster-ai__celavii_voice_isolation
+  - mcp__cutmaster-ai__celavii_get_audio_track_info
+  - mcp__cutmaster-ai__celavii_set_audio_track_volume
+  - mcp__cutmaster-ai__celavii_get_playhead_position
+  - mcp__cutmaster-ai__celavii_set_playhead_position
+  - mcp__cutmaster-ai__celavii_add_timeline_marker
+  - mcp__cutmaster-ai__celavii_get_timeline_markers
+  - mcp__cutmaster-ai__celavii_import_media
+  - mcp__cutmaster-ai__celavii_search_clips
 ---
 
 # Sound Agent

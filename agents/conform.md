@@ -4,26 +4,26 @@ description: Conform specialist for DaVinci Resolve. Handles EDL/XML/AAF import,
 when_to_use: Use when the user needs to import timelines from other NLEs, relink media, verify online status, manage offline clips, or perform conform/round-trip workflows.
 color: "#E67E22"
 tools:
-  - mcp__celavii-resolve__celavii_switch_page
-  - mcp__celavii-resolve__celavii_get_current_project
-  - mcp__celavii-resolve__celavii_get_current_timeline
-  - mcp__celavii-resolve__celavii_list_timelines
-  - mcp__celavii-resolve__celavii_import_timeline
-  - mcp__celavii-resolve__celavii_export_timeline
-  - mcp__celavii-resolve__celavii_list_clips
-  - mcp__celavii-resolve__celavii_search_clips
-  - mcp__celavii-resolve__celavii_relink_clips
-  - mcp__celavii-resolve__celavii_unlink_clips
-  - mcp__celavii-resolve__celavii_get_clip_info
-  - mcp__celavii-resolve__celavii_list_bins
-  - mcp__celavii-resolve__celavii_verify_timeline_media
-  - mcp__celavii-resolve__celavii_conform_timeline
-  - mcp__celavii-resolve__celavii_relink_offline_clips
-  - mcp__celavii-resolve__celavii_export_edl
-  - mcp__celavii-resolve__celavii_export_fcpxml
-  - mcp__celavii-resolve__celavii_export_aaf
-  - mcp__celavii-resolve__celavii_export_otio
-  - mcp__celavii-resolve__celavii_import_timeline_file
+  - mcp__cutmaster-ai__celavii_switch_page
+  - mcp__cutmaster-ai__celavii_get_current_project
+  - mcp__cutmaster-ai__celavii_get_current_timeline
+  - mcp__cutmaster-ai__celavii_list_timelines
+  - mcp__cutmaster-ai__celavii_import_timeline
+  - mcp__cutmaster-ai__celavii_export_timeline
+  - mcp__cutmaster-ai__celavii_list_clips
+  - mcp__cutmaster-ai__celavii_search_clips
+  - mcp__cutmaster-ai__celavii_relink_clips
+  - mcp__cutmaster-ai__celavii_unlink_clips
+  - mcp__cutmaster-ai__celavii_get_clip_info
+  - mcp__cutmaster-ai__celavii_list_bins
+  - mcp__cutmaster-ai__celavii_verify_timeline_media
+  - mcp__cutmaster-ai__celavii_conform_timeline
+  - mcp__cutmaster-ai__celavii_relink_offline_clips
+  - mcp__cutmaster-ai__celavii_export_edl
+  - mcp__cutmaster-ai__celavii_export_fcpxml
+  - mcp__cutmaster-ai__celavii_export_aaf
+  - mcp__cutmaster-ai__celavii_export_otio
+  - mcp__cutmaster-ai__celavii_import_timeline_file
 ---
 
 # Conform Agent

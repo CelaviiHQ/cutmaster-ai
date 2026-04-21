@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "celavii-resolve"
+name = "cutmaster-ai"
 version = "0.2.0"
 description = "Maximum-control MCP server for DaVinci Resolve Studio — 241 tools, AI-enhanced workflows, skills, and agents."
 readme = "README.md"
@@ -43,7 +43,7 @@ panel = [
     "anthropic>=0.40",
 ]
 all = [
-    "celavii-resolve[ai,interchange,panel]",
+    "cutmaster-ai[ai,interchange,panel]",
 ]
 dev = [
     "ruff>=0.9.0",
@@ -53,15 +53,15 @@ dev = [
 ]
 
 [project.scripts]
-celavii-resolve = "celavii_resolve:main"
-celavii-resolve-panel = "celavii_resolve.http.app:main"
+cutmaster-ai = "cutmaster_ai:main"
+cutmaster-ai-panel = "cutmaster_ai.http.app:main"
 
 [project.urls]
 Homepage = "https://github.com/CelaviiHQ/cutmaster-ai"
 Repository = "https://github.com/CelaviiHQ/cutmaster-ai"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/celavii_resolve"]
+packages = ["src/cutmaster_ai"]
 
 [tool.ruff]
 target-version = "py311"
@@ -78,8 +78,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"src/celavii_resolve/__init__.py" = ["E402", "I001"]
-"src/celavii_resolve/resolve.py" = ["E402"]
+"src/cutmaster_ai/__init__.py" = ["E402", "I001"]
+"src/cutmaster_ai/resolve.py" = ["E402"]
 
 [tool.pyright]
 pythonVersion = "3.11"
