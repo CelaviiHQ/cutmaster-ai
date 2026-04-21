@@ -446,6 +446,35 @@ def test_tier3_breaks_tie_in_ambiguous_band(monkeypatch):
     assert rec.preset == "tutorial"
 
 
+def test_signals_summary_renders_tier3_when_present():
+    """When Tier 3 fires, SIGNALS SUMMARY block includes its scores."""
+    from cutmaster_ai.cutmaster.analysis.auto_detect import _signals_summary_block
+
+    combined = {k: 0.0 for k in classifiable_presets()}
+    combined["tutorial"] = 0.6
+    combined["vlog"] = 0.5
+    tier0 = {k: 0.0 for k in classifiable_presets()}
+    tier1 = dict(combined)
+    tier2 = {k: 0.0 for k in classifiable_presets()}
+    tier3 = {k: 0.0 for k in classifiable_presets()}
+    tier3["tutorial"] = 0.9
+
+    block = _signals_summary_block(
+        combined,
+        {"tier0": tier0, "tier1": tier1, "tier2": tier2, "tier3": tier3},
+    )
+    assert "Tier 0-3" in block
+    assert "opener 0.90" in block
+
+    # Without tier3, the header reverts to 0-2 and no opener column shows.
+    block_no_t3 = _signals_summary_block(
+        combined,
+        {"tier0": tier0, "tier1": tier1, "tier2": tier2},
+    )
+    assert "Tier 0-2" in block_no_t3
+    assert "opener" not in block_no_t3
+
+
 def test_metadata_signals_flow_into_run_state_cache():
     """Tier 0 scores are cached on run state alongside Tier 1/2."""
     words = _build_interview(duration_s=900.0)

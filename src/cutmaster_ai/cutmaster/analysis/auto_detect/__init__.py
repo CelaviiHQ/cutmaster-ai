@@ -243,16 +243,22 @@ def _signals_summary_block(
     if not ranked:
         return ""
 
-    lines = ["SIGNALS SUMMARY (Tier 0-2 cascade scores — higher = stronger fit):"]
     per_tier = per_tier or {}
+    has_tier3 = any((per_tier.get("tier3") or {}).get(k, 0.0) > 0 for k, _ in ranked)
+    header_tiers = "0-3" if has_tier3 else "0-2"
+    lines = [f"SIGNALS SUMMARY (Tier {header_tiers} cascade scores — higher = stronger fit):"]
     for key, score in ranked:
         t0 = (per_tier.get("tier0") or {}).get(key, 0.0)
         t1 = (per_tier.get("tier1") or {}).get(key, 0.0)
         t2 = (per_tier.get("tier2") or {}).get(key, 0.0)
-        lines.append(
-            f"  - {key}: combined {score:.2f} "
-            f"(metadata {t0:.2f}, structure {t1:.2f}, cues {t2:.2f})"
+        row = (
+            f"  - {key}: combined {score:.2f} (metadata {t0:.2f}, structure {t1:.2f}, cues {t2:.2f}"
         )
+        if has_tier3:
+            t3 = (per_tier.get("tier3") or {}).get(key, 0.0)
+            row += f", opener {t3:.2f}"
+        row += ")"
+        lines.append(row)
     lines.append("")
     lines.append(
         "Your pick must be one of the three above. Justify against these "
@@ -529,7 +535,7 @@ def detect_preset(
             signals,
             candidates,
             combined=combined,
-            per_tier={"tier0": t0, "tier1": t1, "tier2": t2},
+            per_tier={"tier0": t0, "tier1": t1, "tier2": t2, "tier3": t3},
         )
     except Exception as exc:
         log.warning("autodetect LLM tier failed (%s) — falling back to cascade top-1", exc)
@@ -538,7 +544,14 @@ def detect_preset(
             preset=chosen,
             confidence=margin_to_confidence(margin),
             reasoning=_cascade_reasoning(
-                top, second, signals, path="tiers 1+2 (LLM fallback failed)"
+                top,
+                second,
+                signals,
+                path=(
+                    "tiers 0-3 (LLM fallback failed)"
+                    if tier3_fired
+                    else "tiers 0-2 (LLM fallback failed)"
+                ),
             ),
             suggested_target_length_s=_suggested_target_length(chosen, duration_s),
             alternatives=_alternatives_for(combined, chosen, high_conf=False),
