@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   jobs — ruff lint + format check, pytest matrix on Python 3.11 and 3.12,
   gitleaks secrets scan, and an absolute home-path hygiene grep to catch
   `/Users/<name>/` leaks before they ship.
+- SURFACE.md snapshot enforcement (`tests/surface_snapshot.json` +
+  `scripts/dump_surface.py`). A new `surface` CI job fails PRs that
+  change a `@mcp.tool` name, parameter schema, or output schema without
+  a matching entry under `## [Unreleased]` in the changelog — closing
+  the silent-break risk that SURFACE.md previously only described.
 
 ## [0.3.0] — 2026-04-20
 

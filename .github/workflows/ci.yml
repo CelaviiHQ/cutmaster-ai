@@ -86,6 +86,59 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  surface:
+    name: SURFACE.md snapshot drift
+    # Regenerates tests/surface_snapshot.json from the current code and
+    # fails if it diverges from the committed snapshot WITHOUT a matching
+    # CHANGELOG entry under ## [Unreleased] (### BREAKING or ### Added).
+    # This is the versioning safety net for CutMaster Studio and any
+    # downstream consumer that pins a PyPI release — see SURFACE.md.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.11"
+
+      - name: Install all extras
+        # All extras installed because optional code paths may register
+        # additional tools — the snapshot must reflect the full public
+        # surface users see with `pip install 'cutmaster-ai[all]'`.
+        run: uv sync --extra dev --extra ai --extra interchange --extra panel
+
+      - name: Regenerate snapshot
+        run: uv run python scripts/dump_surface.py > /tmp/surface_current.json
+
+      - name: Diff against committed snapshot
+        id: diff
+        run: |
+          if diff -u tests/surface_snapshot.json /tmp/surface_current.json > /tmp/surface.diff; then
+            echo "drift=false" >> "$GITHUB_OUTPUT"
+            echo "Snapshot matches — no drift."
+          else
+            echo "drift=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::SURFACE.md snapshot differs from tests/surface_snapshot.json"
+            echo "--- diff ---"
+            cat /tmp/surface.diff
+          fi
+
+      - name: Require CHANGELOG entry if snapshot drifted
+        if: steps.diff.outputs.drift == 'true'
+        run: |
+          if uv run python scripts/check_changelog_surface_entry.py; then
+            echo "Snapshot drifted but CHANGELOG acknowledges the change — passing."
+          else
+            echo "::error::SURFACE.md snapshot drifted without a matching CHANGELOG entry." >&2
+            echo "If the change is intentional, regenerate the snapshot and add a bullet" >&2
+            echo "under '### BREAKING' or '### Added' in '## [Unreleased]':" >&2
+            echo "  uv run python scripts/dump_surface.py > tests/surface_snapshot.json" >&2
+            echo "If unintentional, revert the tool-signature change." >&2
+            exit 1
+          fi
+
   conventions:
     name: OSS hygiene
     runs-on: ubuntu-latest

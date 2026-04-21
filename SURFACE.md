@@ -148,3 +148,17 @@ Anything not listed above is internal and may change between minor versions. Not
 - Logging format and logger names.
 
 If you find yourself importing something that isn't documented here, file an issue requesting promotion to the stable surface rather than depending on it silently.
+
+---
+
+## 7. Snapshot enforcement
+
+The tool surface is machine-verified on every PR. [`tests/surface_snapshot.json`](tests/surface_snapshot.json) is a deterministic dump of every registered `@mcp.tool` — name, description, input parameter schema, and output schema — and the `surface` job in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) fails if the live surface diverges from the snapshot without a matching CHANGELOG entry.
+
+If you intentionally changed a tool signature or added a tool:
+
+```bash
+uv run python scripts/dump_surface.py > tests/surface_snapshot.json
+```
+
+Then add a bullet under `## [Unreleased]` in [CHANGELOG.md](CHANGELOG.md) — `### BREAKING` for removals, renames, or required-param additions; `### Added` for new tools or new optional parameters. CI accepts either heading; the point is that surface changes are never silent.
