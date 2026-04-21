@@ -78,9 +78,27 @@ class BoundaryVerdict(BaseModel):
 
 
 class BoundaryVerdictResponse(BaseModel):
-    """Wire schema enforced on the Gemini multimodal call."""
+    """Default schema — used when the exact verdict count isn't known (e.g. tests)."""
 
     verdicts: list[BoundaryVerdict] = Field(default_factory=list)
+
+
+def _fixed_length_verdict_schema(n: int) -> type[BaseModel]:
+    """Build a response schema whose ``verdicts`` array is exactly ``n`` long.
+
+    Gemini honors JSON-Schema ``minItems`` / ``maxItems`` on structured
+    outputs, so the length constraint is enforced server-side instead of
+    as a post-hoc validator retry.
+    """
+    from pydantic import create_model
+
+    return create_model(
+        f"BoundaryVerdictResponse_{n}",
+        verdicts=(
+            list[BoundaryVerdict],
+            Field(default_factory=list, min_length=n, max_length=n),
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -356,30 +374,34 @@ def validate_boundaries(samples: list[BoundarySample]) -> list[BoundaryVerdict]:
         keys.append((sample.candidate_index, sample.cut_index))
 
     cut_list = "\n".join(f"  - candidate_index={ci}, cut_index={k}" for ci, k in keys)
-    prompt = f"{_PROMPT}\n\nCUT INDEX LIST (in image-pair order):\n{cut_list}\n"
-
     expected = len(samples)
+    prompt = (
+        f"{_PROMPT}\n\nCUT INDEX LIST (in image-pair order):\n{cut_list}\n"
+        f"\nYou will receive EXACTLY {expected * 2} images ({expected} pairs). "
+        f"Return a `verdicts` array of length {expected}, one entry per pair in order. "
+        "Each verdict's (candidate_index, cut_index) MUST match the pair listed above."
+    )
+    schema = _fixed_length_verdict_schema(expected)
 
+    # Length is now enforced server-side by ``minItems``/``maxItems`` on
+    # ``verdicts``. Keep a semantic validator for the pair-identity check —
+    # the model occasionally emits the right count but with duplicate or
+    # swapped (candidate_index, cut_index) pairs.
     def _validate(resp: BoundaryVerdictResponse) -> list[str]:
-        errors: list[str] = []
-        if len(resp.verdicts) != expected:
-            errors.append(
-                f"verdicts length mismatch: got {len(resp.verdicts)}, expected {expected}"
-            )
         seen_pairs = {(v.candidate_index, v.cut_index) for v in resp.verdicts}
         missing = [pair for pair in keys if pair not in seen_pairs]
         if missing:
-            errors.append(
+            return [
                 "verdicts missing pairs: "
                 + ", ".join(f"(cand={c},cut={k})" for c, k in missing[:5])
-            )
-        return errors
+            ]
+        return []
 
     try:
         resp = call_structured(
             "boundary_validator",
             prompt,
-            BoundaryVerdictResponse,
+            schema,
             images=images,
             validate=_validate,
             accept_best_effort=True,

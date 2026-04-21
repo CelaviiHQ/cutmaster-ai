@@ -92,13 +92,24 @@ class ShotTag(BaseModel):
 
 
 class ShotTagResponse(BaseModel):
-    """Schema enforced on the Gemini multimodal call.
-
-    ``tags`` length must equal the frame count supplied — the caller
-    validates this via ``call_structured``'s ``validate`` hook.
-    """
+    """Default schema — used when the exact frame count isn't known (e.g. tests)."""
 
     tags: list[ShotTag] = Field(default_factory=list)
+
+
+def _fixed_length_response_schema(n: int) -> type[BaseModel]:
+    """Build a response schema whose ``tags`` array is exactly ``n`` long.
+
+    Gemini honors JSON-Schema ``minItems`` / ``maxItems`` on structured
+    outputs, so a per-call schema lets the model enforce the count
+    server-side instead of us re-prompting after a length mismatch.
+    """
+    from pydantic import create_model
+
+    return create_model(
+        f"ShotTagResponse_{n}",
+        tags=(list[ShotTag], Field(default_factory=list, min_length=n, max_length=n)),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -419,19 +430,18 @@ def _tag_item_sync(
 
             images = [(data, "image/jpeg") for data in frames]
             expected_count = len(slice_idxs)
-
-            def _validate(resp: ShotTagResponse, expected: int = expected_count) -> list[str]:
-                if len(resp.tags) != expected:
-                    return [f"tags length mismatch: got {len(resp.tags)}, expected {expected}"]
-                return []
+            framed_prompt = (
+                f"{_PROMPT}\n\nYou will receive EXACTLY {expected_count} image(s). "
+                f"Return a `tags` array of length {expected_count}, one object per image, in order."
+            )
+            schema = _fixed_length_response_schema(expected_count)
 
             try:
                 resp = call_structured(
                     "shot_tagger",
-                    _PROMPT,
-                    ShotTagResponse,
+                    framed_prompt,
+                    schema,
                     images=images,
-                    validate=_validate,
                     accept_best_effort=True,
                 )
             except Exception as exc:
