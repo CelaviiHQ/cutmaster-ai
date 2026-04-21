@@ -59,8 +59,8 @@ async def list_stt_providers() -> dict:
 @router.post("/detect-preset")
 async def detect_preset(body: DetectPresetRequest) -> dict:
     """Classify the scrubbed transcript into a preset recommendation."""
-    _, scrubbed = _require_scrubbed(body.run_id)
-    rec = await asyncio.to_thread(auto_detect_mod.detect_preset, scrubbed)
+    run, scrubbed = _require_scrubbed(body.run_id)
+    rec = await asyncio.to_thread(auto_detect_mod.detect_preset, scrubbed, run)
     return rec.model_dump()
 
 

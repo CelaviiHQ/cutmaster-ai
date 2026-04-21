@@ -425,6 +425,14 @@ async def _scrub_stage(words: list[dict], params: ScrubParams, run, emit) -> lis
 
     result = await asyncio.to_thread(scrub, words, params)
     run["scrubbed"] = result.kept
+    # Persist the scrubber counts so auto-detect Tier 1 (structure scorer)
+    # can read filler / restart / dead-air rates without re-running the
+    # scrubber. Also used by future telemetry on scrub aggressiveness.
+    run["scrub_counts"] = {
+        **dict(result.counts),
+        "kept": result.kept_count,
+        "original": result.original_count,
+    }
     state.save(run)
 
     await emit(

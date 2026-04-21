@@ -17,6 +17,23 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from ...intelligence import llm
+from ..analysis._sentences import (
+    _SENTENCE_PUNCT,
+    SENTENCE_PAUSE_FALLBACK_S,
+    _word_ends_sentence,
+)
+from ..analysis._sentences import (
+    coalesce_to_sentences as _coalesce_to_sentences,
+)
+from ..analysis._sentences import (
+    has_reliable_punctuation as _has_reliable_punctuation,
+)
+from ..analysis._sentences import (
+    sentence_edge_times as _sentence_edge_times,
+)
+from ..analysis._sentences import (
+    sentence_spans as _sentence_spans,
+)
 from ..stt.per_clip import clip_metadata_table
 from ..stt.speakers import apply_speaker_labels, detect_speakers, speaker_stats
 
@@ -46,12 +63,54 @@ class DirectorPlan(BaseModel):
     reasoning: str = Field(default="", description="Brief rationale for the overall structure.")
 
 
+def _bounded_director_plan(min_n: int, max_n: int | None) -> type[BaseModel]:
+    """Build a DirectorPlan variant with ``selected_clips`` length bounds.
+
+    Gemini honors ``minItems`` / ``maxItems`` on structured outputs, so
+    capping N server-side lets the model produce valid plans on the first
+    attempt instead of falling into a validator loop that rejects the
+    count and burns retries. ``max_n=None`` leaves the upper bound open
+    (useful when ``target_length_s`` is unset).
+    """
+    from pydantic import create_model
+
+    field_kwargs: dict = {"min_length": max(1, min_n)}
+    if max_n is not None:
+        field_kwargs["max_length"] = max(max_n, field_kwargs["min_length"])
+    suffix = f"{field_kwargs['min_length']}_{field_kwargs.get('max_length', 'N')}"
+    return create_model(
+        f"DirectorPlan_{suffix}",
+        hook_index=(
+            int,
+            Field(description="Index into selected_clips of the opening beat (0-based)."),
+        ),
+        selected_clips=(list[CutSegment], Field(**field_kwargs)),
+        reasoning=(
+            str,
+            Field(default="", description="Brief rationale for the overall structure."),
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Verbatim-timestamp validator
 # ---------------------------------------------------------------------------
 
 
 TIMESTAMP_TOLERANCE_S = 0.001  # 1 ms — tolerates float repr but not rounding
+
+# Sentence helpers imported from ``analysis._sentences`` at top of file.
+# Re-exported under the historical private aliases so the rest of this
+# module (and any test that imports them from here) keeps working.
+_SENTENCE_REEXPORTS = (
+    SENTENCE_PAUSE_FALLBACK_S,
+    _SENTENCE_PUNCT,
+    _word_ends_sentence,
+    _coalesce_to_sentences,
+    _has_reliable_punctuation,
+    _sentence_edge_times,
+    _sentence_spans,
+)
 
 
 def _build_timestamp_sets(transcript: list[dict]) -> tuple[list[float], list[float]]:
@@ -70,14 +129,14 @@ def _duration_budget(
 ) -> tuple[float, float, int, float]:
     """Return (floor_s, ceiling_s, min_segments, avg_span_s) for a target length.
 
-    Mirrors the v2-11 Short Generator recipe: lite models satisfice on soft
-    ranges, so we hand them pre-solved arithmetic (N segments × D seconds =
-    target) and reject plans that come in below the 75 % floor.
-    ``target_segment_s`` comes from the preset (vlog ~18 s, podcast ~35 s,
-    etc.) so the pre-solve matches the pacing the prompt is already
-    asking for.
+    Lite models satisfice on soft ranges, so we hand them pre-solved
+    arithmetic (N segments × D seconds = target) and reject plans that
+    come in below the 75 % floor. ``target_segment_s`` comes from the
+    preset (vlog ~18 s, podcast ~35 s, etc.) — the pre-solve matches the
+    pacing the prompt is already asking for instead of forcing a fixed
+    minimum segment count across every preset.
     """
-    min_segments = max(8, round(target_length_s / target_segment_s))
+    min_segments = max(3, round(target_length_s / target_segment_s))
     avg_span = target_length_s / min_segments
     low = target_length_s * 0.75
     high = target_length_s * 1.25
@@ -132,7 +191,12 @@ def validate_plan(
       9. When ``preset.reorder_mode != "free"``: non-hook segments respect
          source-time order (locked) or chapter-order (preserve_macro).
     """
-    starts, ends = _build_timestamp_sets(transcript)
+    # Sentence-edge timestamps are the only valid cut points — this is
+    # what prevents mid-phrase starts like "gonna break all the software"
+    # or mid-clause ends like "most weird multi chain". The Director
+    # prompt only exposes sentence-edge times, so this also catches models
+    # that hallucinate per-word timestamps.
+    starts, ends = _sentence_edge_times(transcript)
     errors: list[str] = []
 
     if not plan.selected_clips:
@@ -149,14 +213,18 @@ def validate_plan(
             errors.append(f"segment[{i}]: end_s {seg.end_s} must be > start_s {seg.start_s}")
             continue
         if not _close_to_any(seg.start_s, starts):
+            nearest = min(starts, key=lambda t: abs(t - seg.start_s)) if starts else None
+            hint = f" — nearest sentence start is {nearest:.3f}s" if nearest is not None else ""
             errors.append(
-                f"segment[{i}]: start_s {seg.start_s} does not match any "
-                f"word start_time in the transcript (verbatim required)"
+                f"segment[{i}]: start_s {seg.start_s} is not a sentence start "
+                f"(mid-sentence cuts are not allowed){hint}"
             )
         if not _close_to_any(seg.end_s, ends):
+            nearest = min(ends, key=lambda t: abs(t - seg.end_s)) if ends else None
+            hint = f" — nearest sentence end is {nearest:.3f}s" if nearest is not None else ""
             errors.append(
-                f"segment[{i}]: end_s {seg.end_s} does not match any "
-                f"word end_time in the transcript (verbatim required)"
+                f"segment[{i}]: end_s {seg.end_s} is not a sentence end "
+                f"(mid-sentence cuts are not allowed){hint}"
             )
 
     if selected_hook_s is not None and plan.selected_clips:
@@ -290,7 +358,7 @@ def validate_plan(
 
     if target_length_s and target_length_s > 0:
         target_segment_s = preset.target_segment_s if preset else 22.0
-        low, high, min_segments, avg_span = _duration_budget(target_length_s, target_segment_s)
+        low, high, _min_segs_unused, avg_span = _duration_budget(target_length_s, target_segment_s)
         total = sum(max(0.0, seg.end_s - seg.start_s) for seg in plan.selected_clips)
         log.info(
             "director: plan total=%.1fs target=%.0fs floor=%.1fs ceiling=%.1fs segments=%d",
@@ -300,6 +368,26 @@ def validate_plan(
             high,
             len(plan.selected_clips),
         )
+        # Count bound — Gemini treats schema ``maxItems`` as advisory on
+        # flash-lite, so enforce it here. Both ends are ±25 % of the
+        # pre-solved ideal count (same tolerance the duration window uses),
+        # so plan size and plan length get policed on matching bands.
+        ideal_n = target_length_s / max(target_segment_s, 1.0)
+        min_count = max(2, round(ideal_n * 0.75))
+        max_segments = max(min_count + 1, round(ideal_n * 1.25))
+        n = len(plan.selected_clips)
+        if n < min_count:
+            errors.append(
+                f"segment count {n} is below the {min_count}-segment floor "
+                f"for a {target_length_s:.0f}s target with ~{target_segment_s:.0f}s "
+                f"pacing. Add {min_count - n} more segment(s)."
+            )
+        elif n > max_segments:
+            errors.append(
+                f"segment count {n} exceeds the {max_segments}-segment ceiling "
+                f"for a {target_length_s:.0f}s target with ~{target_segment_s:.0f}s "
+                f"pacing. Drop the {n - max_segments} weakest segment(s)."
+            )
         if total < low:
             deficit = target_length_s - total
             needed_extra = max(1, round(deficit / max(avg_span, 1.0)))
@@ -1107,23 +1195,24 @@ def _prompt(preset: PresetBundle, transcript: list[dict], user_settings: dict | 
         b for b in (hook, recipe, pacing, coverage, take_groups, reorder) if b
     )
     recipe_section = f"\n\n{recipe_section}" if recipe_section else ""
-    transcript_for_prompt = _shape_for_prompt(transcript, user_settings)
+    relabelled = _maybe_relabel_transcript(transcript, user_settings)
+    sentences = _coalesce_to_sentences(relabelled)
     return f"""You are a {preset.role}.
 
-You will receive a transcript array where each item has a `word`, `start_time`, and `end_time` in seconds. Your job is to select contiguous blocks of words that, when stitched together, form a compelling cut.{recipe_section}
+You will receive a SENTENCES array where each row is one sentence with an index `i`, speaker `spk`, time range `t=[t_start, t_end]` in seconds, and the sentence `text`. Your job is to select a contiguous RANGE of sentences (one or more) per CutSegment and emit the range's outer timestamps. Stitched together, the segments form a compelling cut.{recipe_section}
 
 RULES — follow exactly:
 1. Identify the HOOK: {preset.hook_rule}. The hook's CutSegment becomes position 0 in the output, even if it's not the earliest in the transcript.
 2. Every segment's duration must respect the PACING BOUNDS block above.
-3. Do not alter, edit, paraphrase, or summarize ANY word. You may only select blocks of existing words.
-4. For each CutSegment, `start_s` MUST equal the `start_time` of the first word in the block, and `end_s` MUST equal the `end_time` of the last word. Do not round, truncate, or invent timestamps. If unsure, skip that block.
-5. Blocks must be word-aligned and non-overlapping.
+3. Do not alter, edit, paraphrase, or summarize ANY word. You may only select whole sentences.
+4. For each CutSegment, `start_s` MUST equal `t[0]` of the first sentence in the range, and `end_s` MUST equal `t[1]` of the last sentence in the range. Never pick a timestamp that is not a sentence edge.
+5. Segments must not overlap. Each sentence appears in at most one segment.
 
 USER SETTINGS
 {_user_settings_block(user_settings)}{optional_section}
 
-TRANSCRIPT (JSON array):
-{json.dumps(transcript_for_prompt, separators=(",", ":"))}
+SENTENCES (JSON array):
+{json.dumps(sentences, separators=(",", ":"))}
 
 Return a `DirectorPlan` with:
 - `selected_clips`: the blocks in narrative order (hook first).
@@ -1156,10 +1245,23 @@ def build_cut_plan(
             except (TypeError, ValueError):
                 selected_hook_s = None
         chapters = user_settings.get("chapters")
+    # Derive selected_clips length bounds so Gemini enforces the count
+    # server-side. With a target length we compute min/max from the
+    # preset's pacing; without one we only enforce a minimum of 2 (hook +
+    # at least one body segment) to catch Directors that return a single-
+    # segment plan on long source material.
+    if target_length_s:
+        expected = target_length_s / max(preset.target_segment_s, 1.0)
+        min_n = max(2, round(expected * 0.75))
+        max_n = max(min_n, round(expected * 1.25))
+    else:
+        min_n = 2
+        max_n = None
+    schema = _bounded_director_plan(min_n, max_n)
     return llm.call_structured(
         agent="director",
         prompt=prompt,
-        response_schema=DirectorPlan,
+        response_schema=schema,
         validate=lambda plan: validate_plan(
             plan, transcript, target_length_s, selected_hook_s, preset, chapters
         ),
