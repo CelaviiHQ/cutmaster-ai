@@ -30,34 +30,49 @@ async def source_aspect(run_id: str) -> SourceAspectResponse:
     if run is None:
         raise HTTPException(status_code=404, detail=f"run {run_id} not found")
 
-    from ....cutmaster.core.pipeline import _find_timeline_by_name
     from ....cutmaster.media.formats import recommend_format
-    from ....resolve import _boilerplate  # lazy — avoids import-time Resolve dependency
 
-    try:
-        _, project, _ = _boilerplate()
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Resolve unreachable: {exc}")
+    # Prefer the snapshot persisted by pipeline._vfr_check — saves a
+    # Resolve round-trip on every Configure-screen mount.
+    meta = run.get("source_meta") or {}
+    w = int(meta.get("width") or 0)
+    h = int(meta.get("height") or 0)
 
-    tl = _find_timeline_by_name(project, run["timeline_name"])
-    if tl is None:
-        raise HTTPException(
-            status_code=400,
-            detail=f"timeline '{run['timeline_name']}' not found",
+    if w <= 0 or h <= 0:
+        # Pre-Phase 2 runs (analyzed before source_meta existed) fall
+        # back to a live Resolve query — same code path as before.
+        from ....cutmaster.core.pipeline import _find_timeline_by_name
+        from ....resolve import _boilerplate  # lazy
+
+        try:
+            _, project, _ = _boilerplate()
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"Resolve unreachable: {exc}")
+
+        tl = _find_timeline_by_name(project, run["timeline_name"])
+        if tl is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"timeline '{run['timeline_name']}' not found",
+            )
+
+        def _read_int(obj, key: str) -> int:
+            try:
+                v = obj.GetSetting(key)
+            except Exception:
+                return 0
+            try:
+                return int(v) if v else 0
+            except (TypeError, ValueError):
+                return 0
+
+        w = _read_int(tl, "timelineResolutionWidth") or _read_int(
+            project, "timelineResolutionWidth"
+        )
+        h = _read_int(tl, "timelineResolutionHeight") or _read_int(
+            project, "timelineResolutionHeight"
         )
 
-    def _read_int(obj, key: str) -> int:
-        try:
-            v = obj.GetSetting(key)
-        except Exception:
-            return 0
-        try:
-            return int(v) if v else 0
-        except (TypeError, ValueError):
-            return 0
-
-    w = _read_int(tl, "timelineResolutionWidth") or _read_int(project, "timelineResolutionWidth")
-    h = _read_int(tl, "timelineResolutionHeight") or _read_int(project, "timelineResolutionHeight")
     if w <= 0 or h <= 0:
         raise HTTPException(
             status_code=400,

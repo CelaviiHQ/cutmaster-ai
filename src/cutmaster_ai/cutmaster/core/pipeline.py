@@ -27,6 +27,47 @@ def _find_timeline_by_name(project, name: str):
     return None
 
 
+def _read_int_setting(obj, key: str) -> int:
+    try:
+        v = obj.GetSetting(key)
+    except Exception:
+        return 0
+    try:
+        return int(v) if v else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def _read_float_setting(obj, key: str) -> float:
+    try:
+        v = obj.GetSetting(key)
+    except Exception:
+        return 0.0
+    try:
+        return float(v) if v else 0.0
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _read_source_meta(tl, items: list) -> dict:
+    """Snapshot source characteristics at the start of analyze.
+
+    Read once so downstream consumers (auto-detect Tier 0, the
+    source-aspect endpoint) don't need to keep a Resolve handle.
+    """
+    w = _read_int_setting(tl, "timelineResolutionWidth")
+    h = _read_int_setting(tl, "timelineResolutionHeight")
+    fps = _read_float_setting(tl, "timelineFrameRate")
+    aspect = (w / h) if (w > 0 and h > 0) else 0.0
+    return {
+        "clip_count": len(items),
+        "fps": fps,
+        "width": w,
+        "height": h,
+        "aspect": aspect,
+    }
+
+
 async def _vfr_check(tl, run, emit, *, video_track: int = 1) -> bool:
     """Scan source files on ``video_track`` for VFR. Returns True on pass."""
     await emit(
@@ -39,6 +80,12 @@ async def _vfr_check(tl, run, emit, *, video_track: int = 1) -> bool:
     from ..media.vfr import detect_vfr  # lazy — avoids ffprobe requirement at import
 
     items = tl.GetItemListInTrack("video", video_track) or []
+
+    # Persist source metadata up-front so auto-detect Tier 0 and the
+    # /source-aspect endpoint can read it without re-querying Resolve.
+    run["source_meta"] = _read_source_meta(tl, items)
+    state.save(run)
+
     seen: set[str] = set()
     problems: list[dict] = []
     for item in items:

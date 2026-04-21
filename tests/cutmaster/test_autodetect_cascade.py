@@ -14,6 +14,7 @@ from cutmaster_ai.cutmaster.analysis.auto_detect import detect_preset
 from cutmaster_ai.cutmaster.analysis.auto_detect.cue_vocab import (
     score_by_cue_vocabulary,
 )
+from cutmaster_ai.cutmaster.analysis.auto_detect.metadata import score_by_metadata
 from cutmaster_ai.cutmaster.analysis.auto_detect.scoring import (
     classifiable_presets,
     merge,
@@ -299,3 +300,68 @@ def test_structure_score_gates_multi_speaker_from_single_speaker_presets():
     assert scores["vlog"] == 0.0
     assert scores["product_demo"] == 0.0
     assert scores["podcast"] > 0.5
+
+
+# ---------------------------------------------------------------------------
+# Tier 0 — metadata scorer
+# ---------------------------------------------------------------------------
+
+
+def test_metadata_scorer_none_run_state_is_neutral():
+    scores = score_by_metadata(None)
+    assert all(v == 0.0 for v in scores.values())
+
+
+def test_metadata_scorer_vertical_aspect_zeros_interview_presentation():
+    """9:16 sources can't be seated interviews or stage talks."""
+    run = {"source_meta": {"clip_count": 1, "fps": 30.0, "aspect": 9 / 16}}
+    scores = score_by_metadata(run)
+    assert scores["interview"] == 0.0
+    assert scores["presentation"] == 0.0
+    # Portrait boosts vlog/reaction instead.
+    assert scores["vlog"] > 0.0
+    assert scores["reaction"] > 0.0
+
+
+def test_metadata_scorer_single_clip_boosts_raw_capture_presets():
+    """1 clip = raw take ⇒ interview/podcast/presentation over vlog/tutorial."""
+    run = {"source_meta": {"clip_count": 1, "fps": 30.0, "aspect": 16 / 9}}
+    scores = score_by_metadata(run)
+    assert scores["interview"] > scores["vlog"]
+    assert scores["podcast"] > scores["tutorial"]
+    assert scores["presentation"] > scores["vlog"]
+
+
+def test_metadata_scorer_many_clips_boosts_edited_formats():
+    """30+ clips = pre-edited ⇒ vlog/tutorial over raw-capture formats."""
+    run = {"source_meta": {"clip_count": 45, "fps": 30.0, "aspect": 16 / 9}}
+    scores = score_by_metadata(run)
+    assert scores["vlog"] > scores["interview"]
+    assert scores["vlog"] > scores["podcast"]
+
+
+def test_metadata_high_clip_count_disambiguates_edited_over_raw():
+    """30+ clips alone should rank vlog above interview at the metadata tier."""
+    run = {"source_meta": {"clip_count": 45, "fps": 30.0, "aspect": 16 / 9}}
+    scores = score_by_metadata(run)
+    # Tier 0 in isolation places the edited-format presets above the
+    # single-clip (raw-capture) presets. The cascade's additive merge
+    # then tips the final ranking when Tier 1/2 are close.
+    assert scores["vlog"] > scores["interview"]
+    assert scores["vlog"] > scores["presentation"]
+    assert scores["tutorial"] > scores["podcast"]
+
+
+def test_metadata_signals_flow_into_run_state_cache():
+    """Tier 0 scores are cached on run state alongside Tier 1/2."""
+    words = _build_interview(duration_s=900.0)
+    run_state: dict = {
+        "source_meta": {"clip_count": 1, "fps": 30.0, "aspect": 16 / 9},
+        "scrubbed": words,
+        "run_id": "__test_tier0_cache__",
+    }
+    detect_preset(words, run_state=run_state)
+    cached = run_state.get("autodetect_signals") or {}
+    assert "tier0" in cached
+    # Single clip + 16:9 ⇒ interview/podcast/presentation boosted.
+    assert cached["tier0"]["interview"] > 0.0

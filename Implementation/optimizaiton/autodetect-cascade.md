@@ -243,22 +243,22 @@ Implementation steps:
 
 ### Phase 2 — Tier 0 metadata + signals surfaced to LLM
 
-**Status:** pending.
+**Status:** landed (uncommitted — all sub-steps complete, 21 cascade tests + suite green, ruff clean).
 **Estimated code:** ~100 lines + prompt change.
 **Expected effect:** another 10-20 % of previously-ambiguous runs resolve. Tier 4 accuracy improves because the task is narrower.
 
 Implementation steps:
 
-- [ ] **2.0** Persist timeline metadata on run state during analyze. [`pipeline.py::_vfr_check`](../../src/cutmaster_ai/cutmaster/core/pipeline.py#L41) already calls `tl.GetItemListInTrack(...)`; extend the stage to also write:
+- [x] **2.0** Persist timeline metadata on run state during analyze. [`pipeline.py::_vfr_check`](../../src/cutmaster_ai/cutmaster/core/pipeline.py#L41) already calls `tl.GetItemListInTrack(...)`; extend the stage to also write:
   - `run["source_meta"] = {"clip_count": int, "fps": float, "width": int, "height": int, "aspect": float}`
   - Prefer reading from the existing [`/source-aspect/{run_id}` helper](../../src/cutmaster_ai/http/routes/cutmaster/info.py#L21) for `width/height/aspect` so there's one source of truth. Refactor that endpoint to read from `run["source_meta"]` instead of hitting Resolve every request (free performance win).
-- [ ] **2.1** Thread `run_state` through `detect_preset`. The function already accepts `run_state: dict | None = None` from step 1.6 — this step is the caller change.
-- [ ] **2.2** One-line fix in [`presets.py::detect_preset`](../../src/cutmaster_ai/http/routes/cutmaster/presets.py#L60): `_require_scrubbed` already returns `(run, scrubbed)`; the route currently drops `run`. Replace `_, scrubbed = _require_scrubbed(body.run_id)` with `run, scrubbed = _require_scrubbed(body.run_id)` and pass `run` into `detect_preset(scrubbed, run_state=run)`.
-- [ ] **2.3** Add `auto_detect/metadata.py` — `score_by_metadata(run_state) → PresetScores` using `clip_count`, `aspect`, `fps`, and `total_duration_s` (derived from `run["scrubbed"][-1]["end_time"]` when not present in `source_meta`).
-- [ ] **2.4** Extend the cascade in `auto_detect/__init__.py` to call `score_by_metadata` as Tier 0 and merge with Tier 1-2. When `run_state` is `None`, Tier 0 contributes zeros — cascade still works (this preserves backwards compatibility for any direct caller).
-- [ ] **2.5** When Tier 4 (full-band LLM) runs, include a `SIGNALS SUMMARY` block in the prompt listing the top-3 preset scores from Tier 0-2 with a one-line rationale ("tutorial scored 0.72 on cue overlap and 0.58 on structure"). Forces the model to justify its pick against objective evidence.
-- [ ] **2.6** Narrow Tier 4's candidate list to the cascade's top 3 (don't re-expose all 11 presets to the model).
-- [ ] **2.7** Tests: add a fixture where Tier 0 metadata alone disambiguates (e.g. 9:16 aspect rules out interview/presentation; > 30 clips rules out raw-capture interview).
+- [x] **2.1** Thread `run_state` *(landed in Phase 1 step 1.6 — detect_preset already accepts run_state)* through `detect_preset`. The function already accepts `run_state: dict | None = None` from step 1.6 — this step is the caller change.
+- [x] **2.2** *(landed in Phase 1 — route already passes run into detect_preset)*. One-line fix in [`presets.py::detect_preset`](../../src/cutmaster_ai/http/routes/cutmaster/presets.py#L60): `_require_scrubbed` already returns `(run, scrubbed)`; the route currently drops `run`. Replace `_, scrubbed = _require_scrubbed(body.run_id)` with `run, scrubbed = _require_scrubbed(body.run_id)` and pass `run` into `detect_preset(scrubbed, run_state=run)`.
+- [x] **2.3** Add `auto_detect/metadata.py` — `score_by_metadata(run_state) → PresetScores` using `clip_count`, `aspect`, `fps`, and `total_duration_s` (derived from `run["scrubbed"][-1]["end_time"]` when not present in `source_meta`).
+- [x] **2.4** Extend the cascade in `auto_detect/__init__.py` to call `score_by_metadata` as Tier 0 and merge with Tier 1-2. When `run_state` is `None`, Tier 0 contributes zeros — cascade still works (this preserves backwards compatibility for any direct caller).
+- [x] **2.5** When Tier 4 (full-band LLM) runs, include a `SIGNALS SUMMARY` block in the prompt listing the top-3 preset scores from Tier 0-2 with a one-line rationale ("tutorial scored 0.72 on cue overlap and 0.58 on structure"). Forces the model to justify its pick against objective evidence.
+- [x] **2.6** *(landed in Phase 1 — `_llm_classify` already receives narrowed top-3 candidates).* Narrow Tier 4's candidate list to the cascade's top 3 (don't re-expose all 11 presets to the model).
+- [x] **2.7** Tests: add a fixture where Tier 0 metadata alone disambiguates (e.g. 9:16 aspect rules out interview/presentation; > 30 clips rules out raw-capture interview).
 
 ### Phase 3 — Tier 3 opening-sentence micro-classifier
 

@@ -31,6 +31,7 @@ from ....intelligence import llm
 from ...data.presets import PRESETS, Preset, get_preset
 from .._sentences import coalesce_to_sentences as _coalesce_to_sentences
 from .cue_vocab import score_by_cue_vocabulary
+from .metadata import score_by_metadata
 from .scoring import (
     PresetScores,
     is_high_confidence,
@@ -214,12 +215,50 @@ def _band(transcript: list[dict], start_s: float, end_s: float) -> list[dict]:
     ]
 
 
+def _signals_summary_block(
+    combined: PresetScores | None,
+    per_tier: dict[str, PresetScores] | None,
+) -> str:
+    """Render a top-3 preset ranking with per-tier evidence for the LLM.
+
+    Gives the model explicit numbers to justify (or override) its pick
+    instead of re-classifying blind. Empty when we have no scores yet —
+    callers constructing prompts outside the cascade (tests) still work.
+    """
+    if not combined:
+        return ""
+    ranked = sorted(combined.items(), key=lambda kv: kv[1], reverse=True)[:3]
+    if not ranked:
+        return ""
+
+    lines = ["SIGNALS SUMMARY (Tier 0-2 cascade scores — higher = stronger fit):"]
+    per_tier = per_tier or {}
+    for key, score in ranked:
+        t0 = (per_tier.get("tier0") or {}).get(key, 0.0)
+        t1 = (per_tier.get("tier1") or {}).get(key, 0.0)
+        t2 = (per_tier.get("tier2") or {}).get(key, 0.0)
+        lines.append(
+            f"  - {key}: combined {score:.2f} "
+            f"(metadata {t0:.2f}, structure {t1:.2f}, cues {t2:.2f})"
+        )
+    lines.append("")
+    lines.append(
+        "Your pick must be one of the three above. Justify against these "
+        "numbers in `reasoning`; override only when the transcript evidence "
+        "is decisive."
+    )
+    return "\n".join(lines)
+
+
 def _prompt(
     transcript: list[dict],
     duration_s: float,
     n_speakers: int,
     turns: int,
     allowed: list[str] | None = None,
+    *,
+    combined: PresetScores | None = None,
+    per_tier: dict[str, PresetScores] | None = None,
 ) -> str:
     allowed_set = set(allowed) if allowed else None
     choices = "\n".join(
@@ -239,6 +278,9 @@ def _prompt(
         for name, rows in bands.items()
     )
 
+    signals_block = _signals_summary_block(combined, per_tier)
+    signals_section = f"\n{signals_block}\n" if signals_block else ""
+
     return f"""Classify this transcript into ONE of the content-type presets below. The recommendation will be shown to the user as a suggestion — they can override, so your calibrated confidence matters more than being right every time.
 
 PRESETS (pick exactly one key):
@@ -249,7 +291,7 @@ METADATA:
   total_duration_min: {duration_s / 60:.1f}
   speaker_count: {n_speakers}
   speaker_turn_count: {turns}
-
+{signals_section}
 TRANSCRIPT BANDS (sentence-coalesced — three 60 s windows unless the piece is too short):
 {band_dump}
 
@@ -321,14 +363,26 @@ def _llm_classify(
     turns: int,
     signals: dict,
     candidates: list[str],
+    *,
+    combined: PresetScores | None = None,
+    per_tier: dict[str, PresetScores] | None = None,
 ) -> PresetRecommendation:
     """Tier 4 — full-band LLM over the narrowed candidate set.
 
-    Phase 1 keeps the existing prompt but restricts the exposed preset
-    list to the cascade's top-3 candidates. Phase 2 will enrich the
-    prompt with the Tier 0-2 signals summary.
+    Restricts the exposed preset list to the cascade's top-3 candidates
+    and prepends a SIGNALS SUMMARY block showing each candidate's
+    per-tier scores so the model has to justify its pick against
+    objective evidence.
     """
-    prompt = _prompt(transcript, duration_s, n_speakers, turns, allowed=candidates)
+    prompt = _prompt(
+        transcript,
+        duration_s,
+        n_speakers,
+        turns,
+        allowed=candidates,
+        combined=combined,
+        per_tier=per_tier,
+    )
     rec = llm.call_structured(
         agent="autodetect",
         prompt=prompt,
@@ -378,10 +432,9 @@ def detect_preset(
     duration_s = _duration_s(transcript)
     scrub_counts = (run_state or {}).get("scrub_counts")
 
-    # Tier 0 is added in Phase 2 — contributes zeros for now.
     from .scoring import empty_scores
 
-    t0 = empty_scores()
+    t0 = score_by_metadata(run_state) if run_state else empty_scores()
     t1 = score_by_transcript_structure(transcript, scrub_counts=scrub_counts)
     t2 = score_by_cue_vocabulary(transcript)
     t3 = empty_scores()  # opening-sentence classifier — Phase 3
@@ -415,7 +468,7 @@ def detect_preset(
             suggested_target_length_s=_suggested_target_length(chosen, duration_s),
             alternatives=_alternatives_for(combined, chosen, high_conf=True),
         )
-        _cache_recommendation(run_state, signals, t1, t2, rec)
+        _cache_recommendation(run_state, signals, t0, t1, t2, rec)
         log.info(
             "autodetect: %s (conf %.2f, margin %.2f) via tiers 1+2 — no LLM call",
             chosen,
@@ -432,7 +485,16 @@ def detect_preset(
         candidates,
     )
     try:
-        rec = _llm_classify(transcript, duration_s, n_speakers, turns, signals, candidates)
+        rec = _llm_classify(
+            transcript,
+            duration_s,
+            n_speakers,
+            turns,
+            signals,
+            candidates,
+            combined=combined,
+            per_tier={"tier0": t0, "tier1": t1, "tier2": t2},
+        )
     except Exception as exc:
         log.warning("autodetect LLM tier failed (%s) — falling back to cascade top-1", exc)
         chosen = _guard_preset(top[0])
@@ -446,13 +508,14 @@ def detect_preset(
             alternatives=_alternatives_for(combined, chosen, high_conf=False),
         )
 
-    _cache_recommendation(run_state, signals, t1, t2, rec)
+    _cache_recommendation(run_state, signals, t0, t1, t2, rec)
     return rec
 
 
 def _cache_recommendation(
     run_state: dict | None,
     signals: dict,
+    t0: PresetScores,
     t1: PresetScores,
     t2: PresetScores,
     rec: PresetRecommendation,
@@ -467,6 +530,7 @@ def _cache_recommendation(
         return
     run_state["autodetect_signals"] = {
         "signals": signals,
+        "tier0": t0,
         "tier1": t1,
         "tier2": t2,
         "recommendation": rec.model_dump(),
