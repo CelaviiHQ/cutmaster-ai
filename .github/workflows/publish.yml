@@ -3,7 +3,7 @@ name: Publish to PyPI
 # Publishes a tagged release to PyPI via Trusted Publishing (OIDC).
 # No long-lived tokens required — configure the publisher on PyPI:
 #   https://pypi.org/manage/account/publishing/
-# Project name: celavii-resolve
+# Project name: cutmaster-ai
 # Owner/repo:   CelaviiHQ/cutmaster-ai
 # Workflow:     publish.yml
 # Environment:  pypi
