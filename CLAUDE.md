@@ -21,7 +21,7 @@ src/cutmaster_ai/
 ├── cutmaster/        CutMaster AI product — 6 subpackages:
 │   ├── core/            pipeline, director, execute, state, snapshot
 │   ├── stt/             base + deepgram + gemini providers, speakers, per-clip
-│   ├── analysis/        auto_detect, marker_agent, scrubber, tightener, captions, themes
+│   ├── analysis/        auto_detect (cascade), marker_agent, scrubber, tightener, captions, themes
 │   ├── media/           frame_math, time_mapping, vfr, ffmpeg_audio, formats
 │   ├── resolve_ops/     source_mapper, subclips, assembled, segments
 │   └── data/            presets, excludes

@@ -45,6 +45,19 @@ export interface TranscriptWord {
   end_time: number;
 }
 
+export interface CascadeSignals {
+  /** Top-scoring preset after the full cascade merge: [key, score]. */
+  top1: [string, number] | null;
+  /** Runner-up preset after the full cascade merge: [key, score]. */
+  top2: [string, number] | null;
+  /** Gap between top1 and top2 — drives the final confidence value. */
+  margin: number;
+  /** Tiers that contributed signal ("tier0".."tier4"). */
+  tiers_invoked: string[];
+  /** Wall-clock cost of the classification call, in milliseconds. */
+  elapsed_ms: number;
+}
+
 export interface PresetRecommendation {
   preset: PresetKey;
   confidence: number;
@@ -54,6 +67,8 @@ export interface PresetRecommendation {
   suggested_target_length_s?: number | null;
   /** Runner-up presets when confidence is low. Empty when confident. */
   alternatives?: PresetKey[];
+  /** Cascade telemetry — null when recommendation built outside the cascade. */
+  signals?: CascadeSignals | null;
 }
 
 export interface Chapter {

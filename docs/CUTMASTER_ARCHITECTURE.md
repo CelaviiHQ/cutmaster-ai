@@ -50,7 +50,7 @@ Every CutMaster function is a plain Python function the HTTP panel calls directl
     ┌──────────────────────────────────────────────────────────┐
     │  Configure screen (UI)                                   │
     │    themes.py      → story chapters + hook candidates     │
-    │    auto_detect.py → recommend a preset                   │
+    │    auto_detect/   → cascade-based preset recommendation  │
     │  User picks preset, themes, excludes, format, speakers…  │
     └───────────────┬──────────────────────────────────────────┘
                     │  UserSettings
@@ -287,7 +287,7 @@ cutmaster/
 │
 ├── analysis/                      LLM agents + heuristic analysers
 │   ├── scrubber.py                filler / dead-air / restart removal
-│   ├── auto_detect.py             picks a preset from the scrubbed transcript
+│   ├── auto_detect/               cascade preset classifier (metadata → structure → cues → opener → LLM)
 │   ├── themes.py                  chapters + hook candidates + theme axes
 │   ├── marker_agent.py            B-roll / cutaway suggestions over selected words
 │   ├── tightener.py               no-LLM per-take word-block segmenter

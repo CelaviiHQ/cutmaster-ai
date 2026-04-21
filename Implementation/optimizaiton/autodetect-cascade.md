@@ -277,18 +277,18 @@ Implementation steps:
 
 ### Phase 4 — Calibration + telemetry
 
-**Status:** pending.
+**Status:** partial landed (uncommitted — 4.1–4.4 + 4.6 complete, 4.5 deferred until ≥5 real-corrected fixtures per preset exist).
 **Estimated code:** ~100 lines + fixture set.
 **Expected effect:** weights move from hand-tuned guesses to evidence-backed values; the Configure screen can show why a pick was made.
 
 Implementation steps:
 
-- [ ] **4.1** Add a `signals` field to `PresetRecommendation` (backend + TS types) carrying per-tier top-3 score vectors.
-- [ ] **4.2** Log a structured `autodetect.cascade` entry per run: top-1 / top-2 preset, margin, LLM tiers invoked, elapsed_ms.
-- [ ] **4.3** Build a labeled fixture set at `tests/cutmaster/fixtures/autodetect/` — 10-20 transcripts covering every preset. Source: trim real runs the user has corrected.
-- [ ] **4.4** Add `tests/cutmaster/test_autodetect_fixtures.py` asserting each fixture resolves to the expected preset with `confidence ≥ 0.7`.
-- [ ] **4.5** Tune tier weights in `scoring.py` constants against the fixture set until all pass.
-- [ ] **4.6** Document the fixture-labeling workflow in a short `docs/autodetect-fixtures.md` so future corrections are easy to add.
+- [x] **4.1** Add a `signals` field to `PresetRecommendation` (backend + TS types) carrying per-tier top-3 score vectors.
+- [x] **4.2** Log a structured `autodetect.cascade` entry per run: top-1 / top-2 preset, margin, LLM tiers invoked, elapsed_ms.
+- [x] **4.3** *(initial synthetic set — 6/8 presets covered; vlog / wedding pending real-corrected samples).* Build a labeled fixture set at `tests/cutmaster/fixtures/autodetect/` — 10-20 transcripts covering every preset. Source: trim real runs the user has corrected.
+- [x] **4.4** Add `tests/cutmaster/test_autodetect_fixtures.py` asserting each fixture resolves to the expected preset with `confidence ≥ 0.7`.
+- [ ] **4.5** Tune tier weights in `scoring.py` constants *(deferred — synthetic-only fixtures would overfit to the test builders; resumes once ≥5 real-corrected fixtures per preset are banked)* against the fixture set until all pass.
+- [x] **4.6** Document the fixture-labeling workflow in a short `docs/autodetect-fixtures.md` so future corrections are easy to add.
 
 **Not in scope for this phase:** automatic weight learning. Weights stay hand-tuned until there's enough telemetry to justify a solver pass.
 

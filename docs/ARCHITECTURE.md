@@ -115,7 +115,7 @@ src/cutmaster_ai/
 ├── cutmaster/          Stateful AI product — 6 subpackages
 │   ├── core/           pipeline, director, execute, state, snapshot
 │   ├── stt/            base + gemini/deepgram providers, speakers, reconcile
-│   ├── analysis/       auto_detect, marker_agent, scrubber, tightener, captions, themes
+│   ├── analysis/       auto_detect (cascade), marker_agent, scrubber, tightener, captions, themes
 │   ├── media/          frame_math, time_mapping, vfr, ffmpeg_audio, formats
 │   ├── resolve_ops/    segments, source_mapper, subclips, assembled
 │   └── data/           presets (9 bundles), excludes

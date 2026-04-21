@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 
 from pydantic import BaseModel, Field
 
@@ -57,7 +58,43 @@ BAND_SECONDS = 60.0
 _NON_AUTO_PRESETS = {"tightener", "clip_hunter", "short_generator"}
 
 
-class PresetRecommendation(BaseModel):
+class CascadeSignals(BaseModel):
+    """Per-tier scores surfaced to the panel for reasoning display.
+
+    Each tier's top-3 presets with score — the Configure screen can
+    render a compact "why this preset" breakdown (Phase 4 UX hook) and
+    operators can eyeball which tiers carried or missed a decision.
+    """
+
+    top1: tuple[str, float] | None = Field(
+        default=None,
+        description="Highest-scoring preset after the full cascade merge.",
+    )
+    top2: tuple[str, float] | None = Field(
+        default=None,
+        description="Runner-up preset after the full cascade merge.",
+    )
+    margin: float = Field(
+        default=0.0,
+        description="Gap between top1 and top2 — drives confidence.",
+    )
+    tiers_invoked: list[str] = Field(
+        default_factory=list,
+        description="Which tiers contributed signal ('tier0'..'tier4').",
+    )
+    elapsed_ms: int = Field(default=0, description="Wall-clock cost of the classification call.")
+
+
+class _PresetRecommendationCore(BaseModel):
+    """Fields the Tier 4 LLM must fill in.
+
+    Kept separate from :class:`PresetRecommendation` because Gemini's
+    response-schema validator rejects the ``tuple[...]`` fields on
+    :class:`CascadeSignals` (prefix-item schemas are not allowed in
+    google-genai's JSON Schema subset). Splitting the telemetry field
+    out lets the LLM see a schema it actually supports.
+    """
+
     preset: Preset = Field(description="Recommended preset key.")
     confidence: float = Field(ge=0.0, le=1.0)
     reasoning: str = Field(description="1–2 sentences on why this preset fits.")
@@ -73,6 +110,17 @@ class PresetRecommendation(BaseModel):
         description=(
             "Up to 2 runner-up presets the editor should consider when "
             "confidence is low. Empty when the top pick is confident."
+        ),
+    )
+
+
+class PresetRecommendation(_PresetRecommendationCore):
+    signals: CascadeSignals | None = Field(
+        default=None,
+        description=(
+            "Cascade telemetry — top-1 / top-2 / margin / tiers invoked "
+            "/ elapsed. Populated by the local cascade; left null by "
+            "third-party callers that build recommendations directly."
         ),
     )
 
@@ -404,7 +452,7 @@ def _llm_classify(
     rec = llm.call_structured(
         agent="autodetect",
         prompt=prompt,
-        response_schema=PresetRecommendation,
+        response_schema=_PresetRecommendationCore,
         temperature=0.2,
     )
     if rec.preset not in PRESETS or rec.preset in _NON_AUTO_PRESETS:
@@ -424,7 +472,73 @@ def _llm_classify(
     if rec.alternatives:
         filtered = [a for a in rec.alternatives if a in PRESETS and a not in _NON_AUTO_PRESETS]
         rec = rec.model_copy(update={"alternatives": filtered[:2]})
-    return rec
+    # Lift to the full shape so callers can attach CascadeSignals.
+    return PresetRecommendation.model_validate(rec.model_dump())
+
+
+def _tiers_invoked_list(run_state: dict | None, tier3_fired: bool, tier4_fired: bool) -> list[str]:
+    """Names of tiers that ran during this classification pass."""
+    invoked = ["tier1", "tier2"]
+    if run_state is not None:
+        invoked.insert(0, "tier0")
+    if tier3_fired:
+        invoked.append("tier3")
+    if tier4_fired:
+        invoked.append("tier4")
+    return invoked
+
+
+def _attach_signals(
+    rec: PresetRecommendation,
+    top: tuple[str, float],
+    second: tuple[str, float],
+    margin: float,
+    *,
+    tiers_invoked: list[str],
+    elapsed_ms: int,
+) -> PresetRecommendation:
+    """Return a copy of ``rec`` with a populated :class:`CascadeSignals` field."""
+    sig = CascadeSignals(
+        top1=(top[0], round(float(top[1]), 4)),
+        top2=(second[0], round(float(second[1]), 4)),
+        margin=round(float(margin), 4),
+        tiers_invoked=list(tiers_invoked),
+        elapsed_ms=elapsed_ms,
+    )
+    return rec.model_copy(update={"signals": sig})
+
+
+def _log_cascade(rec: PresetRecommendation, path: str) -> None:
+    """Emit the structured ``autodetect.cascade`` telemetry line.
+
+    Name + ``extra`` payload match the pattern the intelligence.llm
+    module uses so downstream log aggregators can correlate classifier
+    picks with model calls.
+    """
+    sig = rec.signals
+    if sig is None:
+        return
+    log.info(
+        "autodetect.cascade path=%s pick=%s conf=%.2f margin=%.3f tiers=%s elapsed_ms=%d",
+        path,
+        rec.preset,
+        rec.confidence,
+        sig.margin,
+        ",".join(sig.tiers_invoked),
+        sig.elapsed_ms,
+        extra={
+            "autodetect_cascade": {
+                "path": path,
+                "pick": rec.preset,
+                "confidence": rec.confidence,
+                "top1": sig.top1,
+                "top2": sig.top2,
+                "margin": sig.margin,
+                "tiers_invoked": sig.tiers_invoked,
+                "elapsed_ms": sig.elapsed_ms,
+            }
+        },
+    )
 
 
 def detect_preset(
@@ -447,6 +561,7 @@ def detect_preset(
             except Exception:
                 pass  # fall through to recompute
 
+    started = time.monotonic()
     duration_s = _duration_s(transcript)
     scrub_counts = (run_state or {}).get("scrub_counts")
 
@@ -457,6 +572,7 @@ def detect_preset(
     t2 = score_by_cue_vocabulary(transcript)
     t3: PresetScores = empty_scores()
     tier3_fired = False
+    tier4_fired = False
 
     signals = compute_signals(transcript, scrub_counts)
     combined = merge((t0, t1, t2, t3))
@@ -469,6 +585,13 @@ def detect_preset(
             reasoning="Transcript empty or uninformative — defaulted to vlog.",
             suggested_target_length_s=None,
             alternatives=[],
+            signals=CascadeSignals(
+                top1=None,
+                top2=None,
+                margin=0.0,
+                tiers_invoked=[],
+                elapsed_ms=int((time.monotonic() - started) * 1000),
+            ),
         )
 
     top = ranked[0]
@@ -510,13 +633,16 @@ def detect_preset(
             suggested_target_length_s=_suggested_target_length(chosen, duration_s),
             alternatives=_alternatives_for(combined, chosen, high_conf=True),
         )
-        _cache_recommendation(run_state, signals, t0, t1, t2, t3, rec)
-        log.info(
-            "autodetect: %s (conf %.2f, margin %.2f) via tiers 1+2 — no LLM call",
-            chosen,
-            rec.confidence,
+        rec = _attach_signals(
+            rec,
+            top,
+            second,
             margin,
+            tiers_invoked=_tiers_invoked_list(run_state, tier3_fired, tier4_fired=False),
+            elapsed_ms=int((time.monotonic() - started) * 1000),
         )
+        _cache_recommendation(run_state, signals, t0, t1, t2, t3, rec)
+        _log_cascade(rec, "cascade-only")
         return rec
 
     # Tier 4 — narrow candidate set, let the LLM pick.
@@ -526,6 +652,7 @@ def detect_preset(
         margin,
         candidates,
     )
+    tier4_fired = True
     try:
         rec = _llm_classify(
             transcript,
@@ -557,7 +684,16 @@ def detect_preset(
             alternatives=_alternatives_for(combined, chosen, high_conf=False),
         )
 
+    rec = _attach_signals(
+        rec,
+        top,
+        second,
+        margin,
+        tiers_invoked=_tiers_invoked_list(run_state, tier3_fired, tier4_fired),
+        elapsed_ms=int((time.monotonic() - started) * 1000),
+    )
     _cache_recommendation(run_state, signals, t0, t1, t2, t3, rec)
+    _log_cascade(rec, "tier4")
     return rec
 
 
