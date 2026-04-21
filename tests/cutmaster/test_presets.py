@@ -15,6 +15,7 @@ CONTENT_TYPE_PRESETS = {
     "interview",
     "tutorial",
     "podcast",
+    "presentation",
     "reaction",
     "clip_hunter",
     "short_generator",

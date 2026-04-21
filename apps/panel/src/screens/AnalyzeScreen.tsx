@@ -20,6 +20,8 @@ const STAGES = [
     { key: "stt", label: "Transcribe" },
     { key: "speakers", label: "Reconcile speakers", optional: true },
     { key: "scrub", label: "Scrub fillers / restarts" },
+    { key: "shot_tag", label: "Shot tagging (vision)", optional: true },
+    { key: "audio_cues", label: "Audio cues (DSP)", optional: true },
 ] as const;
 
 const PROVIDER_LABELS: Record<string, string> = {

@@ -7,6 +7,7 @@ export type PresetKey =
   | "interview"
   | "tutorial"
   | "podcast"
+  | "presentation"
   | "reaction"
   | "tightener"
   | "clip_hunter"
@@ -26,6 +27,9 @@ export interface PresetBundle {
   role: string;
   hook_rule: string;
   pacing: string;
+  min_segment_s: number;
+  target_segment_s: number;
+  max_segment_s: number;
   cue_vocabulary: string[];
   marker_vocabulary: string[];
   theme_axes: string[];
@@ -45,6 +49,11 @@ export interface PresetRecommendation {
   preset: PresetKey;
   confidence: number;
   reasoning: string;
+  /** Sensible default target length the Configure screen can prefill. Null
+   *  when no signal exists to guess (e.g. Tightener / Clip Hunter). */
+  suggested_target_length_s?: number | null;
+  /** Runner-up presets when confidence is low. Empty when confident. */
+  alternatives?: PresetKey[];
 }
 
 export interface Chapter {

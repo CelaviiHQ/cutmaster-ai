@@ -1027,7 +1027,7 @@ def test_detect_preset(client: TestClient, scrubbed_run, monkeypatch):
     recommendation = PresetRecommendation(
         preset="vlog", confidence=0.85, reasoning="energy + first-person"
     )
-    monkeypatch.setattr(routes.auto_detect_mod, "detect_preset", lambda _t: recommendation)
+    monkeypatch.setattr(routes.auto_detect_mod, "detect_preset", lambda _t, _r=None: recommendation)
 
     r = client.post("/cutmaster/detect-preset", json={"run_id": scrubbed_run["run_id"]})
     assert r.status_code == 200

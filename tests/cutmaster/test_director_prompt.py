@@ -162,8 +162,8 @@ def test_speaker_labels_are_applied_to_block_and_transcript():
     assert "Host" in prompt and "Guest" in prompt
     # Serialised transcript JSON also carries the labels so the model sees
     # the same names in both places.
-    assert '"speaker_id":"Host"' in prompt
-    assert '"speaker_id":"Guest"' in prompt
+    assert '"spk":"Host"' in prompt
+    assert '"spk":"Guest"' in prompt
 
 
 def test_clip_hunter_prompt_shows_speaker_block_when_awareness_set():
@@ -255,13 +255,12 @@ def test_prompt_renders_clip_metadata_block_when_words_carry_clip_index():
 
 
 def test_prompt_strips_per_word_clip_metadata_to_save_tokens():
-    """The CLIP METADATA table renders clip info once; embedding the same
-    dict on every word roughly triples the prompt. v2-6 payoff should keep
-    `clip_index` on words and drop `clip_metadata`."""
+    """The CLIP METADATA table renders clip info once; the serialised
+    SENTENCES array must not repeat the metadata dict on every row."""
     preset = get_preset("vlog")
     transcript = [
         {
-            "word": "Hello",
+            "word": "Hello.",
             "start_time": 0.0,
             "end_time": 0.4,
             "speaker_id": "S1",
@@ -277,13 +276,11 @@ def test_prompt_strips_per_word_clip_metadata_to_save_tokens():
     prompt = director._prompt(preset, transcript, user_settings={})
     # Metadata block still renders (the table).
     assert "DJI_0006.MP4" in prompt
-    # But it must NOT appear as a JSON value inside the per-word array —
+    # But it must NOT appear as a JSON value inside the sentences array —
     # that would mean we're sending the redundant metadata to Gemini.
-    _, _, tail = prompt.partition("TRANSCRIPT (JSON array):")
+    _, _, tail = prompt.partition("SENTENCES (JSON array):")
     assert "clip_metadata" not in tail
     assert "source_path" not in tail
-    # clip_index still there so the Director can cross-reference.
-    assert "clip_index" in tail
 
 
 def test_prompt_no_clip_metadata_block_when_absent():
@@ -301,13 +298,13 @@ def test_every_preset_has_speaker_awareness_field():
         assert hasattr(bundle, "speaker_awareness")
 
 
-def test_interview_and_podcast_are_the_only_speaker_aware_presets():
-    """Ship list guard: future presets that want speaker awareness should
+def test_speaker_aware_presets_ship_list():
+    """Ship-list guard: future presets that want speaker awareness should
     update this test consciously, not drift in."""
     from cutmaster_ai.cutmaster.data.presets import PRESETS
 
     speaker_aware = {k for k, b in PRESETS.items() if (b.speaker_awareness or "").strip()}
-    assert speaker_aware == {"interview", "podcast"}
+    assert speaker_aware == {"interview", "podcast", "presentation"}
 
 
 def test_exclude_category_keys_are_unique_per_preset():

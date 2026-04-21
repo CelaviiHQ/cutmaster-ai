@@ -8,12 +8,15 @@ from cutmaster_ai.cutmaster.core.director import (
 
 
 def _transcript() -> list[dict]:
+    # Each word is punctuated so it counts as its own one-word sentence.
+    # Keeps the verbatim-edge checks focused on timestamp matching without
+    # also exercising sentence-coalescing.
     return [
-        {"word": "Hello", "start_time": 0.0, "end_time": 0.5, "speaker_id": "S1"},
-        {"word": "world,", "start_time": 0.5, "end_time": 0.95, "speaker_id": "S1"},
-        {"word": "this", "start_time": 1.2, "end_time": 1.45, "speaker_id": "S1"},
-        {"word": "is", "start_time": 1.45, "end_time": 1.6, "speaker_id": "S1"},
-        {"word": "the", "start_time": 1.6, "end_time": 1.75, "speaker_id": "S1"},
+        {"word": "Hello.", "start_time": 0.0, "end_time": 0.5, "speaker_id": "S1"},
+        {"word": "world.", "start_time": 0.5, "end_time": 0.95, "speaker_id": "S1"},
+        {"word": "this.", "start_time": 1.2, "end_time": 1.45, "speaker_id": "S1"},
+        {"word": "is.", "start_time": 1.45, "end_time": 1.6, "speaker_id": "S1"},
+        {"word": "the.", "start_time": 1.6, "end_time": 1.75, "speaker_id": "S1"},
         {"word": "hook.", "start_time": 1.75, "end_time": 2.25, "speaker_id": "S1"},
     ]
 
@@ -36,7 +39,7 @@ def test_rounded_timestamp_rejected():
     plan = _plan([{"start_s": 0.0, "end_s": 1.5, "reason": ""}])
     errors = validate_plan(plan, _transcript())
     assert errors
-    assert any("end_s" in e and "verbatim" in e for e in errors)
+    assert any("end_s" in e and "sentence end" in e for e in errors)
 
 
 def test_truncated_timestamp_rejected():

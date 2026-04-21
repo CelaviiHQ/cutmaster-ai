@@ -21,6 +21,7 @@ import type {
 const SPEAKER_AWARE_PRESETS: ReadonlySet<PresetKey> = new Set([
     "interview",
     "podcast",
+    "presentation",
 ]);
 
 interface Props {
@@ -110,12 +111,14 @@ export default function ConfigureScreen({
             setErr(null);
             try {
                 let effective = preset;
+                let suggestedTargetFromAutodetect: number | null = null;
                 if (preset === "auto") {
                     const r = await api.detectPreset(runId);
                     if (cancelled) return;
                     setRec(r);
                     effective = r.preset;
                     onPresetChange(r.preset);
+                    suggestedTargetFromAutodetect = r.suggested_target_length_s ?? null;
                 }
                 const a = await api.analyzeThemes(runId, effective);
                 if (cancelled) return;
@@ -133,6 +136,13 @@ export default function ConfigureScreen({
                     themes: a.theme_candidates,
                     selected_hook_s:
                         settings.selected_hook_s ?? (topHook ? topHook.start_s : null),
+                    // Prefill target_length_s from the autodetect suggestion
+                    // so editors aren't left with a blank field that makes
+                    // the Director satisfice on a tiny cut. Preserve any
+                    // value the editor already set (resume-from-Back, manual
+                    // input on a prior pass).
+                    target_length_s:
+                        settings.target_length_s ?? suggestedTargetFromAutodetect,
                 });
             } catch (e) {
                 if (!cancelled) setErr(String(e));
@@ -270,9 +280,29 @@ export default function ConfigureScreen({
                         &nbsp;(confidence {Math.round(rec.confidence * 100)}%)
                     </p>
                     <p className="muted">{rec.reasoning}</p>
-                    <p className="muted" style={{ marginTop: 8 }}>
-                        Override below if you disagree.
-                    </p>
+                    {rec.confidence < 0.5 &&
+                    (rec.alternatives ?? []).length > 0 ? (
+                        <div style={{ marginTop: 8 }}>
+                            <p className="muted" style={{ marginBottom: 4 }}>
+                                Low confidence — consider:
+                            </p>
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                {(rec.alternatives ?? []).map((alt) => (
+                                    <button
+                                        key={alt}
+                                        className="secondary"
+                                        onClick={() => handlePresetChange(alt)}
+                                    >
+                                        Try {alt}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    ) : (
+                        <p className="muted" style={{ marginTop: 8 }}>
+                            Override below if you disagree.
+                        </p>
+                    )}
                 </div>
             )}
 
@@ -289,6 +319,7 @@ export default function ConfigureScreen({
                         "interview",
                         "tutorial",
                         "podcast",
+                        "presentation",
                         "reaction",
                         "tightener",
                         "clip_hunter",
@@ -856,6 +887,30 @@ export default function ConfigureScreen({
                         Capped at {Math.round(lengthCap)} s for the selected format.
                     </p>
                 )}
+                {(() => {
+                    const tgt = settings.target_length_s;
+                    if (tgt == null || !currentBundle) return null;
+                    if (isClipHunter || isShortGenerator) return null;
+                    if (tgt <= 90) {
+                        return (
+                            <p className="muted" style={{ color: "#c97a00" }}>
+                                ⚠ {currentBundle.label} is tuned for longer cuts. For outputs
+                                ≤ 90 s, Short Generator produces tighter results.
+                            </p>
+                        );
+                    }
+                    const expected = tgt / currentBundle.target_segment_s;
+                    if (expected < 2 || expected > 15) {
+                        return (
+                            <p className="muted" style={{ color: "#c97a00" }}>
+                                ⚠ {Math.round(tgt)} s ÷ {currentBundle.target_segment_s} s per
+                                beat ≈ {expected.toFixed(1)} segments — outside this preset's
+                                comfort zone (2–15). Consider a different preset or length.
+                            </p>
+                        );
+                    }
+                    return null;
+                })()}
                 </div>
             )}
 

@@ -29,6 +29,7 @@ Preset = Literal[
     "interview",
     "tutorial",
     "podcast",
+    "presentation",
     "reaction",
     "tightener",
     "clip_hunter",
@@ -500,6 +501,101 @@ PODCAST = PresetBundle(
     ),
 )
 
+PRESENTATION = PresetBundle(
+    key="presentation",
+    label="Presentation / Keynote",
+    role="keynote / conference-talk editor",
+    hook_rule=(
+        "the speaker's thesis statement — the one-sentence big idea, "
+        "usually stated in the first 3 minutes or restated near the close"
+    ),
+    pacing=(
+        "deliberate — let complete thoughts land; never split an argument "
+        "across cuts and preserve intentional dramatic pauses"
+    ),
+    reorder_mode="locked",
+    min_segment_s=10.0,
+    target_segment_s=45.0,
+    max_segment_s=120.0,
+    cue_vocabulary=[
+        "imagine",
+        "think about",
+        "so here's the thing",
+        "what this means",
+        "the key insight",
+        "look at this slide",
+        "as you can see here",
+        "let me show you",
+    ],
+    marker_vocabulary=[
+        "Slide: {topic}",
+        "Applause: {moment}",
+        "Cutaway: {subject}",
+    ],
+    theme_axes=["thesis", "supporting evidence", "anecdotes", "call to action"],
+    scrub_defaults={
+        "remove_fillers": True,
+        "remove_dead_air": False,  # deliberate pauses are part of keynote cadence
+        "collapse_restarts": True,
+        "dead_air_threshold_s": 1.5,
+    },
+    exclude_categories=[
+        ExcludeCategory(
+            key="thank_you_boilerplate",
+            label="Thank-you boilerplate",
+            description=(
+                "Opening and closing thank-yous to the organisers, audience, "
+                "or sponsors that sit outside the argument."
+            ),
+            checked_by_default=True,
+        ),
+        ExcludeCategory(
+            key="stage_tech",
+            label="Stage tech housekeeping",
+            description=(
+                "'Can you hear me?', 'next slide please', 'is the clicker working?' "
+                "— anything addressed to the AV team."
+            ),
+            checked_by_default=True,
+        ),
+        ExcludeCategory(
+            key="mc_bio_intro",
+            label="MC / bio intro read",
+            description=(
+                "The emcee's bio reading before the speaker takes the stage. "
+                "Usually replaced with an on-screen lower-third."
+            ),
+            checked_by_default=True,
+        ),
+        ExcludeCategory(
+            key="audience_qa_warmup",
+            label="Audience Q&A warm-up",
+            description=(
+                "Wandering Q&A banter before the first meaty question. Keep the "
+                "substantive exchanges; drop the warm-up."
+            ),
+            checked_by_default=False,
+        ),
+        ExcludeCategory(
+            key="sponsor_acknowledgement",
+            label="Sponsorship acknowledgements",
+            description=(
+                "On-stage shout-outs to conference sponsors or title partners "
+                "unrelated to the talk's content."
+            ),
+            checked_by_default=True,
+        ),
+    ],
+    default_custom_focus_placeholder="e.g. emphasise the data on developer productivity",
+    speaker_awareness=(
+        "Single dominant speaker delivering a prepared talk. Brief audience "
+        "reactions (applause, laughter) are landmarks, not content. If a "
+        "cohost or panelist briefly takes the floor, treat their exchange as "
+        "a secondary speaker — do not cut mid-exchange, and never drop the "
+        "primary speaker's argument to make room for Q&A commentary."
+    ),
+)
+
 REACTION = PresetBundle(
     key="reaction",
     label="Reaction",
@@ -701,6 +797,7 @@ PRESETS: dict[str, PresetBundle] = {
         INTERVIEW,
         TUTORIAL,
         PODCAST,
+        PRESENTATION,
         REACTION,
         TIGHTENER,
         CLIP_HUNTER,
