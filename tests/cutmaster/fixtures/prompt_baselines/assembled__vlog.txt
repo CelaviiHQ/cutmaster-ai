@@ -1,0 +1,23 @@
+You are a YouTube retention expert and documentary editor.
+
+The editor has pre-cut this timeline into takes on the video track. Each TAKE below is one timeline item — a self-contained clip. Your job is to choose which takes survive and which word-index spans inside each take are kept.
+
+RULES — follow exactly:
+1. Identify the HOOK: the single highest-energy summary statement in the first 20% of the runtime. Set `hook_index` to the position of the hook take within your returned `selections` array.
+2. Pacing: retention curve — front-load the payoff, keep beats tight.
+3. You MUST NOT merge material across takes. Every kept_word_span references word indices within ONE take's transcript.
+4. kept_word_spans must reference valid `i` values from that take's transcript. Spans are inclusive on both ends: [a, b] keeps words i=a through i=b.
+5. Within a take, spans must be non-overlapping and in ascending order of `a`.
+6. Omit takes entirely when they don't belong in the cut — do NOT include empty `kept_word_spans` arrays.
+7. You MAY reorder takes: return `selections` in the order the cut should play, with the hook's take first. You may drop takes that don't belong in the cut.
+
+USER SETTINGS
+(no user overrides)
+
+TAKES (JSON array):
+[{"item_index":0,"source_name":"clip_00.mov","start_s":0.0,"end_s":4.7,"transcript":[{"word":"Hello","start_time":0.0,"end_time":0.5,"speaker_id":"S1","i":0},{"word":"everyone,","start_time":0.5,"end_time":1.0,"speaker_id":"S1","i":1},{"word":"today","start_time":1.0,"end_time":1.3,"speaker_id":"S1","i":2},{"word":"we're","start_time":1.3,"end_time":1.55,"speaker_id":"S1","i":3},{"word":"talking","start_time":1.55,"end_time":2.0,"speaker_id":"S1","i":4},{"word":"about","start_time":2.0,"end_time":2.4,"speaker_id":"S1","i":5},{"word":"remote","start_time":2.4,"end_time":2.8,"speaker_id":"S1","i":6},{"word":"work.","start_time":2.8,"end_time":3.3,"speaker_id":"S1","i":7},{"word":"So","start_time":3.5,"end_time":3.7,"speaker_id":"S2","i":8},{"word":"what's","start_time":3.7,"end_time":4.0,"speaker_id":"S2","i":9},{"word":"your","start_time":4.0,"end_time":4.2,"speaker_id":"S2","i":10},{"word":"take?","start_time":4.2,"end_time":4.7,"speaker_id":"S2","i":11}]},{"item_index":1,"source_name":"clip_01.mov","start_s":0.0,"end_s":4.7,"transcript":[{"word":"Hello","start_time":0.0,"end_time":0.5,"speaker_id":"S1","i":0},{"word":"everyone,","start_time":0.5,"end_time":1.0,"speaker_id":"S1","i":1},{"word":"today","start_time":1.0,"end_time":1.3,"speaker_id":"S1","i":2},{"word":"we're","start_time":1.3,"end_time":1.55,"speaker_id":"S1","i":3},{"word":"talking","start_time":1.55,"end_time":2.0,"speaker_id":"S1","i":4},{"word":"about","start_time":2.0,"end_time":2.4,"speaker_id":"S1","i":5},{"word":"remote","start_time":2.4,"end_time":2.8,"speaker_id":"S1","i":6},{"word":"work.","start_time":2.8,"end_time":3.3,"speaker_id":"S1","i":7},{"word":"So","start_time":3.5,"end_time":3.7,"speaker_id":"S2","i":8},{"word":"what's","start_time":3.7,"end_time":4.0,"speaker_id":"S2","i":9},{"word":"your","start_time":4.0,"end_time":4.2,"speaker_id":"S2","i":10},{"word":"take?","start_time":4.2,"end_time":4.7,"speaker_id":"S2","i":11}]}]
+
+Return an `AssembledDirectorPlan` with:
+- `selections`: list of {item_index, kept_word_spans} entries in play order (hook's take at position `hook_index`).
+- `hook_index`: index into selections (0-based).
+- `reasoning`: 1–2 sentences on the overall structure.

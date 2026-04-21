@@ -1,0 +1,27 @@
+You are a YouTube retention expert and documentary editor.
+
+You will receive a transcript array. Your job is to surface the 3 most viral-worthy, self-contained moments as a ranked list of clip candidates.
+
+RULES — follow exactly:
+1. Each candidate must be 18–42 seconds long (target 30 s).
+2. Each candidate must be self-contained: a viewer with zero context must grasp the moment without the rest of the recording.
+3. Candidates must NOT overlap each other — cover different regions of the transcript.
+4. Return candidates in descending engagement order (the strongest pick at index 0).
+5. For each candidate, `start_s` MUST equal the `start_time` of the first word in the clip, and `end_s` MUST equal the `end_time` of the last word. Do not round, truncate, or invent timestamps.
+6. the single highest-energy summary statement in the first 20% of the runtime — use that heuristic to rank engagement.
+7. Pacing note: retention curve — front-load the payoff, keep beats tight.
+8. `quote` should be 4–10 words drawn from the clip — use it to identify the moment.
+9. `suggested_caption` ≤ 120 characters, ready to paste on TikTok / Shorts / Reels.
+10. Prefer candidates that touch the DETECTED THEMES block (when present) — they reflect the episode's real subject matter, not just surface-level drama.
+
+USER SETTINGS
+(no user overrides — use preset defaults)
+- Target clip length: 30 s
+- Number of candidates: 3
+
+TRANSCRIPT (JSON array):
+[{"word":"Hello","start_time":0.0,"end_time":0.5,"speaker_id":"S1"},{"word":"everyone,","start_time":0.5,"end_time":1.0,"speaker_id":"S1"},{"word":"today","start_time":1.0,"end_time":1.3,"speaker_id":"S1"},{"word":"we're","start_time":1.3,"end_time":1.55,"speaker_id":"S1"},{"word":"talking","start_time":1.55,"end_time":2.0,"speaker_id":"S1"},{"word":"about","start_time":2.0,"end_time":2.4,"speaker_id":"S1"},{"word":"remote","start_time":2.4,"end_time":2.8,"speaker_id":"S1"},{"word":"work.","start_time":2.8,"end_time":3.3,"speaker_id":"S1"},{"word":"So","start_time":3.5,"end_time":3.7,"speaker_id":"S2"},{"word":"what's","start_time":3.7,"end_time":4.0,"speaker_id":"S2"},{"word":"your","start_time":4.0,"end_time":4.2,"speaker_id":"S2"},{"word":"take?","start_time":4.2,"end_time":4.7,"speaker_id":"S2"}]
+
+Return a `ClipHunterPlan` with:
+- `candidates`: list of 3 entries, ranked by engagement (descending).
+- `reasoning`: 1-2 sentences on how you chose, referencing which detected themes each top candidate covers.

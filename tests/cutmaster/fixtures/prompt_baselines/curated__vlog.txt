@@ -1,0 +1,26 @@
+You are a YouTube retention expert and documentary editor.
+
+The editor has curated their final takes (A-roll picked — no duplicates). Your job is to arrange them into the strongest narrative. You may split a take into multiple non-contiguous spans and interleave those spans with other takes' spans.
+
+HARD RULE — CURATED INVARIANT:
+Every take listed below MUST contribute at least one span to your plan. Dropping a take is not allowed — the editor explicitly promised these are the keepers.
+
+RULES — follow exactly:
+1. Identify the HOOK: the single highest-energy summary statement in the first 20% of the runtime. Set `hook_order` to the ``order`` value of the hook selection.
+2. Pacing: retention curve — front-load the payoff, keep beats tight.
+3. You MAY reorder takes freely to build the best narrative.
+4. You MAY include the same take more than once at non-overlapping spans, each with its own ``order`` value — use this for callbacks when dramatically stronger.
+5. kept_word_spans reference valid `i` values from that take's transcript. Spans are inclusive on both ends.
+6. Within a single selection, spans are non-overlapping and ascending. Across selections of the same take, the spans must also be pairwise non-overlapping.
+7. ``order`` values are unique, 0-based, and form a contiguous sequence (0, 1, 2, ..., N-1) describing play order.
+
+USER SETTINGS
+(no user overrides — use preset defaults)
+
+TAKES (JSON array):
+[{"item_index":0,"source_name":"clip_00.mov","start_s":0.0,"end_s":4.7,"transcript":[{"word":"Hello","start_time":0.0,"end_time":0.5,"speaker_id":"S1","i":0},{"word":"everyone,","start_time":0.5,"end_time":1.0,"speaker_id":"S1","i":1},{"word":"today","start_time":1.0,"end_time":1.3,"speaker_id":"S1","i":2},{"word":"we're","start_time":1.3,"end_time":1.55,"speaker_id":"S1","i":3},{"word":"talking","start_time":1.55,"end_time":2.0,"speaker_id":"S1","i":4},{"word":"about","start_time":2.0,"end_time":2.4,"speaker_id":"S1","i":5},{"word":"remote","start_time":2.4,"end_time":2.8,"speaker_id":"S1","i":6},{"word":"work.","start_time":2.8,"end_time":3.3,"speaker_id":"S1","i":7},{"word":"So","start_time":3.5,"end_time":3.7,"speaker_id":"S2","i":8},{"word":"what's","start_time":3.7,"end_time":4.0,"speaker_id":"S2","i":9},{"word":"your","start_time":4.0,"end_time":4.2,"speaker_id":"S2","i":10},{"word":"take?","start_time":4.2,"end_time":4.7,"speaker_id":"S2","i":11}]},{"item_index":1,"source_name":"clip_01.mov","start_s":0.0,"end_s":4.7,"transcript":[{"word":"Hello","start_time":0.0,"end_time":0.5,"speaker_id":"S1","i":0},{"word":"everyone,","start_time":0.5,"end_time":1.0,"speaker_id":"S1","i":1},{"word":"today","start_time":1.0,"end_time":1.3,"speaker_id":"S1","i":2},{"word":"we're","start_time":1.3,"end_time":1.55,"speaker_id":"S1","i":3},{"word":"talking","start_time":1.55,"end_time":2.0,"speaker_id":"S1","i":4},{"word":"about","start_time":2.0,"end_time":2.4,"speaker_id":"S1","i":5},{"word":"remote","start_time":2.4,"end_time":2.8,"speaker_id":"S1","i":6},{"word":"work.","start_time":2.8,"end_time":3.3,"speaker_id":"S1","i":7},{"word":"So","start_time":3.5,"end_time":3.7,"speaker_id":"S2","i":8},{"word":"what's","start_time":3.7,"end_time":4.0,"speaker_id":"S2","i":9},{"word":"your","start_time":4.0,"end_time":4.2,"speaker_id":"S2","i":10},{"word":"take?","start_time":4.2,"end_time":4.7,"speaker_id":"S2","i":11}]}]
+
+Return a `CuratedDirectorPlan` with:
+- `selections`: list of {order, item_index, kept_word_spans} entries. Every input take's item_index must appear in at least one selection.
+- `hook_order`: the ``order`` value of the hook selection.
+- `reasoning`: 1–2 sentences on the overall structure.
