@@ -7,8 +7,8 @@ pytest.importorskip("httpx")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from celavii_resolve import __version__  # noqa: E402
-from celavii_resolve.http.app import create_app  # noqa: E402
+from cutmaster_ai import __version__  # noqa: E402
+from cutmaster_ai.http.app import create_app  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -21,7 +21,7 @@ def test_ping_returns_ok(client: TestClient) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["ok"] is True
-    assert body["service"] == "celavii-resolve-panel"
+    assert body["service"] == "cutmaster-ai-panel"
     assert body["version"] == __version__
 
 
@@ -44,7 +44,7 @@ def test_docs_exposed_at_custom_path(client: TestClient) -> None:
 
 def test_mcp_entry_point_still_works() -> None:
     """Phase 2 must not break the existing stdio MCP entry point."""
-    import celavii_resolve
+    import cutmaster_ai
 
-    assert hasattr(celavii_resolve, "main")
-    assert hasattr(celavii_resolve, "mcp")
+    assert hasattr(cutmaster_ai, "main")
+    assert hasattr(cutmaster_ai, "mcp")

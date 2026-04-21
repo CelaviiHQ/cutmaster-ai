@@ -1,6 +1,6 @@
 """Tests for Short Generator Director (v2-13)."""
 
-from celavii_resolve.cutmaster.core.director import (
+from cutmaster_ai.cutmaster.core.director import (
     ShortCandidate,
     ShortGeneratorPlan,
     ShortSpan,

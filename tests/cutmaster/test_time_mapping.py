@@ -8,7 +8,7 @@ Covers the two scenarios execute and captions both rely on:
 
 import pytest
 
-from celavii_resolve.cutmaster.media.time_mapping import (
+from cutmaster_ai.cutmaster.media.time_mapping import (
     map_source_to_new_timeline,
     remap_words_to_new_timeline,
 )

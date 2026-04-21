@@ -1,13 +1,13 @@
 """Tests for Clip Hunter Director — schema, validator, prompt, expansion."""
 
-from celavii_resolve.cutmaster.core import director
-from celavii_resolve.cutmaster.core.director import (
+from cutmaster_ai.cutmaster.core import director
+from cutmaster_ai.cutmaster.core.director import (
     ClipCandidate,
     ClipHunterPlan,
     candidate_to_segments,
     validate_clip_hunter_plan,
 )
-from celavii_resolve.cutmaster.data.presets import get_preset
+from cutmaster_ai.cutmaster.data.presets import get_preset
 
 
 def _transcript() -> list[dict]:

@@ -10,7 +10,7 @@ import time
 
 import pytest
 
-from celavii_resolve import logging_setup
+from cutmaster_ai import logging_setup
 
 
 @pytest.fixture(autouse=True)
@@ -54,7 +54,7 @@ def _parse_json_lines(sink: io.StringIO) -> list[dict]:
 
 def test_json_formatter_emits_schema_keys():
     sink = _attach_capture_handler(logging_setup.JsonFormatter())
-    log = logging.getLogger("celavii-resolve.test")
+    log = logging.getLogger("cutmaster-ai.test")
     log.info("hello")
 
     records = _parse_json_lines(sink)
@@ -62,7 +62,7 @@ def test_json_formatter_emits_schema_keys():
     rec = records[0]
     assert set(rec.keys()) >= {"ts", "level", "logger", "msg"}
     assert rec["level"] == "INFO"
-    assert rec["logger"] == "celavii-resolve.test"
+    assert rec["logger"] == "cutmaster-ai.test"
     assert rec["msg"] == "hello"
     # ts is epoch seconds, not ISO.
     assert isinstance(rec["ts"], float)
@@ -71,7 +71,7 @@ def test_json_formatter_emits_schema_keys():
 
 def test_json_formatter_allowlists_extras():
     sink = _attach_capture_handler(logging_setup.JsonFormatter())
-    log = logging.getLogger("celavii-resolve.test")
+    log = logging.getLogger("cutmaster-ai.test")
     log.info(
         "stage done",
         extra={
@@ -98,7 +98,7 @@ def test_json_formatter_allowlists_extras():
 
 def test_with_run_id_injects_field():
     sink = _attach_capture_handler(logging_setup.JsonFormatter())
-    log = logging.getLogger("celavii-resolve.test")
+    log = logging.getLogger("cutmaster-ai.test")
 
     log.info("outside context")
     with logging_setup.with_run_id("abc123def456"):
@@ -116,7 +116,7 @@ async def test_run_id_survives_asyncio_to_thread():
     """ContextVars are asyncio-aware; ``asyncio.to_thread`` also copies
     the context by default (Py 3.9+), so thread workers see the id."""
     sink = _attach_capture_handler(logging_setup.JsonFormatter())
-    log = logging.getLogger("celavii-resolve.test")
+    log = logging.getLogger("cutmaster-ai.test")
 
     def _in_thread():
         log.info("from thread")
@@ -152,7 +152,7 @@ def test_stage_elapsed_ms_pops_after_close():
 
 
 def test_configure_logging_picks_json_via_env(monkeypatch):
-    monkeypatch.setenv("CELAVII_LOG_FORMAT", "json")
+    monkeypatch.setenv("CUTMASTER_LOG_FORMAT", "json")
     logging_setup.configure_logging()
     root = logging.getLogger()
     assert len(root.handlers) == 1
@@ -160,7 +160,7 @@ def test_configure_logging_picks_json_via_env(monkeypatch):
 
 
 def test_configure_logging_defaults_to_human(monkeypatch):
-    monkeypatch.delenv("CELAVII_LOG_FORMAT", raising=False)
+    monkeypatch.delenv("CUTMASTER_LOG_FORMAT", raising=False)
     logging_setup.configure_logging()
     root = logging.getLogger()
     assert len(root.handlers) == 1
@@ -168,7 +168,7 @@ def test_configure_logging_defaults_to_human(monkeypatch):
 
 
 def test_configure_logging_is_idempotent(monkeypatch):
-    monkeypatch.setenv("CELAVII_LOG_FORMAT", "json")
+    monkeypatch.setenv("CUTMASTER_LOG_FORMAT", "json")
     logging_setup.configure_logging()
     logging_setup.configure_logging()
     root = logging.getLogger()

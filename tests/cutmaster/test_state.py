@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from celavii_resolve.cutmaster.core import state
+from cutmaster_ai.cutmaster.core import state
 
 
 @pytest.fixture

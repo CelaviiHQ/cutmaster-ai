@@ -1,6 +1,6 @@
 """Tests for the @safe_resolve_call decorator and exception hierarchy."""
 
-from celavii_resolve.errors import (
+from cutmaster_ai.errors import (
     BinNotFound,
     ClipNotFound,
     ItemNotFound,

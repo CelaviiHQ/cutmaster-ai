@@ -2,7 +2,7 @@
 
 import pytest
 
-from celavii_resolve.cutmaster.data.presets import (
+from cutmaster_ai.cutmaster.data.presets import (
     PRESETS,
     preset_mode_compatible,
     preset_mode_incompatibility_reason,

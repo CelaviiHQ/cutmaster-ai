@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import BaseModel
 
-from celavii_resolve.intelligence import llm
+from cutmaster_ai.intelligence import llm
 
 
 class DummyPlan(BaseModel):
@@ -37,12 +37,12 @@ def _canned(parsed: object | None = None, text: str = ""):
 
 
 def test_model_for_reads_env_override(monkeypatch):
-    monkeypatch.setenv("CELAVII_DIRECTOR_MODEL", "my-custom-model")
+    monkeypatch.setenv("CUTMASTER_DIRECTOR_MODEL", "my-custom-model")
     assert llm.model_for("director") == "my-custom-model"
 
 
 def test_model_for_falls_back_to_default(monkeypatch):
-    monkeypatch.delenv("CELAVII_DIRECTOR_MODEL", raising=False)
+    monkeypatch.delenv("CUTMASTER_DIRECTOR_MODEL", raising=False)
     assert llm.model_for("director") == llm.DEFAULTS["director"]
 
 

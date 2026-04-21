@@ -13,21 +13,21 @@ pytest.importorskip("httpx")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from celavii_resolve.cutmaster.analysis.auto_detect import PresetRecommendation  # noqa: E402
-from celavii_resolve.cutmaster.analysis.marker_agent import (  # noqa: E402
+from cutmaster_ai.cutmaster.analysis.auto_detect import PresetRecommendation  # noqa: E402
+from cutmaster_ai.cutmaster.analysis.marker_agent import (  # noqa: E402
     MarkerPlan,
     MarkerSuggestion,
 )
-from celavii_resolve.cutmaster.analysis.themes import (  # noqa: E402
+from cutmaster_ai.cutmaster.analysis.themes import (  # noqa: E402
     Chapter,
     HookCandidate,
     StoryAnalysis,
 )
-from celavii_resolve.cutmaster.core import state  # noqa: E402
-from celavii_resolve.cutmaster.core.director import CutSegment, DirectorPlan  # noqa: E402
-from celavii_resolve.cutmaster.resolve_ops.segments import ResolvedCutSegment  # noqa: E402
-from celavii_resolve.http.app import create_app  # noqa: E402
-from celavii_resolve.http.routes import cutmaster as routes  # noqa: E402
+from cutmaster_ai.cutmaster.core import state  # noqa: E402
+from cutmaster_ai.cutmaster.core.director import CutSegment, DirectorPlan  # noqa: E402
+from cutmaster_ai.cutmaster.resolve_ops.segments import ResolvedCutSegment  # noqa: E402
+from cutmaster_ai.http.app import create_app  # noqa: E402
+from cutmaster_ai.http.routes import cutmaster as routes  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -108,8 +108,8 @@ def test_build_plan_accepts_and_persists_v2_10_format_fields(
     def fake_boilerplate():
         return MagicMock(), MagicMock(), MagicMock()
 
-    import celavii_resolve.cutmaster.core.pipeline as pipeline_mod
-    import celavii_resolve.resolve as resolve_mod
+    import cutmaster_ai.cutmaster.core.pipeline as pipeline_mod
+    import cutmaster_ai.resolve as resolve_mod
 
     monkeypatch.setattr(resolve_mod, "_boilerplate", fake_boilerplate)
     monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl)
@@ -147,7 +147,7 @@ def test_build_plan_assembled_mode_uses_assembled_director(
     build_assembled_cut_plan (not the v1 Director), feed it items from
     read_items_on_track, and expand the result into normal CutSegments
     before the Marker / resolver run."""
-    from celavii_resolve.cutmaster.core.director import (
+    from cutmaster_ai.cutmaster.core.director import (
         AssembledDirectorPlan,
         AssembledItemSelection,
         WordSpan,
@@ -193,8 +193,8 @@ def test_build_plan_assembled_mode_uses_assembled_director(
     def fake_boilerplate():
         return MagicMock(), MagicMock(), MagicMock()
 
-    import celavii_resolve.cutmaster.core.pipeline as pipeline_mod
-    import celavii_resolve.resolve as resolve_mod
+    import cutmaster_ai.cutmaster.core.pipeline as pipeline_mod
+    import cutmaster_ai.resolve as resolve_mod
 
     monkeypatch.setattr(resolve_mod, "_boilerplate", fake_boilerplate)
     monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl)
@@ -257,7 +257,7 @@ def test_build_plan_assembled_uses_raw_transcript_when_takes_already_scrubbed(
 ):
     """When takes_already_scrubbed=true, build-plan must feed the raw
     transcript (not the scrubbed one) into the assembled Director."""
-    from celavii_resolve.cutmaster.core.director import (
+    from cutmaster_ai.cutmaster.core.director import (
         AssembledDirectorPlan,
         AssembledItemSelection,
         WordSpan,
@@ -303,8 +303,8 @@ def test_build_plan_assembled_uses_raw_transcript_when_takes_already_scrubbed(
     fake_tl = MagicMock()
     fake_tl.GetSetting.return_value = "24"
 
-    import celavii_resolve.cutmaster.core.pipeline as pipeline_mod
-    import celavii_resolve.resolve as resolve_mod
+    import cutmaster_ai.cutmaster.core.pipeline as pipeline_mod
+    import cutmaster_ai.resolve as resolve_mod
 
     monkeypatch.setattr(
         resolve_mod, "_boilerplate", lambda: (MagicMock(), MagicMock(), MagicMock())
@@ -339,7 +339,7 @@ def test_build_plan_clip_hunter_stores_candidates_and_skips_director(
     Director (NOT the v1 or assembled Director), persist all candidates
     with their resolved_segments, default selected_index to 0, and skip
     the Marker LLM entirely."""
-    from celavii_resolve.cutmaster.core.director import ClipCandidate, ClipHunterPlan
+    from cutmaster_ai.cutmaster.core.director import ClipCandidate, ClipHunterPlan
 
     def fake_hunter(transcript, preset, settings, target, num):
         return ClipHunterPlan(
@@ -381,8 +381,8 @@ def test_build_plan_clip_hunter_stores_candidates_and_skips_director(
     fake_tl = MagicMock()
     fake_tl.GetSetting.return_value = "24"
 
-    import celavii_resolve.cutmaster.core.pipeline as pipeline_mod
-    import celavii_resolve.resolve as resolve_mod
+    import cutmaster_ai.cutmaster.core.pipeline as pipeline_mod
+    import cutmaster_ai.resolve as resolve_mod
 
     monkeypatch.setattr(
         resolve_mod, "_boilerplate", lambda: (MagicMock(), MagicMock(), MagicMock())
@@ -664,8 +664,8 @@ def test_build_plan_tightener_skips_director_and_returns_stats(
     fake_tl = MagicMock()
     fake_tl.GetSetting.return_value = "24"
 
-    import celavii_resolve.cutmaster.core.pipeline as pipeline_mod
-    import celavii_resolve.resolve as resolve_mod
+    import cutmaster_ai.cutmaster.core.pipeline as pipeline_mod
+    import cutmaster_ai.resolve as resolve_mod
 
     monkeypatch.setattr(
         resolve_mod, "_boilerplate", lambda: (MagicMock(), MagicMock(), MagicMock())
@@ -741,7 +741,7 @@ def test_stt_providers_endpoint_lists_both(client: TestClient, monkeypatch):
     Reports the default + configured state for each backend."""
     monkeypatch.setenv("DEEPGRAM_API_KEY", "dg_xxx")
     monkeypatch.setattr(
-        "celavii_resolve.cutmaster.stt.gemini.is_configured",
+        "cutmaster_ai.cutmaster.stt.gemini.is_configured",
         lambda: True,
     )
     r = client.get("/cutmaster/stt-providers")
@@ -817,7 +817,7 @@ def test_project_info_returns_timelines_with_current_flag(
     fake_project.GetTimelineCount.return_value = 3
     fake_project.GetTimelineByIndex.side_effect = lambda i: fake_tls[i - 1] if 1 <= i <= 3 else None
 
-    import celavii_resolve.resolve as resolve_mod
+    import cutmaster_ai.resolve as resolve_mod
 
     monkeypatch.setattr(
         resolve_mod,
@@ -839,7 +839,7 @@ def test_project_info_503_when_resolve_unreachable(
     client: TestClient,
     monkeypatch,
 ):
-    import celavii_resolve.resolve as resolve_mod
+    import cutmaster_ai.resolve as resolve_mod
 
     def boom():
         raise RuntimeError("Resolve is not running")
@@ -852,7 +852,7 @@ def test_project_info_503_when_resolve_unreachable(
 def test_analyze_accepts_per_clip_stt_flag(client: TestClient, monkeypatch):
     """v2-6: AnalyzeRequest must accept per_clip_stt and forward it to
     run_analyze so the pipeline branches into the per-clip STT path."""
-    from celavii_resolve.cutmaster.core import pipeline as pipeline_mod
+    from cutmaster_ai.cutmaster.core import pipeline as pipeline_mod
 
     captured: dict = {}
 
@@ -991,8 +991,8 @@ def test_build_plan_round_trips_speaker_labels(
     fake_tl = MagicMock()
     fake_tl.GetSetting.return_value = "24"
 
-    import celavii_resolve.cutmaster.core.pipeline as pipeline_mod
-    import celavii_resolve.resolve as resolve_mod
+    import cutmaster_ai.cutmaster.core.pipeline as pipeline_mod
+    import cutmaster_ai.resolve as resolve_mod
 
     monkeypatch.setattr(
         resolve_mod,
@@ -1101,12 +1101,12 @@ def test_build_plan(client: TestClient, scrubbed_run, monkeypatch):
         return None, fake_project, None
 
     # The route imports _boilerplate lazily from ..resolve — patch the source module
-    import celavii_resolve.resolve as resolve_mod
+    import cutmaster_ai.resolve as resolve_mod
 
     monkeypatch.setattr(resolve_mod, "_boilerplate", fake_boilerplate)
     monkeypatch.setattr(routes, "_find_timeline_by_name", lambda _p, _n: fake_tl, raising=False)
     # pipeline._find_timeline_by_name is what's actually called
-    import celavii_resolve.cutmaster.core.pipeline as pipeline_mod
+    import cutmaster_ai.cutmaster.core.pipeline as pipeline_mod
 
     monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl)
 
@@ -1186,8 +1186,8 @@ def test_build_plan_accepts_v2_fields_additively(client, monkeypatch, scrubbed_r
     def fake_boilerplate():
         return MagicMock(), MagicMock(), MagicMock()
 
-    import celavii_resolve.cutmaster.core.pipeline as pipeline_mod
-    import celavii_resolve.resolve as resolve_mod
+    import cutmaster_ai.cutmaster.core.pipeline as pipeline_mod
+    import cutmaster_ai.resolve as resolve_mod
 
     monkeypatch.setattr(resolve_mod, "_boilerplate", fake_boilerplate)
     monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl)
@@ -1231,8 +1231,8 @@ def test_build_plan_omitted_v2_fields_use_safe_defaults(client, monkeypatch, scr
     def fake_boilerplate():
         return MagicMock(), MagicMock(), MagicMock()
 
-    import celavii_resolve.cutmaster.core.pipeline as pipeline_mod
-    import celavii_resolve.resolve as resolve_mod
+    import cutmaster_ai.cutmaster.core.pipeline as pipeline_mod
+    import cutmaster_ai.resolve as resolve_mod
 
     monkeypatch.setattr(resolve_mod, "_boilerplate", fake_boilerplate)
     monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl)

@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from celavii_resolve import plugins
+from cutmaster_ai import plugins
 
 
 @dataclass
@@ -151,7 +151,7 @@ def test_no_plugins_yields_oss_tier(monkeypatch):
     plugins.discover_tools(object())  # type: ignore[arg-type]
     plugins.discover_panel_routes(object())  # type: ignore[arg-type]
 
-    from celavii_resolve.licensing import current_tier
+    from cutmaster_ai.licensing import current_tier
 
     assert current_tier() == "oss"
     assert plugins.any_plugin_registered() is False
@@ -167,7 +167,7 @@ def test_any_plugin_flips_tier_to_standard(monkeypatch):
     )
     plugins.discover_tools(object())  # type: ignore[arg-type]
 
-    from celavii_resolve.licensing import current_tier
+    from cutmaster_ai.licensing import current_tier
 
     assert current_tier() == "standard"
 
@@ -176,7 +176,7 @@ def test_pro_status_endpoint_shape():
     """The /pro/status response must contain both group names even when empty."""
     from fastapi.testclient import TestClient
 
-    from celavii_resolve.http.app import create_app
+    from cutmaster_ai.http.app import create_app
 
     client = TestClient(create_app())
     resp = client.get("/pro/status")
@@ -209,7 +209,7 @@ def test_panel_plugin_routes_register_on_app(monkeypatch):
         {plugins.PANEL_ROUTES_GROUP: [_FakeEntryPoint("fake_plugin", register_routes)]},
     )
 
-    from celavii_resolve.http.app import create_app
+    from cutmaster_ai.http.app import create_app
 
     client = TestClient(create_app())
     resp = client.get("/plugins/fake/hello")
@@ -223,7 +223,7 @@ def test_panel_plugin_routes_register_on_app(monkeypatch):
 
 
 def test_migration_runner_is_idempotent(tmp_path):
-    from celavii_resolve.migrations.runner import apply_migrations
+    from cutmaster_ai.migrations.runner import apply_migrations
 
     db = tmp_path / "state.db"
     first = apply_migrations(db)
@@ -245,14 +245,14 @@ def test_migration_runner_is_idempotent(tmp_path):
         "custom_presets",
         "cutmaster_sessions",
         "panel_state",
-        "_celavii_schema_migrations",
+        "_cutmaster_schema_migrations",
     ):
         assert expected in tables
 
 
 def test_http_models_reexports_are_public():
-    """Stable models import from celavii_resolve.http.models."""
-    from celavii_resolve.http import models
+    """Stable models import from cutmaster_ai.http.models."""
+    from cutmaster_ai.http import models
 
     for name in (
         "AnalyzeRequest",

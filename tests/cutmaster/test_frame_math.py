@@ -2,7 +2,7 @@
 
 import pytest
 
-from celavii_resolve.cutmaster.media.frame_math import (
+from cutmaster_ai.cutmaster.media.frame_math import (
     frame_to_seconds,
     seconds_to_frame,
 )

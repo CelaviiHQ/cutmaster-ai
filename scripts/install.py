@@ -31,7 +31,7 @@ VERSION = "0.2.0"
 SERVER_NAME = "celavii-resolve"
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 SRC_DIR = PROJECT_DIR / "src"
-SERVER_MODULE = "celavii_resolve"
+SERVER_MODULE = "cutmaster_ai"
 SYSTEM = platform.system()
 
 

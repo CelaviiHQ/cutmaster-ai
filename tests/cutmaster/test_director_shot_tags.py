@@ -11,8 +11,8 @@ import copy
 
 import pytest
 
-from celavii_resolve.cutmaster.core import director
-from celavii_resolve.cutmaster.data.presets import get_preset
+from cutmaster_ai.cutmaster.core import director
+from cutmaster_ai.cutmaster.data.presets import get_preset
 
 
 def _tag(

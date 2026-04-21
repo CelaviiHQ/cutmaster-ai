@@ -16,8 +16,8 @@ import json
 
 import pytest
 
-from celavii_resolve.cutmaster.analysis import audio_cues
-from celavii_resolve.cutmaster.analysis.audio_cues import (
+from cutmaster_ai.cutmaster.analysis import audio_cues
+from cutmaster_ai.cutmaster.analysis.audio_cues import (
     _parse_rms_envelope,
     _silence_tails,
     _word_pauses,
@@ -26,8 +26,8 @@ from celavii_resolve.cutmaster.analysis.audio_cues import (
     derive_cues,
     summarise_cues,
 )
-from celavii_resolve.cutmaster.core import director
-from celavii_resolve.cutmaster.data.presets import get_preset
+from cutmaster_ai.cutmaster.core import director
+from cutmaster_ai.cutmaster.data.presets import get_preset
 
 # ---------------------------------------------------------------------------
 # Pure arithmetic

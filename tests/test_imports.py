@@ -5,20 +5,20 @@ import importlib
 
 def test_package_imports():
     """The top-level package should import without DaVinci Resolve running."""
-    mod = importlib.import_module("celavii_resolve")
+    mod = importlib.import_module("cutmaster_ai")
     assert hasattr(mod, "__version__")
     assert hasattr(mod, "mcp")
     assert hasattr(mod, "main")
 
 
 def test_config_imports():
-    from celavii_resolve.config import mcp
+    from cutmaster_ai.config import mcp
 
-    assert mcp.name == "celavii-resolve"
+    assert mcp.name == "cutmaster-ai"
 
 
 def test_errors_imports():
-    from celavii_resolve.errors import (
+    from cutmaster_ai.errors import (
         ResolveError,
         ResolveNotRunning,
         safe_resolve_call,
@@ -29,7 +29,7 @@ def test_errors_imports():
 
 
 def test_constants_imports():
-    from celavii_resolve.constants import (
+    from cutmaster_ai.constants import (
         COMPOSITE_MODES,
         MARKER_COLORS,
         PAGES,
@@ -43,7 +43,7 @@ def test_constants_imports():
 
 
 def test_resolve_helpers_import():
-    from celavii_resolve.resolve import (
+    from cutmaster_ai.resolve import (
         _boilerplate,
         get_resolve,
     )
@@ -53,20 +53,20 @@ def test_resolve_helpers_import():
 
 
 def test_resources_import():
-    from celavii_resolve import resources  # noqa: F401
+    from cutmaster_ai import resources  # noqa: F401
 
 
 def test_project_tools_import():
-    from celavii_resolve.tools import project  # noqa: F401
+    from cutmaster_ai.tools import project  # noqa: F401
 
 
 def test_tool_naming_convention():
-    """All registered tools should start with 'celavii_'."""
-    from celavii_resolve.config import mcp
+    """All registered tools should start with 'cutmaster_'."""
+    from cutmaster_ai.config import mcp
 
     # FastMCP 3.0+ stores tools — access may vary by version
     tools = getattr(mcp, "_tools", None) or getattr(mcp, "tools", {})
     if hasattr(tools, "values"):
         for tool in tools.values():
             name = getattr(tool, "name", str(tool))
-            assert name.startswith("celavii_"), f"Tool '{name}' missing celavii_ prefix"
+            assert name.startswith("cutmaster_"), f"Tool '{name}' missing cutmaster_ prefix"

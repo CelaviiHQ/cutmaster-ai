@@ -17,8 +17,8 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from celavii_resolve.cutmaster.analysis import shot_tagger
-from celavii_resolve.cutmaster.analysis.shot_tagger import (
+from cutmaster_ai.cutmaster.analysis import shot_tagger
+from cutmaster_ai.cutmaster.analysis.shot_tagger import (
     FRAME_EDGE_OFFSET_S,
     FRAME_STRIDE_S,
     ShotTag,
@@ -179,7 +179,7 @@ def test_attach_tags_no_tags_passes_through():
 
 
 def test_source_key_stable_and_unique():
-    from celavii_resolve.cutmaster.media.ffmpeg_frames import source_key
+    from cutmaster_ai.cutmaster.media.ffmpeg_frames import source_key
 
     a = source_key("/srv/media/clip.mov")
     b = source_key("/srv/media/clip.mov")
@@ -228,8 +228,8 @@ def test_build_video_item_specs_skips_unresolvable(monkeypatch):
         shot_tagger.build_video_item_specs,  # keep real impl
     )
     # Stub the Resolve-facing helpers so we can run without DaVinci.
-    import celavii_resolve.cutmaster.media.frame_math as fm
-    import celavii_resolve.cutmaster.media.source_resolver as sr
+    import cutmaster_ai.cutmaster.media.frame_math as fm
+    import cutmaster_ai.cutmaster.media.source_resolver as sr
 
     monkeypatch.setattr(fm, "_timeline_fps", lambda _tl: 24.0)
     monkeypatch.setattr(fm, "_timeline_start_frame", lambda _tl: 0)
@@ -240,7 +240,7 @@ def test_build_video_item_specs_skips_unresolvable(monkeypatch):
 
 
 def test_shot_tag_response_validator():
-    from celavii_resolve.cutmaster.analysis.shot_tagger import ShotTagResponse
+    from cutmaster_ai.cutmaster.analysis.shot_tagger import ShotTagResponse
 
     # Count mismatch is the primary validation; schema level handles the rest.
     resp = ShotTagResponse(tags=[ShotTag(), ShotTag()])

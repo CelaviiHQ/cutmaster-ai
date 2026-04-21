@@ -7,9 +7,9 @@ from unittest.mock import patch
 
 import pytest
 
-from celavii_resolve.cutmaster import stt as stt_module
-from celavii_resolve.cutmaster.stt import TranscriptResponse, available_providers
-from celavii_resolve.cutmaster.stt.deepgram import _map_deepgram_words, is_configured
+from cutmaster_ai.cutmaster import stt as stt_module
+from cutmaster_ai.cutmaster.stt import TranscriptResponse, available_providers
+from cutmaster_ai.cutmaster.stt.deepgram import _map_deepgram_words, is_configured
 
 # ------------------------- mapper ----------------------------------------
 
@@ -148,7 +148,7 @@ def test_available_providers_reports_both(monkeypatch):
     # Gemini's is_configured reaches into the real client; patch to
     # a deterministic True.
     with patch(
-        "celavii_resolve.cutmaster.stt.gemini.is_configured",
+        "cutmaster_ai.cutmaster.stt.gemini.is_configured",
         return_value=True,
     ):
         status = available_providers()
@@ -186,11 +186,11 @@ def test_dispatch_routes_to_deepgram_when_selected(tmp_path, monkeypatch):
         raise AssertionError("gemini path must not run when provider=deepgram")
 
     monkeypatch.setattr(
-        "celavii_resolve.cutmaster.stt.deepgram.transcribe",
+        "cutmaster_ai.cutmaster.stt.deepgram.transcribe",
         fake_deepgram,
     )
     monkeypatch.setattr(
-        "celavii_resolve.cutmaster.stt.gemini.transcribe",
+        "cutmaster_ai.cutmaster.stt.gemini.transcribe",
         forbidden,
     )
 
@@ -202,7 +202,7 @@ def test_dispatch_routes_to_deepgram_when_selected(tmp_path, monkeypatch):
 def test_dispatch_falls_back_to_env_var(tmp_path, monkeypatch):
     audio = tmp_path / "a.wav"
     audio.write_bytes(b"x")
-    monkeypatch.setenv("CELAVII_STT_PROVIDER", "deepgram")
+    monkeypatch.setenv("CUTMASTER_STT_PROVIDER", "deepgram")
     # Reload module-level DEFAULT_PROVIDER reflects the new env var only
     # if we patch it directly; the module reads it at import time.
     monkeypatch.setattr(stt_module, "DEFAULT_PROVIDER", "deepgram")
@@ -214,7 +214,7 @@ def test_dispatch_falls_back_to_env_var(tmp_path, monkeypatch):
         return TranscriptResponse(words=[])
 
     monkeypatch.setattr(
-        "celavii_resolve.cutmaster.stt.deepgram.transcribe",
+        "cutmaster_ai.cutmaster.stt.deepgram.transcribe",
         fake_deepgram,
     )
     stt_module.transcribe_audio(audio)
@@ -225,7 +225,7 @@ def test_dispatch_falls_back_to_env_var(tmp_path, monkeypatch):
 
 
 def test_transcribe_raises_when_api_key_missing(tmp_path, monkeypatch):
-    from celavii_resolve.cutmaster.stt import deepgram as stt_deepgram
+    from cutmaster_ai.cutmaster.stt import deepgram as stt_deepgram
 
     monkeypatch.delenv("DEEPGRAM_API_KEY", raising=False)
     audio = tmp_path / "a.wav"
@@ -238,7 +238,7 @@ def test_transcribe_parses_good_response(tmp_path, monkeypatch):
     """Happy path through the real :func:`transcribe` — mock ``httpx.post``
     to return a well-formed Deepgram payload and ensure we get a clean
     ``TranscriptResponse`` out the other side."""
-    from celavii_resolve.cutmaster.stt import deepgram as stt_deepgram
+    from cutmaster_ai.cutmaster.stt import deepgram as stt_deepgram
 
     monkeypatch.setenv("DEEPGRAM_API_KEY", "dg_xxx")
     audio = tmp_path / "a.wav"
@@ -295,7 +295,7 @@ def test_transcribe_parses_good_response(tmp_path, monkeypatch):
 
 
 def test_transcribe_surfaces_http_errors(tmp_path, monkeypatch):
-    from celavii_resolve.cutmaster.stt import deepgram as stt_deepgram
+    from cutmaster_ai.cutmaster.stt import deepgram as stt_deepgram
 
     monkeypatch.setenv("DEEPGRAM_API_KEY", "dg_xxx")
     audio = tmp_path / "a.wav"
@@ -313,7 +313,7 @@ def test_transcribe_surfaces_http_errors(tmp_path, monkeypatch):
 
 
 def test_transcribe_rejects_empty_word_list(tmp_path, monkeypatch):
-    from celavii_resolve.cutmaster.stt import deepgram as stt_deepgram
+    from cutmaster_ai.cutmaster.stt import deepgram as stt_deepgram
 
     monkeypatch.setenv("DEEPGRAM_API_KEY", "dg_xxx")
     audio = tmp_path / "a.wav"
@@ -340,7 +340,7 @@ def test_transcribe_rejects_empty_word_list(tmp_path, monkeypatch):
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
     """Some CI environments set these — null them unless the test sets them."""
-    for key in ("CELAVII_STT_PROVIDER", "DEEPGRAM_API_KEY"):
+    for key in ("CUTMASTER_STT_PROVIDER", "DEEPGRAM_API_KEY"):
         if key in os.environ:
             monkeypatch.delenv(key, raising=False)
     yield

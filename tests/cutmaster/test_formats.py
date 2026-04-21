@@ -2,7 +2,7 @@
 
 import pytest
 
-from celavii_resolve.cutmaster.media.formats import (
+from cutmaster_ai.cutmaster.media.formats import (
     HORIZONTAL,
     SQUARE,
     VERTICAL_SHORT,

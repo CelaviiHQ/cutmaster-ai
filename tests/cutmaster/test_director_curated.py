@@ -1,6 +1,6 @@
 """Tests for Curated + Rough cut Director validators and plan expansion (v2-11)."""
 
-from celavii_resolve.cutmaster.core.director import (
+from cutmaster_ai.cutmaster.core.director import (
     CuratedDirectorPlan,
     CuratedItemSelection,
     WordSpan,

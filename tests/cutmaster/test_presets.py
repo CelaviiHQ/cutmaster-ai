@@ -2,7 +2,7 @@
 
 import pytest
 
-from celavii_resolve.cutmaster.data.presets import PRESETS, all_presets, get_preset
+from cutmaster_ai.cutmaster.data.presets import PRESETS, all_presets, get_preset
 
 # Content-type presets run the Director + Marker pipeline and must carry
 # cue / marker / theme vocabulary so the agents have something to reason

@@ -9,11 +9,11 @@ pytest.importorskip("httpx")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from celavii_resolve.cutmaster.analysis.marker_agent import MarkerPlan  # noqa: E402
-from celavii_resolve.cutmaster.core import state  # noqa: E402
-from celavii_resolve.cutmaster.resolve_ops.segments import ResolvedCutSegment  # noqa: E402
-from celavii_resolve.http.app import create_app  # noqa: E402
-from celavii_resolve.http.routes import cutmaster as routes  # noqa: E402
+from cutmaster_ai.cutmaster.analysis.marker_agent import MarkerPlan  # noqa: E402
+from cutmaster_ai.cutmaster.core import state  # noqa: E402
+from cutmaster_ai.cutmaster.resolve_ops.segments import ResolvedCutSegment  # noqa: E402
+from cutmaster_ai.http.app import create_app  # noqa: E402
+from cutmaster_ai.http.routes import cutmaster as routes  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -52,8 +52,8 @@ def _stub_resolve(monkeypatch):
     def fake_boilerplate():
         return MagicMock(), MagicMock(), MagicMock()
 
-    import celavii_resolve.cutmaster.core.pipeline as pipeline_mod
-    import celavii_resolve.resolve as resolve_mod
+    import cutmaster_ai.cutmaster.core.pipeline as pipeline_mod
+    import cutmaster_ai.resolve as resolve_mod
 
     monkeypatch.setattr(resolve_mod, "_boilerplate", fake_boilerplate)
     monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl)
@@ -84,7 +84,7 @@ def test_compat_helper_blocks_tightener_across_non_assembled_modes():
     """The compat helper is authoritative for the UI grey-out logic. The
     route skips the guard for Tightener (it self-normalises to assembled)
     but the helper is what the UI reads."""
-    from celavii_resolve.cutmaster.data.presets import (
+    from cutmaster_ai.cutmaster.data.presets import (
         preset_mode_compatible,
         preset_mode_incompatibility_reason,
     )
@@ -116,7 +116,7 @@ def test_rough_cut_reorder_false_returns_400(client, scrubbed_run):
 
 def test_curated_reorder_false_normalises_to_assembled(client, monkeypatch, scrubbed_run):
     """Curated + reorder_off collapses to Assembled — same contract."""
-    from celavii_resolve.cutmaster.core.director import (
+    from cutmaster_ai.cutmaster.core.director import (
         AssembledDirectorPlan,
         AssembledItemSelection,
         WordSpan,
@@ -155,7 +155,7 @@ def test_curated_reorder_false_normalises_to_assembled(client, monkeypatch, scru
 
 
 def test_curated_mode_calls_curated_director(client, monkeypatch, scrubbed_run):
-    from celavii_resolve.cutmaster.core.director import (
+    from cutmaster_ai.cutmaster.core.director import (
         CuratedDirectorPlan,
         CuratedItemSelection,
         WordSpan,
@@ -207,7 +207,7 @@ def test_curated_mode_calls_curated_director(client, monkeypatch, scrubbed_run):
 
 
 def test_rough_cut_mode_runs_group_detector_and_director(client, monkeypatch, scrubbed_run):
-    from celavii_resolve.cutmaster.core.director import (
+    from cutmaster_ai.cutmaster.core.director import (
         CuratedDirectorPlan,
         CuratedItemSelection,
         WordSpan,
@@ -281,7 +281,7 @@ def test_rough_cut_mode_runs_group_detector_and_director(client, monkeypatch, sc
 
 def test_rough_cut_all_singletons_flag_set(client, monkeypatch, scrubbed_run):
     """No colors / flags and dissimilar transcripts → every item is its own group."""
-    from celavii_resolve.cutmaster.core.director import (
+    from cutmaster_ai.cutmaster.core.director import (
         CuratedDirectorPlan,
         CuratedItemSelection,
         WordSpan,

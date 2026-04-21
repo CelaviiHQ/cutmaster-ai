@@ -2,7 +2,7 @@
 
 import pytest
 
-from celavii_resolve.cutmaster.media.vfr import _ratio
+from cutmaster_ai.cutmaster.media.vfr import _ratio
 
 
 @pytest.mark.parametrize(

@@ -18,14 +18,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from celavii_resolve.cutmaster.analysis.boundary_validator import (
+from cutmaster_ai.cutmaster.analysis.boundary_validator import (
     BoundarySample,
     BoundaryVerdict,
     BoundaryVerdictResponse,
 )
-from celavii_resolve.cutmaster.core import director, validator_loop
-from celavii_resolve.cutmaster.core.director import CutSegment
-from celavii_resolve.cutmaster.core.validator_loop import (
+from cutmaster_ai.cutmaster.core import director, validator_loop
+from cutmaster_ai.cutmaster.core.director import CutSegment
+from cutmaster_ai.cutmaster.core.validator_loop import (
     BoundaryValidationResult,
     _format_warning,
     run_with_boundary_validation,
@@ -74,7 +74,7 @@ def stub_verdicts(monkeypatch):
         return scripted[idx]
 
     monkeypatch.setattr(
-        "celavii_resolve.cutmaster.analysis.boundary_validator.validate_boundaries",
+        "cutmaster_ai.cutmaster.analysis.boundary_validator.validate_boundaries",
         _impl,
     )
     return {"scripted": scripted, "calls": calls}
@@ -299,7 +299,7 @@ def test_rejections_block_tolerates_missing_fields():
 
 
 def test_rejections_injected_only_when_present():
-    from celavii_resolve.cutmaster.data.presets import get_preset
+    from cutmaster_ai.cutmaster.data.presets import get_preset
 
     preset = get_preset("vlog")
     transcript = [
@@ -328,7 +328,7 @@ def test_rejections_injected_only_when_present():
 )
 def test_rejections_block_wired_into_every_builder(builder):
     """Every one of the six builders must render the rejections block when set."""
-    from celavii_resolve.cutmaster.data.presets import get_preset
+    from cutmaster_ai.cutmaster.data.presets import get_preset
 
     preset = get_preset("vlog")
     transcript = [
@@ -628,7 +628,7 @@ async def test_loop_exhausts_with_multi_candidate_warnings(stub_verdicts):
 
 def test_short_generator_sample_builder_tags_all_candidates(monkeypatch):
     """Every candidate's spans should produce samples with matching candidate_index."""
-    from celavii_resolve.cutmaster.analysis import boundary_validator
+    from cutmaster_ai.cutmaster.analysis import boundary_validator
 
     # Stub out the Resolve-facing helpers so we can run without DaVinci.
     monkeypatch.setattr(
@@ -638,7 +638,7 @@ def test_short_generator_sample_builder_tags_all_candidates(monkeypatch):
     )
 
     # Build two synthetic candidates with ShortCandidate-shaped duck types.
-    from celavii_resolve.cutmaster.core.director import ShortCandidate, ShortSpan
+    from cutmaster_ai.cutmaster.core.director import ShortCandidate, ShortSpan
 
     cand_a = ShortCandidate(
         theme="theme A",
@@ -672,8 +672,8 @@ def test_short_generator_sample_builder_tags_all_candidates(monkeypatch):
 
 
 def test_short_generator_sample_builder_skips_single_span_candidates():
-    from celavii_resolve.cutmaster.analysis import boundary_validator
-    from celavii_resolve.cutmaster.core.director import ShortCandidate, ShortSpan
+    from cutmaster_ai.cutmaster.analysis import boundary_validator
+    from cutmaster_ai.cutmaster.core.director import ShortCandidate, ShortSpan
 
     cand_solo = ShortCandidate(
         theme="solo theme",

@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from celavii_resolve.cutmaster.resolve_ops.source_mapper import (
+from cutmaster_ai.cutmaster.resolve_ops.source_mapper import (
     TimelineMappingError,
     timeline_time_to_source,
 )

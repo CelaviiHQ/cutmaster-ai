@@ -62,7 +62,7 @@ class TestConfigBuilders:
         entry = install.build_server_entry("/usr/bin/python3", "/path/to/project")
         assert entry["command"] == "/usr/bin/python3"
         assert "-m" in entry["args"]
-        assert "celavii_resolve" in entry["args"]
+        assert "cutmaster_ai" in entry["args"]
 
     def test_zed_entry(self):
         entry = install.build_zed_entry("/usr/bin/python3", "/path/to/project")

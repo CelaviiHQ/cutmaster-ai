@@ -1,6 +1,6 @@
 """Tests for cutmaster.resolve_ops.groups — Rough cut group detector."""
 
-from celavii_resolve.cutmaster.resolve_ops.groups import (
+from cutmaster_ai.cutmaster.resolve_ops.groups import (
     DEFAULT_SIMILARITY_THRESHOLD,
     GroupedItem,
     all_singletons,

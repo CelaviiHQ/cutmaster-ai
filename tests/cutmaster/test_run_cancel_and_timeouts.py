@@ -19,16 +19,16 @@ pytest.importorskip("httpx")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from celavii_resolve.cutmaster.core import state  # noqa: E402
-from celavii_resolve.cutmaster.core.execute import (  # noqa: E402
+from cutmaster_ai.cutmaster.core import state  # noqa: E402
+from cutmaster_ai.cutmaster.core.execute import (  # noqa: E402
     ExecuteCancelled,
     _check_cancel,
 )
-from celavii_resolve.cutmaster.core.timeouts import (  # noqa: E402
+from cutmaster_ai.cutmaster.core.timeouts import (  # noqa: E402
     ExternalTimeout,
     with_timeout,
 )
-from celavii_resolve.http.app import create_app  # noqa: E402
+from cutmaster_ai.http.app import create_app  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

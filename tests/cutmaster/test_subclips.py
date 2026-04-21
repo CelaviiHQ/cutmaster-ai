@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from celavii_resolve.cutmaster.resolve_ops.subclips import append_subclips_with_ranges
+from cutmaster_ai.cutmaster.resolve_ops.subclips import append_subclips_with_ranges
 
 
 def _fake_project():

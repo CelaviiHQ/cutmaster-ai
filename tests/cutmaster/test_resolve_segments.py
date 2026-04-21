@@ -4,8 +4,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from celavii_resolve.cutmaster.core.director import CutSegment
-from celavii_resolve.cutmaster.resolve_ops.segments import resolve_segments
+from cutmaster_ai.cutmaster.core.director import CutSegment
+from cutmaster_ai.cutmaster.resolve_ops.segments import resolve_segments
 
 
 def _mp_item(

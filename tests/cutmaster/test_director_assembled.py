@@ -2,15 +2,15 @@
 
 import pytest
 
-from celavii_resolve.cutmaster.core import director
-from celavii_resolve.cutmaster.core.director import (
+from cutmaster_ai.cutmaster.core import director
+from cutmaster_ai.cutmaster.core.director import (
     AssembledDirectorPlan,
     AssembledItemSelection,
     WordSpan,
     expand_assembled_plan,
     validate_assembled_plan,
 )
-from celavii_resolve.cutmaster.data.presets import get_preset
+from cutmaster_ai.cutmaster.data.presets import get_preset
 
 
 def _take(idx: int, words: list[tuple[str, float, float]], name: str = "clip.mov") -> dict:

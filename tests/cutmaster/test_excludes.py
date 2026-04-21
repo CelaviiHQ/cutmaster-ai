@@ -3,11 +3,11 @@
 import pytest
 from pydantic import ValidationError
 
-from celavii_resolve.cutmaster.data.excludes import (
+from cutmaster_ai.cutmaster.data.excludes import (
     ExcludeCategory,
     default_exclude_keys,
 )
-from celavii_resolve.cutmaster.data.presets import PRESETS, get_preset
+from cutmaster_ai.cutmaster.data.presets import PRESETS, get_preset
 
 
 def test_exclude_category_requires_core_fields():
@@ -43,7 +43,7 @@ def test_every_content_type_preset_has_exclude_categories_populated():
     # content-type preset (Director-driven). Workflow presets like
     # Tightener (v2-3) skip the Director entirely so exclusion categories
     # are irrelevant for them.
-    from celavii_resolve.cutmaster.data.presets import PRESETS as _P  # local alias
+    from cutmaster_ai.cutmaster.data.presets import PRESETS as _P  # local alias
 
     content_type_presets = {k for k, p in _P.items() if p.exclude_categories}
     # At minimum the 8 content-type presets must populate excludes.

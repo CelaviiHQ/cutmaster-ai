@@ -98,11 +98,11 @@ class TestAgents:
         assert "tools:" in frontmatter, f"Agent '{agent}' missing 'tools:'"
 
     @pytest.mark.parametrize("agent", EXPECTED_AGENTS)
-    def test_agent_tools_reference_celavii(self, agent):
+    def test_agent_tools_reference_cutmaster_ai(self, agent):
         content = (AGENTS_DIR / f"{agent}.md").read_text()
-        # All tool references should use celavii-resolve server name
-        assert "mcp__celavii-resolve__celavii_" in content, (
-            f"Agent '{agent}' tools don't reference celavii-resolve MCP server"
+        # All tool references should use cutmaster-ai server name
+        assert "mcp__cutmaster-ai__cutmaster_" in content, (
+            f"Agent '{agent}' tools don't reference cutmaster-ai MCP server"
         )
 
     @pytest.mark.parametrize("agent", EXPECTED_AGENTS)

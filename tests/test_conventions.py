@@ -10,76 +10,76 @@ from pathlib import Path
 
 import pytest
 
-PACKAGE_DIR = Path(__file__).resolve().parent.parent / "src" / "celavii_resolve"
+PACKAGE_DIR = Path(__file__).resolve().parent.parent / "src" / "cutmaster_ai"
 TOOLS_DIR = PACKAGE_DIR / "tools"
 WORKFLOWS_DIR = PACKAGE_DIR / "workflows"
 INTEL_DIR = PACKAGE_DIR / "intelligence"
 CUTMASTER_DIR = PACKAGE_DIR / "cutmaster"
 TOOL_MODULES = [
-    "celavii_resolve.tools.project",
-    "celavii_resolve.tools.media_storage",
-    "celavii_resolve.tools.media_pool",
-    "celavii_resolve.tools.timeline_mgmt",
-    "celavii_resolve.tools.timeline_edit",
-    "celavii_resolve.tools.timeline_items",
-    "celavii_resolve.tools.markers",
-    "celavii_resolve.tools.color",
-    "celavii_resolve.tools.fusion",
-    "celavii_resolve.tools.render",
-    "celavii_resolve.tools.gallery",
-    "celavii_resolve.tools.fairlight",
-    "celavii_resolve.tools.layout",
-    "celavii_resolve.tools.graph",
-    "celavii_resolve.tools.scripting",
-    "celavii_resolve.tools.interchange",
-    "celavii_resolve.tools.lut_registry",
-    "celavii_resolve.workflows.ingest",
-    "celavii_resolve.workflows.assembly",
-    "celavii_resolve.workflows.delivery",
-    "celavii_resolve.workflows.conform",
-    "celavii_resolve.workflows.grade",
-    "celavii_resolve.workflows.chroma_key",
-    "celavii_resolve.intelligence.vision",
-    "celavii_resolve.intelligence.color_assist",
-    "celavii_resolve.intelligence.timeline_critique",
-    "celavii_resolve.intelligence.llm",
-    "celavii_resolve.cutmaster.media.frame_math",
-    "celavii_resolve.cutmaster.resolve_ops.source_mapper",
-    "celavii_resolve.cutmaster.resolve_ops.subclips",
-    "celavii_resolve.cutmaster.media.ffmpeg_audio",
-    "celavii_resolve.cutmaster.media.vfr",
-    "celavii_resolve.cutmaster.core.snapshot",
-    "celavii_resolve.cutmaster.core.state",
-    "celavii_resolve.cutmaster.stt",
-    "celavii_resolve.cutmaster.stt.base",
-    "celavii_resolve.cutmaster.stt.gemini",
-    "celavii_resolve.cutmaster.stt.deepgram",
-    "celavii_resolve.cutmaster.analysis.scrubber",
-    "celavii_resolve.cutmaster.core.pipeline",
-    "celavii_resolve.cutmaster.data.presets",
-    "celavii_resolve.cutmaster.data.excludes",
-    "celavii_resolve.cutmaster.media.formats",
-    "celavii_resolve.cutmaster.analysis.captions",
-    "celavii_resolve.cutmaster.media.time_mapping",
-    "celavii_resolve.cutmaster.resolve_ops.assembled",
-    "celavii_resolve.cutmaster.resolve_ops.groups",
-    "celavii_resolve.cutmaster.analysis.tightener",
-    "celavii_resolve.cutmaster.core.director",
-    "celavii_resolve.cutmaster.analysis.marker_agent",
-    "celavii_resolve.cutmaster.stt.speakers",
-    "celavii_resolve.cutmaster.stt.per_clip",
-    "celavii_resolve.cutmaster.stt.reconcile",
-    "celavii_resolve.cutmaster.analysis.auto_detect",
-    "celavii_resolve.cutmaster.analysis.themes",
-    "celavii_resolve.cutmaster.resolve_ops.segments",
-    "celavii_resolve.cutmaster.core.execute",
-    "celavii_resolve.cutmaster.core.timeouts",
-    "celavii_resolve.cutmaster.media.ffmpeg_frames",
-    "celavii_resolve.cutmaster.analysis.shot_tagger",
-    "celavii_resolve.cutmaster.analysis.boundary_validator",
-    "celavii_resolve.cutmaster.core.validator_loop",
-    "celavii_resolve.cutmaster.analysis.audio_cues",
-    "celavii_resolve.cutmaster.analysis._sanitize",
+    "cutmaster_ai.tools.project",
+    "cutmaster_ai.tools.media_storage",
+    "cutmaster_ai.tools.media_pool",
+    "cutmaster_ai.tools.timeline_mgmt",
+    "cutmaster_ai.tools.timeline_edit",
+    "cutmaster_ai.tools.timeline_items",
+    "cutmaster_ai.tools.markers",
+    "cutmaster_ai.tools.color",
+    "cutmaster_ai.tools.fusion",
+    "cutmaster_ai.tools.render",
+    "cutmaster_ai.tools.gallery",
+    "cutmaster_ai.tools.fairlight",
+    "cutmaster_ai.tools.layout",
+    "cutmaster_ai.tools.graph",
+    "cutmaster_ai.tools.scripting",
+    "cutmaster_ai.tools.interchange",
+    "cutmaster_ai.tools.lut_registry",
+    "cutmaster_ai.workflows.ingest",
+    "cutmaster_ai.workflows.assembly",
+    "cutmaster_ai.workflows.delivery",
+    "cutmaster_ai.workflows.conform",
+    "cutmaster_ai.workflows.grade",
+    "cutmaster_ai.workflows.chroma_key",
+    "cutmaster_ai.intelligence.vision",
+    "cutmaster_ai.intelligence.color_assist",
+    "cutmaster_ai.intelligence.timeline_critique",
+    "cutmaster_ai.intelligence.llm",
+    "cutmaster_ai.cutmaster.media.frame_math",
+    "cutmaster_ai.cutmaster.resolve_ops.source_mapper",
+    "cutmaster_ai.cutmaster.resolve_ops.subclips",
+    "cutmaster_ai.cutmaster.media.ffmpeg_audio",
+    "cutmaster_ai.cutmaster.media.vfr",
+    "cutmaster_ai.cutmaster.core.snapshot",
+    "cutmaster_ai.cutmaster.core.state",
+    "cutmaster_ai.cutmaster.stt",
+    "cutmaster_ai.cutmaster.stt.base",
+    "cutmaster_ai.cutmaster.stt.gemini",
+    "cutmaster_ai.cutmaster.stt.deepgram",
+    "cutmaster_ai.cutmaster.analysis.scrubber",
+    "cutmaster_ai.cutmaster.core.pipeline",
+    "cutmaster_ai.cutmaster.data.presets",
+    "cutmaster_ai.cutmaster.data.excludes",
+    "cutmaster_ai.cutmaster.media.formats",
+    "cutmaster_ai.cutmaster.analysis.captions",
+    "cutmaster_ai.cutmaster.media.time_mapping",
+    "cutmaster_ai.cutmaster.resolve_ops.assembled",
+    "cutmaster_ai.cutmaster.resolve_ops.groups",
+    "cutmaster_ai.cutmaster.analysis.tightener",
+    "cutmaster_ai.cutmaster.core.director",
+    "cutmaster_ai.cutmaster.analysis.marker_agent",
+    "cutmaster_ai.cutmaster.stt.speakers",
+    "cutmaster_ai.cutmaster.stt.per_clip",
+    "cutmaster_ai.cutmaster.stt.reconcile",
+    "cutmaster_ai.cutmaster.analysis.auto_detect",
+    "cutmaster_ai.cutmaster.analysis.themes",
+    "cutmaster_ai.cutmaster.resolve_ops.segments",
+    "cutmaster_ai.cutmaster.core.execute",
+    "cutmaster_ai.cutmaster.core.timeouts",
+    "cutmaster_ai.cutmaster.media.ffmpeg_frames",
+    "cutmaster_ai.cutmaster.analysis.shot_tagger",
+    "cutmaster_ai.cutmaster.analysis.boundary_validator",
+    "cutmaster_ai.cutmaster.core.validator_loop",
+    "cutmaster_ai.cutmaster.analysis.audio_cues",
+    "cutmaster_ai.cutmaster.analysis._sanitize",
 ]
 
 # Route modules aren't tool modules — the TOOL_MODULES guard doesn't cover
@@ -92,10 +92,10 @@ def _collect_tool_functions() -> list[tuple[str, str]]:
     function decorated with @mcp.tool."""
     results = []
     scan_dirs = [
-        (TOOLS_DIR, "celavii_resolve.tools"),
-        (WORKFLOWS_DIR, "celavii_resolve.workflows"),
-        (INTEL_DIR, "celavii_resolve.intelligence"),
-        (CUTMASTER_DIR, "celavii_resolve.cutmaster"),
+        (TOOLS_DIR, "cutmaster_ai.tools"),
+        (WORKFLOWS_DIR, "cutmaster_ai.workflows"),
+        (INTEL_DIR, "cutmaster_ai.intelligence"),
+        (CUTMASTER_DIR, "cutmaster_ai.cutmaster"),
     ]
     for scan_dir, module_prefix in scan_dirs:
         for py_file in scan_dir.rglob("*.py"):
@@ -126,11 +126,11 @@ TOOLS = _collect_tool_functions()
 
 
 class TestToolNaming:
-    """Every tool must start with the celavii_ prefix."""
+    """Every tool must start with the cutmaster_ prefix."""
 
     def test_all_tools_have_prefix(self):
-        missing = [(mod, name) for mod, name in TOOLS if not name.startswith("celavii_")]
-        assert not missing, f"Tools without celavii_ prefix: {missing}"
+        missing = [(mod, name) for mod, name in TOOLS if not name.startswith("cutmaster_")]
+        assert not missing, f"Tools without cutmaster_ prefix: {missing}"
 
     def test_tool_count_minimum(self):
         """Sanity check: we expect at least 190 tools."""
@@ -153,7 +153,7 @@ class TestToolDocstrings:
     def test_all_public_functions_have_docstrings(self, module):
         missing = []
         for name in dir(module):
-            if not name.startswith("celavii_"):
+            if not name.startswith("cutmaster_"):
                 continue
             obj = getattr(module, name)
             if callable(obj) and not getattr(obj, "__doc__", None):
@@ -177,8 +177,8 @@ class TestToolRegistration:
         """At least 190 tools should be registered after importing all modules."""
         import asyncio
 
-        import celavii_resolve  # noqa: F401 — triggers tool registration
-        from celavii_resolve.config import mcp
+        import cutmaster_ai  # noqa: F401 — triggers tool registration
+        from cutmaster_ai.config import mcp
 
         tools = asyncio.run(mcp.list_tools())
         count = len(tools)
@@ -190,23 +190,22 @@ class TestModuleCoverage:
 
     def test_all_tool_files_imported(self):
         tool_files = {
-            f"celavii_resolve.tools.{f.stem}"
+            f"cutmaster_ai.tools.{f.stem}"
             for f in TOOLS_DIR.glob("*.py")
             if f.name != "__init__.py"
         }
         workflow_files = {
-            f"celavii_resolve.workflows.{f.stem}"
+            f"cutmaster_ai.workflows.{f.stem}"
             for f in WORKFLOWS_DIR.glob("*.py")
             if f.name != "__init__.py"
         }
         intel_files = {
-            f"celavii_resolve.intelligence.{f.stem}"
+            f"cutmaster_ai.intelligence.{f.stem}"
             for f in INTEL_DIR.glob("*.py")
             if f.name != "__init__.py"
         }
         cutmaster_files = {
-            "celavii_resolve.cutmaster."
-            + ".".join(f.relative_to(CUTMASTER_DIR).with_suffix("").parts)
+            "cutmaster_ai.cutmaster." + ".".join(f.relative_to(CUTMASTER_DIR).with_suffix("").parts)
             for f in CUTMASTER_DIR.rglob("*.py")
             if f.name != "__init__.py"
         }
