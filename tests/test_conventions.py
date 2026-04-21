@@ -61,6 +61,7 @@ TOOL_MODULES = [
     "cutmaster_ai.cutmaster.data.content_profiles",
     "cutmaster_ai.cutmaster.data.cut_intents",
     "cutmaster_ai.cutmaster.data.axis_compat",
+    "cutmaster_ai.cutmaster.data.axis_resolution",
     "cutmaster_ai.cutmaster.media.formats",
     "cutmaster_ai.cutmaster.media.source_resolver",
     "cutmaster_ai.cutmaster.analysis.captions",
