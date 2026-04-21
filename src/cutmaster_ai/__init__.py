@@ -1,6 +1,6 @@
 """CutMaster AI: Maximum-control MCP server for DaVinci Resolve."""
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 from .config import mcp  # noqa: F401 — re-export for entry points
 

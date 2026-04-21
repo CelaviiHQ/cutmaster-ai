@@ -1,6 +1,6 @@
 {
   "name": "cutmaster-ai",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Maximum-control MCP server for DaVinci Resolve Studio — 241 tools covering the complete Resolve Scripting API, AI-enhanced workflows, and domain-specific agents.",
   "author": {
     "name": "Celavii",
