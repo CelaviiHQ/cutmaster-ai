@@ -12,6 +12,16 @@ Each preset bundles:
 Presets are *recommendations* the user can override in the Configure screen.
 The pipeline does not hard-code them — every parameter flows through
 ``UserSettings`` after the HIL step.
+
+Dual-model notice: the three-axis-model proposal splits ``PresetBundle``
+into two halves — :class:`~cutmaster_ai.cutmaster.data.content_profiles.ContentProfile`
+(Axis 1: what's on the timeline) and :class:`~cutmaster_ai.cutmaster.data.cut_intents.CutIntentBundle`
+(Axis 2: what the user is making). During the migration window both live
+side by side. The canonical 4-value ``ReorderMode`` vocabulary lives in
+``content_profiles`` (the ``per_clip_chronological`` value is new and
+only used by the axes model); ``PresetBundle.reorder_mode`` below keeps
+its narrower 3-value literal on purpose — no legacy preset needs the
+new value, and narrowing gives Pydantic a tighter check.
 """
 
 from __future__ import annotations
