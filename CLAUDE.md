@@ -1,8 +1,8 @@
-# CLAUDE.md — Celavii-Resolve Developer Guide
+# CLAUDE.md — CutMaster AI Developer Guide
 
 ## Project Overview
 
-Celavii-Resolve is a maximum-control MCP server for DaVinci Resolve Studio.
+CutMaster AI is a maximum-control MCP server for DaVinci Resolve Studio.
 It provides ~280 modular tools covering the complete Resolve Scripting API,
 compound workflow tools, AI-enhanced features, and Claude Code skills/agents.
 
@@ -46,7 +46,7 @@ Two distinct roles, by design:
 |---|---|---|---|
 | **MCP clients** (Claude Code / Desktop, Cursor) | MCP stdio | `cutmaster-ai` | `pip install cutmaster-ai` |
 | **Resolve Workflow Integration panel** (React UI, in-Resolve webview) | HTTP on `127.0.0.1:8765` | `cutmaster-ai-panel` | `pip install 'cutmaster-ai[panel]'` |
-| **Celavii Studio** (closed-source native macOS app — separate repo) | HTTP via bundled Python | `cutmaster-ai-panel` embedded | Web download from celavii.com |
+| **CutMaster Studio** (closed-source native macOS app — separate repo) | HTTP via bundled Python | `cutmaster-ai-panel` embedded | Web download from celavii.com |
 
 Studio doesn't fork or patch this repo — it **pins a PyPI release** of `cutmaster-ai` and ships it alongside a private `cutmaster_studio_pro` wheel that registers extra capabilities via **entry points**. The OSS package keeps running exactly as it does today for everyone else; Studio just happens to be the most demanding consumer. See [SURFACE.md](SURFACE.md) for the versioned contract and [`src/cutmaster_ai/plugins.py`](src/cutmaster_ai/plugins.py) for discovery.
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Celavii-Resolve — One-Command Setup Script (macOS / Linux)
+# CutMaster AI — One-Command Setup Script (macOS / Linux)
 #
 # Usage:
 #   bash scripts/setup.sh              # Full interactive setup
@@ -21,9 +21,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 VENV_DIR="$PROJECT_DIR/.venv"
 SRC_DIR="$PROJECT_DIR/src"
-SERVER_MODULE="celavii_resolve"
-PLIST_TEMPLATE="$PROJECT_DIR/scripts/launchd/com.celavii.resolve-mcp.plist"
-PLIST_DEST="$HOME/Library/LaunchAgents/com.celavii.resolve-mcp.plist"
+SERVER_MODULE="cutmaster_ai"
+PLIST_TEMPLATE="$PROJECT_DIR/scripts/launchd/ai.cutmaster.mcp.plist"
+PLIST_DEST="$HOME/Library/LaunchAgents/ai.cutmaster.mcp.plist"
 
 # Claude paths
 CLAUDE_DESKTOP_CONFIG_MAC="$HOME/Library/Application Support/Claude/claude_desktop_config.json"
@@ -95,7 +95,7 @@ done
 # ---------------------------------------------------------------------------
 
 if $DO_UNINSTALL; then
-    header "Uninstalling Celavii-Resolve"
+    header "Uninstalling CutMaster AI"
 
     # LaunchAgent
     if [[ -f "$PLIST_DEST" ]]; then
@@ -242,7 +242,7 @@ if [[ -d "$(dirname "$CLAUDE_CONFIG")" ]] || [[ "$(uname)" == "Darwin" ]]; then
     SERVER_JSON=$(cat <<EOJSON
 {
   "mcpServers": {
-    "celavii-resolve": {
+    "cutmaster-ai": {
       "command": "$VENV_PYTHON",
       "args": ["-m", "$SERVER_MODULE"],
       "cwd": "$PROJECT_DIR"
@@ -266,7 +266,7 @@ existing = json.loads(config_path.read_text())
 if 'mcpServers' not in existing:
     existing['mcpServers'] = {}
 
-existing['mcpServers']['celavii-resolve'] = {
+existing['mcpServers']['cutmaster-ai'] = {
     'command': '$VENV_PYTHON',
     'args': ['-m', '$SERVER_MODULE'],
     'cwd': '$PROJECT_DIR',
@@ -298,12 +298,12 @@ else
     cat > "$PROJECT_DIR/.mcp.json" <<EOJSON
 {
   "mcpServers": {
-    "celavii-resolve": {
+    "cutmaster-ai": {
       "command": "uv",
       "args": [
         "run",
         "--directory", "\${CLAUDE_PROJECT_ROOT}",
-        "python", "-m", "celavii_resolve"
+        "python", "-m", "cutmaster_ai"
       ]
     }
   }
@@ -378,7 +378,7 @@ settings = json.loads(settings_path.read_text())
 if 'mcpServers' not in settings:
     settings['mcpServers'] = {}
 
-settings['mcpServers']['celavii-resolve'] = {
+settings['mcpServers']['cutmaster-ai'] = {
     'command': '$VENV_PYTHON',
     'args': ['-m', '$SERVER_MODULE'],
     'cwd': '$PROJECT_DIR',
@@ -415,7 +415,7 @@ if $DO_LAUNCHAGENT; then
         launchctl load "$PLIST_DEST"
         success "LaunchAgent installed and loaded"
         info "The MCP server will now start automatically on login"
-        info "Logs: /tmp/celavii-resolve-mcp.out.log"
+        info "Logs: /tmp/cutmaster-ai-mcp.out.log"
     else
         warn "LaunchAgent template not found at $PLIST_TEMPLATE"
     fi
@@ -446,7 +446,7 @@ echo ""
 echo -e "  ${BOLD}Next steps:${NC}"
 echo -e "    1. Restart Claude Desktop (Cmd+Q)"
 echo -e "    2. Open DaVinci Resolve Studio"
-echo -e "    3. Ask Claude: \"Use celavii_get_version to check the connection\""
+echo -e "    3. Ask Claude: \"Use cutmaster_get_version to check the connection\""
 echo ""
 echo -e "  ${BOLD}Documentation:${NC}   $PROJECT_DIR/docs/SETUP.md"
 echo ""

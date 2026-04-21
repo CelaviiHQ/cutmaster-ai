@@ -5,11 +5,11 @@ description: "Scaffold a new MCP tool for DaVinci Resolve with the correct patte
 
 # Add a New MCP Tool
 
-Use this skill to create a new tool for the Celavii-Resolve MCP server.
+Use this skill to create a new tool for the CutMaster AI MCP server.
 
 ## Steps
 
-1. **Determine the domain** — which file in `src/celavii_resolve/tools/` does it belong to?
+1. **Determine the domain** — which file in `src/cutmaster_ai/tools/` does it belong to?
    - `timeline.py` — timeline operations
    - `clips.py` — clip manipulation
    - `color.py` — color grading, nodes, LUTs
@@ -53,7 +53,7 @@ def cutmaster_your_tool_name(param: str, optional: int = 1) -> str:
    - All indices are **1-based**
    - Use `_resolve_safe_dir()` for temp paths, not `tempfile.gettempdir()`
 
-4. **If creating a new module file**, add the import to `src/celavii_resolve/__init__.py`:
+4. **If creating a new module file**, add the import to `src/cutmaster_ai/__init__.py`:
 ```python
 from . import your_new_module  # noqa: F401, E402
 ```

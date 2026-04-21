@@ -1,4 +1,4 @@
-# Contributing to Celavii-Resolve
+# Contributing to CutMaster AI
 
 Welcome — and thanks for the interest. This guide gets you from clone to first PR.
 

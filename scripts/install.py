@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Celavii-Resolve — Universal Installer
+"""CutMaster AI — Universal Installer
 
 Auto-detects platform, finds DaVinci Resolve, creates a virtual environment,
 installs dependencies, and configures MCP clients.
@@ -28,7 +28,7 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 
 VERSION = "0.2.0"
-SERVER_NAME = "celavii-resolve"
+SERVER_NAME = "cutmaster-ai"
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 SRC_DIR = PROJECT_DIR / "src"
 SERVER_MODULE = "cutmaster_ai"
@@ -410,7 +410,7 @@ def print_manual_config(venv_python: str):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Celavii-Resolve — Universal MCP Installer",
+        description="CutMaster AI — Universal MCP Installer",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
@@ -424,7 +424,7 @@ def main():
     parser.add_argument("--verify", action="store_true", help="Only verify Resolve connection")
     args = parser.parse_args()
 
-    print(f"\n  Celavii-Resolve Installer v{VERSION}")
+    print(f"\n  CutMaster AI Installer v{VERSION}")
     print(f"  Platform: {platform_name()}")
     print(f"  Project:  {PROJECT_DIR}\n")
 

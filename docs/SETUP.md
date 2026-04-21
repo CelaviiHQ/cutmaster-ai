@@ -1,4 +1,4 @@
-# Celavii-Resolve — Complete Setup Guide
+# CutMaster AI — Complete Setup Guide
 
 This guide covers the **MCP server** — the stdio server that exposes 233 DaVinci Resolve tools to AI clients (Claude Code, Claude Desktop, Cursor, etc.).
 
@@ -113,7 +113,7 @@ cp .env.example .env
 
 ## 3. MCP Server Configuration
 
-The MCP server is what connects Celavii-Resolve's 233 tools to your AI client. Each client has its own configuration file.
+The MCP server is what connects CutMaster AI's 233 tools to your AI client. Each client has its own configuration file.
 
 ### 3.1 Claude Desktop
 
@@ -204,7 +204,7 @@ The included `.mcp.json`:
 }
 ```
 
-**For global access** (use Celavii-Resolve from any directory):
+**For global access** (use CutMaster AI from any directory):
 
 Add to `~/.claude/settings.json`:
 
@@ -291,7 +291,7 @@ Skills, agents, and hooks are **Claude Code features** (not available in Claude 
 
 ### 4.1 How Skills Work
 
-Skills are Claude Code slash commands defined in `skills/*/SKILL.md` files. When you're in the Celavii-Resolve project directory, Claude Code auto-discovers them.
+Skills are Claude Code slash commands defined in `skills/*/SKILL.md` files. When you're in the CutMaster AI project directory, Claude Code auto-discovers them.
 
 **Available skills:**
 
@@ -348,7 +348,7 @@ Hooks are safety guardrails defined in `hooks/hooks.json`. They run automaticall
 
 ### 4.4 Installing for Global Access
 
-To use Celavii-Resolve skills/agents/hooks from **any directory** in Claude Code (not just when inside the project folder), run the install script:
+To use CutMaster AI skills/agents/hooks from **any directory** in Claude Code (not just when inside the project folder), run the install script:
 
 ```bash
 bash scripts/setup.sh --global
@@ -397,7 +397,7 @@ cp hooks/hooks.json ~/.claude/settings.json
 
 ## 5. Claude Code Plugin
 
-Celavii-Resolve can be packaged as a **Claude Code plugin** — a self-contained ZIP that bundles skills and MCP server config for easy distribution and installation.
+CutMaster AI can be packaged as a **Claude Code plugin** — a self-contained ZIP that bundles skills and MCP server config for easy distribution and installation.
 
 ### 5.1 Building the Plugin
 
@@ -462,7 +462,7 @@ This loads the plugin directly from the project directory, using the `.claude-pl
 
 ## 6. Auto-Start with LaunchAgent (macOS)
 
-The LaunchAgent starts the Celavii-Resolve MCP server automatically when you log in, so it's always available when DaVinci Resolve is open.
+The LaunchAgent starts the CutMaster AI MCP server automatically when you log in, so it's always available when DaVinci Resolve is open.
 
 ### Automatic Setup
 
@@ -523,7 +523,7 @@ rm ~/Library/LaunchAgents/ai.cutmaster.mcp.plist
 
 ## 7. Creating a Distributable Package
 
-To share Celavii-Resolve with others (e.g. team members, clients), create a distributable archive:
+To share CutMaster AI with others (e.g. team members, clients), create a distributable archive:
 
 ```bash
 bash scripts/package.sh

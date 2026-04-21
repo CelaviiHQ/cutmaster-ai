@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Celavii-Resolve — Plugin Builder
+# CutMaster AI — Plugin Builder
 #
 # Builds a Claude Code plugin ZIP containing:
 #   .claude-plugin/plugin.json   — plugin manifest
@@ -14,7 +14,7 @@
 #   bash build-plugin.sh --output ~/Desktop      # Output to specific directory
 #
 # The recipient installs with:
-#   claude plugin install ./celavii-resolve-plugin.zip
+#   claude plugin install ./cutmaster-ai-plugin.zip
 #
 # Or test locally:
 #   claude --plugin-dir ./cutmaster-ai
@@ -38,7 +38,7 @@ VERSION="${VERSION:-0.1.0}"
 VENV_PATH=""
 SKILLS_ONLY=false
 OUTPUT_DIR="$PROJECT_DIR"
-SERVER_MODULE="celavii_resolve"
+SERVER_MODULE="cutmaster_ai"
 
 # Colors
 RED='\033[0;31m'
@@ -85,7 +85,7 @@ done
 # ---------------------------------------------------------------------------
 
 echo ""
-echo -e "${BOLD}${CYAN}  Celavii-Resolve Plugin Builder${NC}"
+echo -e "${BOLD}${CYAN}  CutMaster AI Plugin Builder${NC}"
 echo -e "  Version: ${VERSION}"
 echo ""
 
@@ -152,7 +152,7 @@ else
     cat > "$STAGE_DIR/.mcp.json" <<EOJSON
 {
   "mcpServers": {
-    "celavii-resolve": {
+    "cutmaster-ai": {
       "command": "$VENV_PYTHON",
       "args": ["-m", "$SERVER_MODULE"],
       "cwd": "$PROJECT_DIR"
@@ -181,7 +181,7 @@ echo ""
 # Build ZIP
 # ---------------------------------------------------------------------------
 
-ARCHIVE_NAME="celavii-resolve-plugin-v${VERSION}.zip"
+ARCHIVE_NAME="cutmaster-ai-plugin-v${VERSION}.zip"
 ARCHIVE_PATH="$OUTPUT_DIR/$ARCHIVE_NAME"
 
 info "Creating plugin ZIP..."

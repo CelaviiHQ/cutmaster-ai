@@ -21,7 +21,7 @@ Run this Python script to test the actual JSON-RPC protocol over stdio:
 import subprocess, json, time
 
 proc = subprocess.Popen(
-    ['.venv/bin/python3', '-m', 'celavii_resolve'],
+    ['.venv/bin/python3', '-m', 'cutmaster_ai'],
     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
 )
 

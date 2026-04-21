@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Celavii-Resolve — Package Creator
+# CutMaster AI — Package Creator
 #
 # Creates a distributable zip archive of the project for sharing.
 # Excludes .venv, .env, __pycache__, .git, and other build artifacts.
 #
 # Usage:
-#   bash scripts/package.sh                    # Creates celavii-resolve-v0.1.0.zip
+#   bash scripts/package.sh                    # Creates cutmaster-ai-v0.1.0.zip
 #   bash scripts/package.sh --output ~/Desktop # Creates zip on Desktop
 # ============================================================================
 
@@ -29,11 +29,11 @@ for arg in "$@"; do
     esac
 done
 
-ARCHIVE_NAME="celavii-resolve-v${VERSION}.zip"
+ARCHIVE_NAME="cutmaster-ai-v${VERSION}.zip"
 ARCHIVE_PATH="$OUTPUT_DIR/$ARCHIVE_NAME"
 
 echo ""
-echo "  Celavii-Resolve Package Creator"
+echo "  CutMaster AI Package Creator"
 echo "  Version: $VERSION"
 echo "  Output:  $ARCHIVE_PATH"
 echo ""

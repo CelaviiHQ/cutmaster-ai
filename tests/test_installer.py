@@ -140,5 +140,5 @@ class TestProjectFiles:
 
     def test_readme_has_content(self):
         readme = (PROJECT_ROOT / "README.md").read_text()
-        assert "Celavii-Resolve" in readme
+        assert "CutMaster AI" in readme
         assert "tools" in readme

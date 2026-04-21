@@ -1,25 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Celavii-Resolve MCP Server — macOS LaunchAgent
+  CutMaster AI MCP Server — macOS LaunchAgent
 
-  This plist starts the Celavii-Resolve MCP server automatically on login.
+  This plist starts the CutMaster AI MCP server automatically on login.
   The server will wait for DaVinci Resolve to become available.
 
   Install:
-    cp launchd/com.celavii.resolve-mcp.plist ~/Library/LaunchAgents/
+    cp launchd/ai.cutmaster.mcp.plist ~/Library/LaunchAgents/
     # Edit the plist to set your paths, or use: bash scripts/setup.sh -\-launchagent
 
-  Load:   launchctl load ~/Library/LaunchAgents/com.celavii.resolve-mcp.plist
-  Unload: launchctl unload ~/Library/LaunchAgents/com.celavii.resolve-mcp.plist
-  Status: launchctl list | grep celavii
-  Logs:   cat /tmp/celavii-resolve-mcp.out.log
+  Load:   launchctl load ~/Library/LaunchAgents/ai.cutmaster.mcp.plist
+  Unload: launchctl unload ~/Library/LaunchAgents/ai.cutmaster.mcp.plist
+  Status: launchctl list | grep cutmaster
+  Logs:   cat /tmp/ai.cutmaster.mcp.out.log
 -->
 <plist version="1.0">
 <dict>
     <!-- Unique identifier for this launch agent -->
     <key>Label</key>
-    <string>com.celavii.resolve-mcp</string>
+    <string>ai.cutmaster.mcp</string>
 
     <!-- Command to run -->
     <key>ProgramArguments</key>
@@ -60,9 +60,9 @@
 
     <!-- Log output -->
     <key>StandardOutPath</key>
-    <string>/tmp/celavii-resolve-mcp.out.log</string>
+    <string>/tmp/ai.cutmaster.mcp.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/celavii-resolve-mcp.err.log</string>
+    <string>/tmp/ai.cutmaster.mcp.err.log</string>
 
     <!-- Nice level — run at low priority so it doesn't affect Resolve performance -->
     <key>Nice</key>

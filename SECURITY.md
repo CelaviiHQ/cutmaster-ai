@@ -2,7 +2,7 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in Celavii-Resolve, please report it responsibly.
+If you discover a security vulnerability in CutMaster AI, please report it responsibly.
 
 **Do not open a public GitHub issue.** Instead, email: **security@celavii.com**
 
@@ -16,7 +16,7 @@ We aim to acknowledge reports within 48 hours and provide an initial assessment 
 
 ## Supported Versions
 
-Celavii-Resolve is pre-1.0. Only the latest `main` branch receives security updates.
+CutMaster AI is pre-1.0. Only the latest `main` branch receives security updates.
 
 | Version | Supported |
 |---------|-----------|

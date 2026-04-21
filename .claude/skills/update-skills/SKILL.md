@@ -43,7 +43,7 @@ Instructions for Claude Code when this skill is invoked...
 ## When updating a skill
 
 1. Read the current SKILL.md
-2. Check which MCP tools it references — verify they still exist in `src/celavii_resolve/`
+2. Check which MCP tools it references — verify they still exist in `src/cutmaster_ai/`
 3. Update tool names, parameters, or workflows as needed
 4. Keep the YAML frontmatter intact
 5. Rebuild the plugin if distributing: `bash scripts/build-plugin.sh`

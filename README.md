@@ -1,4 +1,4 @@
-# Celavii-Resolve
+# CutMaster AI
 
 A DaVinci Resolve toolkit with two faces: an **MCP server** (for AI clients like Claude Code / Desktop) and a **CutMaster AI panel** (a React UI that runs inside Resolve as a Workflow Integration).
 
@@ -30,9 +30,9 @@ A DaVinci Resolve toolkit with two faces: an **MCP server** (for AI clients like
 
 | # | Name | Audience | Source | Distribution |
 |---|---|---|---|---|
-| 1 | **Celavii MCP** (Claude Code plugin) | AI engineers, Claude Code users | This repo | `pip install cutmaster-ai` + Claude Code marketplace |
-| 2 | **Celavii Resolve Workflow plugin** | Any Resolve 21+ user | This repo | Copy into Resolve's plugin folder |
-| 3 | **Celavii Studio** (paid macOS app) | Colorists, editors, designers | Separate private repo | Notarized DMG from [celavii.com](https://celavii.com) — pins a PyPI version of this package |
+| 1 | **CutMaster MCP** (Claude Code plugin) | AI engineers, Claude Code users | This repo | `pip install cutmaster-ai` + Claude Code marketplace |
+| 2 | **CutMaster Resolve Workflow plugin** | Any Resolve 21+ user | This repo | Copy into Resolve's plugin folder |
+| 3 | **CutMaster Studio** (paid macOS app) | Colorists, editors, designers | Separate private repo | Notarized DMG from [celavii.com](https://celavii.com) — pins a PyPI version of this package |
 
 Studio extends the OSS core via two **entry-point groups** (`cutmaster_ai.tools` and `cutmaster_ai.panel_routes`) — third-party plugins can register the same way. See [SURFACE.md](SURFACE.md) for the contract and [`src/cutmaster_ai/plugins.py`](src/cutmaster_ai/plugins.py) for the discovery code.
 

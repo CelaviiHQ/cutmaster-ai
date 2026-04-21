@@ -1,6 +1,6 @@
 # Architecture Overview
 
-Celavii-Resolve is a **maximum-control MCP server for DaVinci Resolve Studio**. ~280 tools covering the full Resolve Scripting API, compound workflow tools, AI-enhanced features, and an optional React panel that ships alongside the Python package.
+CutMaster AI is a **maximum-control MCP server for DaVinci Resolve Studio**. ~280 tools covering the full Resolve Scripting API, compound workflow tools, AI-enhanced features, and an optional React panel that ships alongside the Python package.
 
 ## Three deliverables, one repo
 

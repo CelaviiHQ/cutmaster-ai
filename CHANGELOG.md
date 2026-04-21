@@ -71,7 +71,7 @@ the private `cutmaster-studio` repo for the full brand hierarchy.
 ### Changed
 
 - README and CLAUDE.md updated from "two consumers" to "three consumers"
-  — MCP, Panel, and Celavii Studio (the paid macOS app built on top of
+  — MCP, Panel, and CutMaster Studio (the paid macOS app built on top of
   this package).
 
 ## [0.2.0] — 2026-04-18

@@ -5,7 +5,7 @@ description: "Create a compound workflow tool that orchestrates multiple Resolve
 
 # Add a Workflow Tool
 
-Workflow tools live in `src/celavii_resolve/workflows/` and combine multiple Resolve API calls into a single action.
+Workflow tools live in `src/cutmaster_ai/workflows/` and combine multiple Resolve API calls into a single action.
 
 ## Existing Workflows
 
@@ -58,7 +58,7 @@ def cutmaster_your_workflow(
 - Include sensible defaults so most params are optional
 - Return detailed status: what was done, how many items affected
 - Handle partial failures gracefully — don't bail on first error
-- Add the import to `src/celavii_resolve/__init__.py` if new file
+- Add the import to `src/cutmaster_ai/__init__.py` if new file
 
 ## After creating
 

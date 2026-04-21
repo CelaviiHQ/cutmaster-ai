@@ -1,8 +1,8 @@
-# Celavii-Resolve: Competitive Analysis of DaVinci Resolve MCP Servers
+# CutMaster AI: Competitive Analysis of DaVinci Resolve MCP Servers
 
 ## Executive Summary
 
-Six DaVinci Resolve MCP repos were analyzed to inform the design of Celavii-Resolve — a maximum-control MCP server for automating DaVinci Resolve from Claude Code / IDE.
+Six DaVinci Resolve MCP repos were analyzed to inform the design of CutMaster AI — a maximum-control MCP server for automating DaVinci Resolve from Claude Code / IDE.
 
 ---
 
@@ -214,7 +214,7 @@ Six DaVinci Resolve MCP repos were analyzed to inform the design of Celavii-Reso
 
 ---
 
-## Best-of-Breed Features for Celavii-Resolve
+## Best-of-Breed Features for CutMaster AI
 
 ### From samuelgursky (Foundation):
 - 100% API coverage (324 methods)
@@ -259,7 +259,7 @@ Six DaVinci Resolve MCP repos were analyzed to inform the design of Celavii-Reso
 
 ---
 
-## Architecture Recommendations for Celavii-Resolve
+## Architecture Recommendations for CutMaster AI
 
 ### Core Architecture
 ```

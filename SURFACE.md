@@ -1,6 +1,6 @@
 # Plugin & Embedding Surface
 
-This document enumerates the **stable** contract that external consumers — most notably the Celavii Studio bundle and any third-party plugin author — depend on. Anything listed here is covered by semantic versioning: breaking changes require a **major** version bump and a changelog entry under `## [Unreleased]`. Everything else in `src/cutmaster_ai/` is internal and may be restructured without notice.
+This document enumerates the **stable** contract that external consumers — most notably the CutMaster Studio bundle and any third-party plugin author — depend on. Anything listed here is covered by semantic versioning: breaking changes require a **major** version bump and a changelog entry under `## [Unreleased]`. Everything else in `src/cutmaster_ai/` is internal and may be restructured without notice.
 
 > **Scope:** this file describes consumption patterns, not the full tool catalogue. For the MCP tool list see [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md).
 
@@ -44,7 +44,7 @@ Declared in `pyproject.toml`:
 my_plugin = "my_plugin:register_routes"
 ```
 
-Consumed by: the Panel HTTP server (Celavii Studio bundle, React panel inside Resolve's Workflow Integration webview). Called once inside `cutmaster_ai.http.app.create_app()` **after** OSS routes register, so plugins cannot shadow built-in paths.
+Consumed by: the Panel HTTP server (CutMaster Studio bundle, React panel inside Resolve's Workflow Integration webview). Called once inside `cutmaster_ai.http.app.create_app()` **after** OSS routes register, so plugins cannot shadow built-in paths.
 
 ### Contract guarantees
 
@@ -65,7 +65,7 @@ Every plugin-registered router **must** live under a unique prefix to avoid coll
 router = APIRouter(prefix="/plugins/my_plugin", tags=["my-plugin"])
 ```
 
-Plugins shipped by Celavii Studio itself may use the shorter `/pro/<feature>` prefix — this is reserved for the signed bundle. Third-party plugins should use `/plugins/<your-name>/` so two plugins can coexist without collision.
+Plugins shipped by CutMaster Studio itself may use the shorter `/pro/<feature>` prefix — this is reserved for the signed bundle. Third-party plugins should use `/plugins/<your-name>/` so two plugins can coexist without collision.
 
 OSS reserves the following top-level path prefixes and plugins **must not** register there:
 
@@ -131,7 +131,7 @@ Other stable top-level imports:
 
 The Panel boots with an idempotent SQLite migration runner at `cutmaster_ai.migrations.runner.apply_migrations(db_path)`. It applies every file in `cutmaster_ai/migrations/` matching the pattern `NNNN_*.sql`, in numeric order, tracking applied files in `_cutmaster_schema_migrations`.
 
-OSS owns the un-prefixed tables (`recent_projects`, `custom_presets`, `cutmaster_sessions`, `panel_state`, …). The `studio_` table prefix is **reserved for the Celavii Studio bundle**. Third-party plugins that need their own tables should use a namespaced prefix matching their package, e.g. `myplugin_recent_items`.
+OSS owns the un-prefixed tables (`recent_projects`, `custom_presets`, `cutmaster_sessions`, `panel_state`, …). The `studio_` table prefix is **reserved for the CutMaster Studio bundle**. Third-party plugins that need their own tables should use a namespaced prefix matching their package, e.g. `myplugin_recent_items`.
 
 Breaking changes to any OSS table require a new forward-only migration and a major bump.
 
