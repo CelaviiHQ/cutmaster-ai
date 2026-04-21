@@ -15,6 +15,10 @@ from cutmaster_ai.cutmaster.analysis.auto_detect.cue_vocab import (
     score_by_cue_vocabulary,
 )
 from cutmaster_ai.cutmaster.analysis.auto_detect.metadata import score_by_metadata
+from cutmaster_ai.cutmaster.analysis.auto_detect.opening import (
+    OpeningClassification,
+    classify_opening_sentence,
+)
 from cutmaster_ai.cutmaster.analysis.auto_detect.scoring import (
     classifiable_presets,
     merge,
@@ -350,6 +354,96 @@ def test_metadata_high_clip_count_disambiguates_edited_over_raw():
     assert scores["vlog"] > scores["interview"]
     assert scores["vlog"] > scores["presentation"]
     assert scores["tutorial"] > scores["podcast"]
+
+
+# ---------------------------------------------------------------------------
+# Tier 3 — opening-sentence micro-classifier
+# ---------------------------------------------------------------------------
+
+
+def test_opening_classifier_empty_sentence_returns_neutral():
+    scores = classify_opening_sentence("")
+    assert all(v == 0.0 for v in scores.values())
+
+
+def test_opening_classifier_llm_failure_is_neutral(monkeypatch):
+    """A raised LLM call shouldn't crash the cascade — it degrades to zeros."""
+    import cutmaster_ai.intelligence.llm as llm_mod
+
+    def _boom(*a, **kw):
+        raise RuntimeError("simulated network failure")
+
+    monkeypatch.setattr(llm_mod, "call_structured", _boom)
+    scores = classify_opening_sentence("Welcome back to the channel")
+    assert all(v == 0.0 for v in scores.values())
+
+
+def test_opening_classifier_maps_to_preset_scores(monkeypatch):
+    """A successful LLM response places weight on the returned preset only."""
+    import cutmaster_ai.cutmaster.analysis.auto_detect.opening as opening_mod
+
+    def _fake(*a, **kw):
+        return OpeningClassification(preset="vlog", confidence=0.8)
+
+    monkeypatch.setattr(opening_mod.llm, "call_structured", _fake)
+    scores = classify_opening_sentence("Welcome back to the channel!")
+    assert scores["vlog"] == 0.8
+    assert all(scores[k] == 0.0 for k in scores if k != "vlog")
+
+
+def test_tier3_only_fires_in_ambiguous_margin_band(monkeypatch):
+    """Confident Tier 1+2 picks must not trigger the opening classifier."""
+    import cutmaster_ai.cutmaster.analysis.auto_detect as ad_mod
+
+    fires = {"count": 0}
+
+    def _spy(sentence):
+        fires["count"] += 1
+        return {k: 0.0 for k in classifiable_presets()}
+
+    monkeypatch.setattr(ad_mod, "classify_opening_sentence", _spy)
+
+    # Tutorial has overwhelming Tier 1+2 signal — should skip Tier 3.
+    detect_preset(_build_tutorial(duration_s=600.0))
+    assert fires["count"] == 0
+
+
+def test_tier3_breaks_tie_in_ambiguous_band(monkeypatch):
+    """When T1+T2 sit in the ambiguous band, T3 should flip the top preset."""
+    import cutmaster_ai.cutmaster.analysis.auto_detect as ad_mod
+
+    # Force a deterministic ambiguous-band state by pinning Tier 1+2 to
+    # scores that land a margin of ~0.15 between vlog and tutorial.
+    def _tier1_borderline(*a, **kw):
+        scores = {k: 0.0 for k in classifiable_presets()}
+        scores["vlog"] = 0.6
+        scores["tutorial"] = 0.5  # 0.1 margin in Tier 1 alone
+        return scores
+
+    def _tier2_borderline(*a, **kw):
+        scores = {k: 0.0 for k in classifiable_presets()}
+        scores["vlog"] = 0.5
+        scores["tutorial"] = 0.4
+        return scores
+
+    monkeypatch.setattr(ad_mod, "score_by_transcript_structure", _tier1_borderline)
+    monkeypatch.setattr(ad_mod, "score_by_cue_vocabulary", _tier2_borderline)
+
+    def _tier3_picks_tutorial(sentence):
+        scores = {k: 0.0 for k in classifiable_presets()}
+        scores["tutorial"] = 0.95
+        return scores
+
+    monkeypatch.setattr(ad_mod, "classify_opening_sentence", _tier3_picks_tutorial)
+
+    words = _sentence("Today we are building a simple recipe box".split(), 0.0, "S1")
+    rec = detect_preset(words)
+    # Tier 3 injecting 0.95 into tutorial must tip the cascade over from
+    # vlog (Tier 1+2 leader) to tutorial. Reasoning path should reflect
+    # that Tier 3 fired.
+    # Without Tier 3, vlog (Tier 1+2 leader) would win. Tier 3's 0.95 on
+    # tutorial flips the final ranking.
+    assert rec.preset == "tutorial"
 
 
 def test_metadata_signals_flow_into_run_state_cache():

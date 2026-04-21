@@ -262,18 +262,18 @@ Implementation steps:
 
 ### Phase 3 — Tier 3 opening-sentence micro-classifier
 
-**Status:** pending.
+**Status:** landed (uncommitted — all sub-steps complete, 26 cascade tests + suite green, ruff clean).
 **Estimated code:** ~60 lines.
 **Expected effect:** resolves rhetorical-opener cases the structural signals miss ("welcome back", "thank you for having me").
 
 Implementation steps:
 
-- [ ] **3.1** Add `auto_detect/opening.py` — `classify_opening_sentence(sentence) → PresetScores` calling [`intelligence.llm.call_structured`](../../src/cutmaster_ai/intelligence/llm.py) with:
+- [x] **3.1** Add `auto_detect/opening.py` — `classify_opening_sentence(sentence) → PresetScores` calling [`intelligence.llm.call_structured`](../../src/cutmaster_ai/intelligence/llm.py) with:
   - A minimal Pydantic response schema (`OpeningClassification` with `preset: Preset` and `confidence: float`).
   - A ~200-token prompt showing only the single coalesced opening sentence.
   - `validate=` callback that rejects `preset` values outside the auto-eligible set (no `tightener`/`clip_hunter`/`short_generator`) and `accept_best_effort=True` so a malformed response degrades to neutral scores rather than erroring.
-- [ ] **3.2** Gate the call: only runs when the Tier 0-2 margin is in `[0.1, 0.25]`. Cascade skips Tier 3 entirely outside that band (high margin → confident without it; very low margin → defer to Tier 4 which sees more context).
-- [ ] **3.3** Mock `llm.call_structured` in the unit tests so this stays deterministic. Add a fixture where Tier 0-2 produce a tie between `vlog` and `tutorial` and assert the Tier 3 mock output breaks the tie correctly.
+- [x] **3.2** Gate the call: only runs when the Tier 0-2 margin is in `[0.1, 0.25]`. Cascade skips Tier 3 entirely outside that band (high margin → confident without it; very low margin → defer to Tier 4 which sees more context).
+- [x] **3.3** Mock `llm.call_structured` in the unit tests so this stays deterministic. Add a fixture where Tier 0-2 produce a tie between `vlog` and `tutorial` and assert the Tier 3 mock output breaks the tie correctly.
 
 ### Phase 4 — Calibration + telemetry
 

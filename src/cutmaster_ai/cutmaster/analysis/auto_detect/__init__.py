@@ -32,8 +32,10 @@ from ...data.presets import PRESETS, Preset, get_preset
 from .._sentences import coalesce_to_sentences as _coalesce_to_sentences
 from .cue_vocab import score_by_cue_vocabulary
 from .metadata import score_by_metadata
+from .opening import classify_opening_sentence
 from .scoring import (
     PresetScores,
+    is_ambiguous_band,
     is_high_confidence,
     margin_to_confidence,
     merge,
@@ -78,6 +80,16 @@ class PresetRecommendation(BaseModel):
 # ---------------------------------------------------------------------------
 # Deterministic signals
 # ---------------------------------------------------------------------------
+
+
+def _first_sentence_text(transcript: list[dict]) -> str:
+    """Return the first coalesced sentence's text, or "" when unavailable."""
+    if not transcript:
+        return ""
+    sentences = _coalesce_to_sentences(transcript[: min(len(transcript), 80)])
+    if not sentences:
+        return ""
+    return str(sentences[0].get("text", "")).strip()
 
 
 def _duration_s(transcript: list[dict]) -> float:
@@ -437,7 +449,8 @@ def detect_preset(
     t0 = score_by_metadata(run_state) if run_state else empty_scores()
     t1 = score_by_transcript_structure(transcript, scrub_counts=scrub_counts)
     t2 = score_by_cue_vocabulary(transcript)
-    t3 = empty_scores()  # opening-sentence classifier — Phase 3
+    t3: PresetScores = empty_scores()
+    tier3_fired = False
 
     signals = compute_signals(transcript, scrub_counts)
     combined = merge((t0, t1, t2, t3))
@@ -456,6 +469,24 @@ def detect_preset(
     second = ranked[1] if len(ranked) > 1 else (top[0], 0.0)
     margin = top[1] - second[1]
 
+    # Tier 3 — opening-sentence micro-classifier. Only fires in the
+    # ambiguous band [0.1, 0.25): confident picks don't need it, and
+    # very low margins should defer to Tier 4's full-band view instead.
+    if is_ambiguous_band(margin):
+        opening = _first_sentence_text(transcript)
+        if opening:
+            log.info(
+                "autodetect: margin %.2f ambiguous — invoking Tier 3 opening-sentence classifier",
+                margin,
+            )
+            t3 = classify_opening_sentence(opening)
+            tier3_fired = any(v > 0 for v in t3.values())
+            combined = merge((t0, t1, t2, t3))
+            ranked = top_n(combined, n=3)
+            top = ranked[0]
+            second = ranked[1] if len(ranked) > 1 else (top[0], 0.0)
+            margin = top[1] - second[1]
+
     n_speakers = signals["speaker_count"]
     turns = signals["speaker_turn_count"]
 
@@ -464,11 +495,16 @@ def detect_preset(
         rec = PresetRecommendation(
             preset=chosen,
             confidence=margin_to_confidence(margin),
-            reasoning=_cascade_reasoning(top, second, signals, path="tiers 1+2"),
+            reasoning=_cascade_reasoning(
+                top,
+                second,
+                signals,
+                path="tiers 0-3" if tier3_fired else "tiers 0-2",
+            ),
             suggested_target_length_s=_suggested_target_length(chosen, duration_s),
             alternatives=_alternatives_for(combined, chosen, high_conf=True),
         )
-        _cache_recommendation(run_state, signals, t0, t1, t2, rec)
+        _cache_recommendation(run_state, signals, t0, t1, t2, t3, rec)
         log.info(
             "autodetect: %s (conf %.2f, margin %.2f) via tiers 1+2 — no LLM call",
             chosen,
@@ -508,7 +544,7 @@ def detect_preset(
             alternatives=_alternatives_for(combined, chosen, high_conf=False),
         )
 
-    _cache_recommendation(run_state, signals, t0, t1, t2, rec)
+    _cache_recommendation(run_state, signals, t0, t1, t2, t3, rec)
     return rec
 
 
@@ -518,6 +554,7 @@ def _cache_recommendation(
     t0: PresetScores,
     t1: PresetScores,
     t2: PresetScores,
+    t3: PresetScores,
     rec: PresetRecommendation,
 ) -> None:
     """Store the cascade outputs on run state so re-entry is free.
@@ -533,6 +570,7 @@ def _cache_recommendation(
         "tier0": t0,
         "tier1": t1,
         "tier2": t2,
+        "tier3": t3,
         "recommendation": rec.model_dump(),
     }
     # Persist only if the run has an id — some test harnesses pass a
