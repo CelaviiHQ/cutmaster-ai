@@ -13,7 +13,7 @@ from ..resolve import _boilerplate, _collect_clips_recursive
 
 @mcp.tool
 @safe_resolve_call
-def celavii_conform_timeline(
+def cutmaster_conform_timeline(
     timeline_path: str,
     media_path: str = "",
     relink: bool = True,
@@ -86,7 +86,7 @@ def celavii_conform_timeline(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_relink_offline_clips(
+def cutmaster_relink_offline_clips(
     media_path: str,
     bin_path: str = "",
 ) -> str:
@@ -147,7 +147,7 @@ def celavii_relink_offline_clips(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_verify_timeline_media() -> str:
+def cutmaster_verify_timeline_media() -> str:
     """Verify that all clips in the current timeline are online.
 
     Reports any offline or missing media with clip names and track positions.

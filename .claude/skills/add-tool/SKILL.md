@@ -33,7 +33,7 @@ Use this skill to create a new tool for the Celavii-Resolve MCP server.
 ```python
 @mcp.tool
 @safe_resolve_call
-def celavii_your_tool_name(param: str, optional: int = 1) -> str:
+def cutmaster_your_tool_name(param: str, optional: int = 1) -> str:
     """One-line description of what this tool does.
 
     Args:
@@ -46,7 +46,7 @@ def celavii_your_tool_name(param: str, optional: int = 1) -> str:
 ```
 
 3. **Conventions to follow:**
-   - Prefix with `celavii_` (namespace)
+   - Prefix with `cutmaster_` (namespace)
    - Return `str` always — never dicts or lists
    - Use `_boilerplate()` for Resolve connection
    - Guard None: `items = thing.GetList() or []`

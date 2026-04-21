@@ -15,7 +15,7 @@ from .timeline_edit import _get_timeline_item
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_cdl(
+def cutmaster_get_cdl(
     track_type: str = "video",
     track_index: int = 1,
     item_index: int = 0,
@@ -32,7 +32,7 @@ def celavii_get_cdl(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_cdl(
+def cutmaster_set_cdl(
     track_type: str = "video",
     track_index: int = 1,
     item_index: int = 0,
@@ -75,7 +75,7 @@ def celavii_set_cdl(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_node_graph(
+def cutmaster_get_node_graph(
     track_type: str = "video",
     track_index: int = 1,
     item_index: int = 0,
@@ -121,7 +121,7 @@ def celavii_get_node_graph(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_add_node(
+def cutmaster_add_node(
     track_type: str = "video",
     track_index: int = 1,
     item_index: int = 0,
@@ -143,7 +143,7 @@ def celavii_add_node(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_node_label(
+def cutmaster_set_node_label(
     node_index: int,
     label: str,
     track_type: str = "video",
@@ -168,7 +168,7 @@ def celavii_set_node_label(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_node_enabled(
+def cutmaster_set_node_enabled(
     node_index: int,
     enabled: bool,
     track_type: str = "video",
@@ -194,7 +194,7 @@ def celavii_set_node_enabled(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_lut(
+def cutmaster_set_lut(
     node_index: int,
     lut_path: str,
     track_type: str = "video",
@@ -219,7 +219,7 @@ def celavii_set_lut(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_lut(
+def cutmaster_get_lut(
     node_index: int,
     track_type: str = "video",
     track_index: int = 1,
@@ -242,7 +242,7 @@ def celavii_get_lut(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_node_cache_mode(
+def cutmaster_set_node_cache_mode(
     node_index: int,
     mode: str = "Smart",
     track_type: str = "video",
@@ -275,7 +275,7 @@ def celavii_set_node_cache_mode(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_copy_grades(
+def cutmaster_copy_grades(
     source_track_type: str = "video",
     source_track_index: int = 1,
     source_item_index: int = 0,
@@ -314,7 +314,7 @@ def celavii_copy_grades(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_grab_still() -> str:
+def cutmaster_grab_still() -> str:
     """Grab a still from the current frame in the timeline."""
     _, project, _ = _boilerplate()
     tl = project.GetCurrentTimeline()
@@ -326,7 +326,7 @@ def celavii_grab_still() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_apply_grade_from_drx(
+def cutmaster_apply_grade_from_drx(
     drx_path: str,
     grade_index: int = 0,
     track_type: str = "video",

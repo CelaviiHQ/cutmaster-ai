@@ -20,7 +20,7 @@ from ..resolve import (
 
 @mcp.tool
 @safe_resolve_call
-def celavii_list_bins() -> str:
+def cutmaster_list_bins() -> str:
     """List all bins (folders) in the media pool with clip counts."""
     _, _, mp = _boilerplate()
     bins = _enumerate_bins(mp.GetRootFolder())
@@ -29,7 +29,7 @@ def celavii_list_bins() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_current_bin() -> str:
+def cutmaster_get_current_bin() -> str:
     """Get the currently selected bin in the media pool."""
     _, _, mp = _boilerplate()
     folder = mp.GetCurrentFolder()
@@ -48,7 +48,7 @@ def celavii_get_current_bin() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_current_bin(bin_path: str) -> str:
+def cutmaster_set_current_bin(bin_path: str) -> str:
     """Set the current bin by name or path (e.g. 'Master/Footage/Day1').
 
     Args:
@@ -64,7 +64,7 @@ def celavii_set_current_bin(bin_path: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_create_bin(name: str, parent_path: str = "") -> str:
+def cutmaster_create_bin(name: str, parent_path: str = "") -> str:
     """Create a new bin (folder) in the media pool.
 
     Args:
@@ -84,7 +84,7 @@ def celavii_create_bin(name: str, parent_path: str = "") -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_delete_bins(bin_names: list[str]) -> str:
+def cutmaster_delete_bins(bin_names: list[str]) -> str:
     """Delete bins by name. Bins must be empty.
 
     Args:
@@ -111,7 +111,7 @@ def celavii_delete_bins(bin_names: list[str]) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_move_bins(bin_names: list[str], target_path: str) -> str:
+def cutmaster_move_bins(bin_names: list[str], target_path: str) -> str:
     """Move bins to a different parent bin.
 
     Args:
@@ -132,7 +132,7 @@ def celavii_move_bins(bin_names: list[str], target_path: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_refresh_bins() -> str:
+def cutmaster_refresh_bins() -> str:
     """Refresh the media pool folder structure."""
     _, _, mp = _boilerplate()
     result = mp.RefreshFolders()
@@ -146,7 +146,7 @@ def celavii_refresh_bins() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_list_clips(bin_path: str = "") -> str:
+def cutmaster_list_clips(bin_path: str = "") -> str:
     """List clips in a bin. Defaults to the current bin.
 
     Args:
@@ -182,7 +182,7 @@ def celavii_list_clips(bin_path: str = "") -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_search_clips(query: str, bin_path: str = "") -> str:
+def cutmaster_search_clips(query: str, bin_path: str = "") -> str:
     """Search for clips by name substring (case-insensitive).
 
     Args:
@@ -211,7 +211,7 @@ def celavii_search_clips(query: str, bin_path: str = "") -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_clip_info(clip_name: str) -> str:
+def cutmaster_get_clip_info(clip_name: str) -> str:
     """Get all properties and metadata for a media pool clip.
 
     Args:
@@ -235,7 +235,7 @@ def celavii_get_clip_info(clip_name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_clip_metadata(clip_name: str, key: str, value: str) -> str:
+def cutmaster_set_clip_metadata(clip_name: str, key: str, value: str) -> str:
     """Set a metadata field on a media pool clip.
 
     Args:
@@ -253,7 +253,7 @@ def celavii_set_clip_metadata(clip_name: str, key: str, value: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_clip_property(clip_name: str, key: str, value: str) -> str:
+def cutmaster_set_clip_property(clip_name: str, key: str, value: str) -> str:
     """Set a property on a media pool clip.
 
     Args:
@@ -271,7 +271,7 @@ def celavii_set_clip_property(clip_name: str, key: str, value: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_import_media(file_paths: list[str], bin_path: str = "") -> str:
+def cutmaster_import_media(file_paths: list[str], bin_path: str = "") -> str:
     """Import media files into the media pool.
 
     Args:
@@ -292,7 +292,7 @@ def celavii_import_media(file_paths: list[str], bin_path: str = "") -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_delete_clips(clip_names: list[str]) -> str:
+def cutmaster_delete_clips(clip_names: list[str]) -> str:
     """Delete clips from the media pool by name.
 
     Args:
@@ -318,7 +318,7 @@ def celavii_delete_clips(clip_names: list[str]) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_move_clips(clip_names: list[str], target_bin: str) -> str:
+def cutmaster_move_clips(clip_names: list[str], target_bin: str) -> str:
     """Move clips to a different bin.
 
     Args:
@@ -338,7 +338,7 @@ def celavii_move_clips(clip_names: list[str], target_bin: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_clip_color(clip_name: str, color: str) -> str:
+def cutmaster_set_clip_color(clip_name: str, color: str) -> str:
     """Set the clip color label on a media pool clip.
 
     Args:
@@ -360,7 +360,7 @@ def celavii_set_clip_color(clip_name: str, color: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_clear_clip_color(clip_name: str) -> str:
+def cutmaster_clear_clip_color(clip_name: str) -> str:
     """Clear the clip color label from a media pool clip.
 
     Args:
@@ -376,7 +376,7 @@ def celavii_clear_clip_color(clip_name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_relink_clips(clip_names: list[str], new_path: str) -> str:
+def cutmaster_relink_clips(clip_names: list[str], new_path: str) -> str:
     """Relink clips to a new media path.
 
     Args:
@@ -393,7 +393,7 @@ def celavii_relink_clips(clip_names: list[str], new_path: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_unlink_clips(clip_names: list[str]) -> str:
+def cutmaster_unlink_clips(clip_names: list[str]) -> str:
     """Unlink clips from their media files (make offline).
 
     Args:
@@ -409,7 +409,7 @@ def celavii_unlink_clips(clip_names: list[str]) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_link_proxy_media(clip_name: str, proxy_path: str) -> str:
+def cutmaster_link_proxy_media(clip_name: str, proxy_path: str) -> str:
     """Link proxy media to a clip.
 
     Args:
@@ -426,7 +426,7 @@ def celavii_link_proxy_media(clip_name: str, proxy_path: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_unlink_proxy_media(clip_name: str) -> str:
+def cutmaster_unlink_proxy_media(clip_name: str) -> str:
     """Unlink proxy media from a clip.
 
     Args:
@@ -442,7 +442,7 @@ def celavii_unlink_proxy_media(clip_name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_replace_clip(clip_name: str, new_path: str) -> str:
+def cutmaster_replace_clip(clip_name: str, new_path: str) -> str:
     """Replace a clip's media with a different file.
 
     Args:
@@ -459,7 +459,7 @@ def celavii_replace_clip(clip_name: str, new_path: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_export_metadata(path: str, clip_names: list[str] | None = None) -> str:
+def cutmaster_export_metadata(path: str, clip_names: list[str] | None = None) -> str:
     """Export media pool metadata to a CSV file.
 
     Args:

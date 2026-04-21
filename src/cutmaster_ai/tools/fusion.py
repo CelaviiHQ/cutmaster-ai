@@ -14,7 +14,7 @@ from .timeline_edit import _get_timeline_item
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_fusion_comp_count(
+def cutmaster_get_fusion_comp_count(
     track_type: str = "video",
     track_index: int = 1,
     item_index: int = 0,
@@ -29,7 +29,7 @@ def celavii_get_fusion_comp_count(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_add_fusion_comp(
+def cutmaster_add_fusion_comp(
     track_type: str = "video",
     track_index: int = 1,
     item_index: int = 0,
@@ -43,7 +43,7 @@ def celavii_add_fusion_comp(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_import_fusion_comp(
+def cutmaster_import_fusion_comp(
     path: str,
     track_type: str = "video",
     track_index: int = 1,
@@ -62,7 +62,7 @@ def celavii_import_fusion_comp(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_export_fusion_comp(
+def cutmaster_export_fusion_comp(
     path: str,
     comp_index: int = 1,
     track_type: str = "video",
@@ -83,7 +83,7 @@ def celavii_export_fusion_comp(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_delete_fusion_comp(
+def cutmaster_delete_fusion_comp(
     comp_name: str,
     track_type: str = "video",
     track_index: int = 1,
@@ -102,7 +102,7 @@ def celavii_delete_fusion_comp(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_load_fusion_comp(
+def cutmaster_load_fusion_comp(
     comp_name: str,
     track_type: str = "video",
     track_index: int = 1,
@@ -121,7 +121,7 @@ def celavii_load_fusion_comp(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_rename_fusion_comp(
+def cutmaster_rename_fusion_comp(
     old_name: str,
     new_name: str,
     track_type: str = "video",
@@ -156,7 +156,7 @@ def _get_comp(project, track_type, track_index, item_index, comp_index=1):
 
 @mcp.tool
 @safe_resolve_call
-def celavii_fusion_add_tool(
+def cutmaster_fusion_add_tool(
     tool_type: str,
     comp_index: int = 1,
     track_type: str = "video",
@@ -183,7 +183,7 @@ def celavii_fusion_add_tool(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_fusion_find_tool(
+def cutmaster_fusion_find_tool(
     tool_name: str,
     comp_index: int = 1,
     track_type: str = "video",
@@ -210,7 +210,7 @@ def celavii_fusion_find_tool(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_fusion_delete_tool(
+def cutmaster_fusion_delete_tool(
     tool_name: str,
     comp_index: int = 1,
     track_type: str = "video",
@@ -233,7 +233,7 @@ def celavii_fusion_delete_tool(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_fusion_connect(
+def cutmaster_fusion_connect(
     output_tool: str,
     input_tool: str,
     input_name: str = "Input",
@@ -267,7 +267,7 @@ def celavii_fusion_connect(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_fusion_set_input(
+def cutmaster_fusion_set_input(
     tool_name: str,
     input_name: str,
     value: str,
@@ -305,7 +305,7 @@ def celavii_fusion_set_input(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_fusion_get_input(
+def cutmaster_fusion_get_input(
     tool_name: str,
     input_name: str,
     comp_index: int = 1,
@@ -333,7 +333,7 @@ def celavii_fusion_get_input(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_fusion_get_tool_list(
+def cutmaster_fusion_get_tool_list(
     comp_index: int = 1,
     track_type: str = "video",
     track_index: int = 1,
@@ -356,7 +356,7 @@ def celavii_fusion_get_tool_list(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_fusion_get_comp_info(
+def cutmaster_fusion_get_comp_info(
     comp_index: int = 1,
     track_type: str = "video",
     track_index: int = 1,
@@ -380,7 +380,7 @@ def celavii_fusion_get_comp_info(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_fusion_render(
+def cutmaster_fusion_render(
     comp_index: int = 1,
     track_type: str = "video",
     track_index: int = 1,
@@ -401,7 +401,7 @@ def celavii_fusion_render(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_fusion_undo(
+def cutmaster_fusion_undo(
     comp_index: int = 1,
     track_type: str = "video",
     track_index: int = 1,
@@ -409,7 +409,7 @@ def celavii_fusion_undo(
 ) -> str:
     """Start an undo group in a Fusion composition.
 
-    Call celavii_fusion_end_undo after making changes to group them.
+    Call cutmaster_fusion_end_undo after making changes to group them.
     """
     _, project, _ = _boilerplate()
     _, comp = _get_comp(project, track_type, track_index, item_index, comp_index)
@@ -419,7 +419,7 @@ def celavii_fusion_undo(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_fusion_end_undo(
+def cutmaster_fusion_end_undo(
     comp_index: int = 1,
     track_type: str = "video",
     track_index: int = 1,
@@ -439,7 +439,7 @@ def celavii_fusion_end_undo(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_insert_fusion_comp_into_timeline() -> str:
+def cutmaster_insert_fusion_comp_into_timeline() -> str:
     """Insert a new Fusion composition clip at the playhead in the timeline."""
     _, project, _ = _boilerplate()
     tl = project.GetCurrentTimeline()

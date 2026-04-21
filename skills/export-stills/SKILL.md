@@ -28,14 +28,14 @@ Export stills from the current gallery album to image files.
 
 ## Workflow
 
-1. Call `celavii_list_stills` to show what's in the current album
-2. If no stills, inform the user and suggest `celavii_grab_still`
-3. Call `celavii_export_stills` with the output path and format
+1. Call `cutmaster_list_stills` to show what's in the current album
+2. If no stills, inform the user and suggest `cutmaster_grab_still`
+3. Call `cutmaster_export_stills` with the output path and format
 4. Report: "Exported X stills to [path]"
 
 ## Selective Export
 
 If the user wants to export specific stills:
-1. Show the still list with indices via `celavii_list_stills`
+1. Show the still list with indices via `cutmaster_list_stills`
 2. Ask which indices to export
-3. Call `celavii_export_stills` with the still_indices parameter
+3. Call `cutmaster_export_stills` with the still_indices parameter

@@ -111,7 +111,7 @@ def append_subclips_with_ranges(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_append_subclips_with_ranges(segments: list[dict]) -> str:
+def cutmaster_append_subclips_with_ranges(segments: list[dict]) -> str:
     """Append a batch of ranged subclips to the current timeline.
 
     Each segment must contain ``source_item_id``, ``start_frame``, and

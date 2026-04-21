@@ -12,7 +12,7 @@ from ..resolve import _boilerplate
 
 @mcp.tool
 @safe_resolve_call
-def celavii_export_edl(output_path: str) -> str:
+def cutmaster_export_edl(output_path: str) -> str:
     """Export the current timeline as an EDL (Edit Decision List).
 
     Args:
@@ -28,7 +28,7 @@ def celavii_export_edl(output_path: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_export_fcpxml(output_path: str) -> str:
+def cutmaster_export_fcpxml(output_path: str) -> str:
     """Export the current timeline as FCPXML (Final Cut Pro XML).
 
     Args:
@@ -44,7 +44,7 @@ def celavii_export_fcpxml(output_path: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_export_aaf(output_path: str) -> str:
+def cutmaster_export_aaf(output_path: str) -> str:
     """Export the current timeline as AAF (Advanced Authoring Format).
 
     Args:
@@ -60,7 +60,7 @@ def celavii_export_aaf(output_path: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_export_otio(output_path: str) -> str:
+def cutmaster_export_otio(output_path: str) -> str:
     """Export the current timeline as OTIO (OpenTimelineIO).
 
     Args:
@@ -76,7 +76,7 @@ def celavii_export_otio(output_path: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_export_csv(output_path: str) -> str:
+def cutmaster_export_csv(output_path: str) -> str:
     """Export the current timeline as CSV.
 
     Args:
@@ -92,7 +92,7 @@ def celavii_export_csv(output_path: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_import_timeline_file(
+def cutmaster_import_timeline_file(
     path: str,
     source_clips_path: str = "",
 ) -> str:

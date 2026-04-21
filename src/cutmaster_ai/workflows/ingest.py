@@ -15,7 +15,7 @@ from ..resolve import _boilerplate, _find_bin
 
 @mcp.tool
 @safe_resolve_call
-def celavii_ingest_media(
+def cutmaster_ingest_media(
     source_path: str,
     target_bin: str = "",
     create_bin: bool = False,
@@ -132,7 +132,7 @@ def celavii_ingest_media(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_ingest_with_bins(
+def cutmaster_ingest_with_bins(
     source_path: str,
     bin_by: str = "subfolder",
 ) -> str:

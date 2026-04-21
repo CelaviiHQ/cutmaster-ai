@@ -41,7 +41,7 @@ range. The CST then converts to Rec.709, and the LUT adds a subtle film look on 
 - Save as a preset
 
 ### Step 2 — Setup (automated)
-Run `celavii_setup_log_grade` with your camera format. This will:
+Run `cutmaster_setup_log_grade` with your camera format. This will:
 - Create 6 serial nodes labeled: WB · EXP · SAT · CURVES · CST · LUT
 - Apply a log-to-Rec.709 CST LUT to node 5 (camera-specific)
 - Apply your look LUT to node 6 with key output gain ~0.20
@@ -125,7 +125,7 @@ These cameras use log formats **not** in Resolve's built-in LUT library. The too
 If you have a manufacturer LUT (e.g. downloaded DJI D-Log M LUT), pass it directly:
 
 ```
-celavii_setup_log_grade(
+cutmaster_setup_log_grade(
   camera="osmo pocket 3",
   cst_lut_path="/path/to/DJI_DLog_M_to_Rec709.cube"
 )
@@ -141,7 +141,7 @@ When the user runs `/grade-log`, perform these steps in order:
    - Which look LUT? (default: decsfilm)
    - LUT gain? (default: 0.20)
 
-2. Call `celavii_setup_log_grade` with the resolved parameters
+2. Call `cutmaster_setup_log_grade` with the resolved parameters
 
 3. Report back:
    - Which nodes were created
@@ -149,12 +149,12 @@ When the user runs `/grade-log`, perform these steps in order:
    - Which look LUT was applied with what gain
    - The next-steps checklist
 
-4. Offer to use `celavii_color_assist` for AI-powered CDL suggestions on the active clip.
+4. Offer to use `cutmaster_color_assist` for AI-powered CDL suggestions on the active clip.
 
 ## Tips
 
 - **Less is more**: If it looks obviously color-graded, you've gone too far
 - **LUT gain 0.10–0.25**: The exact number matters less than "barely visible"
-- **Copy grades**: After grading one clip, use `celavii_copy_grade_to_all` or Cmd+C → Cmd+V in Resolve
-- **Grab stills**: Use `celavii_grab_still` to snapshot grades for reference
-- **AI assist**: Use `celavii_color_assist` after setting up nodes for Gemini CDL suggestions
+- **Copy grades**: After grading one clip, use `cutmaster_copy_grade_to_all` or Cmd+C → Cmd+V in Resolve
+- **Grab stills**: Use `cutmaster_grab_still` to snapshot grades for reference
+- **AI assist**: Use `cutmaster_color_assist` after setting up nodes for Gemini CDL suggestions

@@ -24,16 +24,16 @@ Create a rough-cut timeline from media pool clips.
 
 ### From a Bin
 1. Parse timeline name and bin path
-2. Call `celavii_quick_assembly` with timeline_name and bin_path
+2. Call `cutmaster_quick_assembly` with timeline_name and bin_path
 3. Report: "Timeline 'X' created with Y clips"
 
 ### From Specific Clips
 1. Parse clip names from the user's request
-2. Call `celavii_quick_assembly` with timeline_name and clip_names list
+2. Call `cutmaster_quick_assembly` with timeline_name and clip_names list
 3. Report results and any clips not found
 
 ### With Track Configuration
-1. Call `celavii_assembly_from_bin` with timeline_name, bin_path, video_tracks, audio_tracks
+1. Call `cutmaster_assembly_from_bin` with timeline_name, bin_path, video_tracks, audio_tracks
 2. This creates the timeline, adds tracks, and names them V1/V2/A1/A2/etc.
 3. Report the final track configuration
 

@@ -13,7 +13,7 @@ from ..resolve import _boilerplate
 
 @mcp.tool
 @safe_resolve_call
-def celavii_create_color_group(name: str) -> str:
+def cutmaster_create_color_group(name: str) -> str:
     """Create a new color group.
 
     Args:
@@ -26,7 +26,7 @@ def celavii_create_color_group(name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_delete_color_group(name: str) -> str:
+def cutmaster_delete_color_group(name: str) -> str:
     """Delete a color group by name.
 
     Args:
@@ -43,7 +43,7 @@ def celavii_delete_color_group(name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_color_group_clips(
+def cutmaster_get_color_group_clips(
     group_name: str,
 ) -> str:
     """Get all timeline items assigned to a color group.
@@ -73,7 +73,7 @@ def celavii_get_color_group_clips(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_pre_clip_graph(group_name: str) -> str:
+def cutmaster_get_pre_clip_graph(group_name: str) -> str:
     """Get the pre-clip node graph for a color group.
 
     Args:
@@ -102,7 +102,7 @@ def celavii_get_pre_clip_graph(group_name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_post_clip_graph(group_name: str) -> str:
+def cutmaster_get_post_clip_graph(group_name: str) -> str:
     """Get the post-clip node graph for a color group.
 
     Args:
@@ -131,7 +131,7 @@ def celavii_get_post_clip_graph(group_name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_group_graph_lut(
+def cutmaster_set_group_graph_lut(
     group_name: str,
     node_index: int,
     lut_path: str,
@@ -166,7 +166,7 @@ def celavii_set_group_graph_lut(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_add_group_graph_node(
+def cutmaster_add_group_graph_node(
     group_name: str,
     graph_type: str = "pre",
 ) -> str:

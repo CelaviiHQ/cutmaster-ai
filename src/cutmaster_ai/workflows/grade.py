@@ -204,7 +204,7 @@ _NODE_LABELS = ["WB", "EXP", "SAT", "CURVES", "CST", "LUT"]
 
 @mcp.tool
 @safe_resolve_call
-def celavii_quick_grade(
+def cutmaster_quick_grade(
     lut_path: str = "",
     node_label: str = "LUT",
     slope_r: float = 1.0,
@@ -319,7 +319,7 @@ def celavii_quick_grade(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_batch_apply_lut(
+def cutmaster_batch_apply_lut(
     lut_path: str,
     track_type: str = "video",
     track_index: int = 1,
@@ -371,7 +371,7 @@ def celavii_batch_apply_lut(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_copy_grade_to_all(
+def cutmaster_copy_grade_to_all(
     source_item_index: int = 0,
     track_type: str = "video",
     track_index: int = 1,
@@ -526,7 +526,7 @@ def _setup_6nodes_on_item(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_setup_log_grade(
+def cutmaster_setup_log_grade(
     camera: str = "sony-slog3",
     look_lut: str = "decsfilm",
     lut_gain: float = 0.20,
@@ -630,7 +630,7 @@ def celavii_setup_log_grade(
                 manual_cst_info = CAMERA_MANUAL_CST[cam_key]
                 warnings_global.append(
                     f"⚠ '{camera}' has no built-in Resolve CST LUT. "
-                    f"Install one with celavii_install_lut_file() or see "
+                    f"Install one with cutmaster_install_lut_file() or see "
                     f"'manual_cst_instructions' for how to set up node 5."
                 )
             elif cam_key not in (None, "none", "manual", "skip"):
@@ -729,7 +729,7 @@ def celavii_setup_log_grade(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_list_cst_luts() -> str:
+def cutmaster_list_cst_luts() -> str:
     """List all supported cameras and CST LUTs for the 6-node log grading workflow.
 
     Shows:
@@ -771,7 +771,7 @@ def celavii_list_cst_luts() -> str:
             "custom_luts": custom,
             "camera_aliases": sorted(_CAMERA_ALIASES.keys()),
             "tip": (
-                "Pass cst_lut_path to celavii_setup_log_grade to use any .cube file "
+                "Pass cst_lut_path to cutmaster_setup_log_grade to use any .cube file "
                 "as the CST for cameras not listed here."
             ),
         },

@@ -7,7 +7,7 @@ from ..resolve import _boilerplate, _require_studio, get_resolve
 
 @mcp.tool
 @safe_resolve_call
-def celavii_insert_audio_at_playhead(
+def cutmaster_insert_audio_at_playhead(
     file_path: str,
     start_offset: int = 0,
     duration: int = 0,
@@ -26,7 +26,7 @@ def celavii_insert_audio_at_playhead(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_voice_isolation(
+def cutmaster_voice_isolation(
     track_type: str = "audio",
     track_index: int = 1,
 ) -> str:
@@ -55,7 +55,7 @@ def celavii_voice_isolation(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_audio_track_info() -> str:
+def cutmaster_get_audio_track_info() -> str:
     """Get information about all audio tracks in the current timeline."""
     import json
 
@@ -83,7 +83,7 @@ def celavii_get_audio_track_info() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_audio_track_volume(
+def cutmaster_set_audio_track_volume(
     track_index: int,
     volume: float,
 ) -> str:

@@ -98,7 +98,7 @@ def detect_vfr(path: Path, tolerance: float = 0.01) -> dict:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_detect_vfr(path: str, tolerance: float = 0.01) -> str:
+def cutmaster_detect_vfr(path: str, tolerance: float = 0.01) -> str:
     """Detect whether a media file is variable frame rate (VFR).
 
     Args:

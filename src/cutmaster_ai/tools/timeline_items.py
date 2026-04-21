@@ -15,7 +15,7 @@ from .timeline_edit import _get_timeline_item
 
 @mcp.tool
 @safe_resolve_call
-def celavii_list_versions(
+def cutmaster_list_versions(
     version_type: str = "local",
     track_type: str = "video",
     track_index: int = 1,
@@ -47,7 +47,7 @@ def celavii_list_versions(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_add_version(
+def cutmaster_add_version(
     name: str,
     version_type: str = "local",
     track_type: str = "video",
@@ -68,7 +68,7 @@ def celavii_add_version(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_load_version(
+def cutmaster_load_version(
     name: str,
     version_type: str = "local",
     track_type: str = "video",
@@ -89,7 +89,7 @@ def celavii_load_version(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_delete_version(
+def cutmaster_delete_version(
     name: str,
     version_type: str = "local",
     track_type: str = "video",
@@ -110,7 +110,7 @@ def celavii_delete_version(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_rename_version(
+def cutmaster_rename_version(
     old_name: str,
     new_name: str,
     version_type: str = "local",
@@ -138,7 +138,7 @@ def celavii_rename_version(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_list_takes(
+def cutmaster_list_takes(
     track_type: str = "video",
     track_index: int = 1,
     item_index: int = 0,
@@ -157,7 +157,7 @@ def celavii_list_takes(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_select_take(
+def cutmaster_select_take(
     take_index: int,
     track_type: str = "video",
     track_index: int = 1,
@@ -176,7 +176,7 @@ def celavii_select_take(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_finalize_take(
+def cutmaster_finalize_take(
     track_type: str = "video",
     track_index: int = 1,
     item_index: int = 0,
@@ -195,7 +195,7 @@ def celavii_finalize_take(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_add_item_flag(
+def cutmaster_add_item_flag(
     color: str,
     track_type: str = "video",
     track_index: int = 1,
@@ -214,7 +214,7 @@ def celavii_add_item_flag(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_item_flags(
+def cutmaster_get_item_flags(
     track_type: str = "video",
     track_index: int = 1,
     item_index: int = 0,
@@ -228,7 +228,7 @@ def celavii_get_item_flags(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_clear_item_flags(
+def cutmaster_clear_item_flags(
     color: str = "",
     track_type: str = "video",
     track_index: int = 1,
@@ -247,7 +247,7 @@ def celavii_clear_item_flags(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_item_clip_color(
+def cutmaster_set_item_clip_color(
     color: str,
     track_type: str = "video",
     track_index: int = 1,
@@ -273,7 +273,7 @@ def celavii_set_item_clip_color(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_list_color_groups() -> str:
+def cutmaster_list_color_groups() -> str:
     """List all color groups in the current project."""
     _, project, _ = _boilerplate()
     groups = project.GetColorGroupsList() or []
@@ -283,7 +283,7 @@ def celavii_list_color_groups() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_assign_to_color_group(
+def cutmaster_assign_to_color_group(
     group_name: str,
     track_type: str = "video",
     track_index: int = 1,
@@ -311,7 +311,7 @@ def celavii_assign_to_color_group(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_playhead_position() -> str:
+def cutmaster_get_playhead_position() -> str:
     """Get the current playhead timecode."""
     _, project, _ = _boilerplate()
     tl = project.GetCurrentTimeline()
@@ -323,7 +323,7 @@ def celavii_get_playhead_position() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_playhead_position(timecode: str) -> str:
+def cutmaster_set_playhead_position(timecode: str) -> str:
     """Set the playhead to a specific timecode.
 
     Args:
@@ -339,7 +339,7 @@ def celavii_set_playhead_position(timecode: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_current_video_item() -> str:
+def cutmaster_get_current_video_item() -> str:
     """Get the timeline item currently under the playhead."""
     _, project, _ = _boilerplate()
     tl = project.GetCurrentTimeline()

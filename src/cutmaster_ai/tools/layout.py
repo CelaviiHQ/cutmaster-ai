@@ -11,7 +11,7 @@ from ..resolve import _boilerplate, get_resolve
 
 @mcp.tool
 @safe_resolve_call
-def celavii_save_layout_preset(name: str) -> str:
+def cutmaster_save_layout_preset(name: str) -> str:
     """Save the current UI layout as a preset.
 
     Args:
@@ -26,7 +26,7 @@ def celavii_save_layout_preset(name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_load_layout_preset(name: str) -> str:
+def cutmaster_load_layout_preset(name: str) -> str:
     """Load a UI layout preset.
 
     Args:
@@ -41,7 +41,7 @@ def celavii_load_layout_preset(name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_update_layout_preset(name: str) -> str:
+def cutmaster_update_layout_preset(name: str) -> str:
     """Update an existing layout preset with the current UI state.
 
     Args:
@@ -56,7 +56,7 @@ def celavii_update_layout_preset(name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_delete_layout_preset(name: str) -> str:
+def cutmaster_delete_layout_preset(name: str) -> str:
     """Delete a layout preset.
 
     Args:
@@ -71,7 +71,7 @@ def celavii_delete_layout_preset(name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_export_layout_preset(name: str, path: str) -> str:
+def cutmaster_export_layout_preset(name: str, path: str) -> str:
     """Export a layout preset to a file.
 
     Args:
@@ -87,7 +87,7 @@ def celavii_export_layout_preset(name: str, path: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_import_layout_preset(path: str, name: str = "") -> str:
+def cutmaster_import_layout_preset(path: str, name: str = "") -> str:
     """Import a layout preset from a file.
 
     Args:
@@ -111,7 +111,7 @@ def celavii_import_layout_preset(path: str, name: str = "") -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_import_burn_in_preset(path: str) -> str:
+def cutmaster_import_burn_in_preset(path: str) -> str:
     """Import a burn-in preset from a file.
 
     Args:
@@ -126,7 +126,7 @@ def celavii_import_burn_in_preset(path: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_export_burn_in_preset(name: str, path: str) -> str:
+def cutmaster_export_burn_in_preset(name: str, path: str) -> str:
     """Export a burn-in preset to a file.
 
     Args:
@@ -147,7 +147,7 @@ def celavii_export_burn_in_preset(name: str, path: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_refresh_lut_list() -> str:
+def cutmaster_refresh_lut_list() -> str:
     """Refresh the project's LUT list (re-scan LUT directories)."""
     _, project, _ = _boilerplate()
     result = project.RefreshLUTList()
@@ -161,7 +161,7 @@ def celavii_refresh_lut_list() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_keyframe_mode() -> str:
+def cutmaster_get_keyframe_mode() -> str:
     """Get the current keyframe mode."""
     from ..constants import KEYFRAME_MODES
 
@@ -175,7 +175,7 @@ def celavii_get_keyframe_mode() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_keyframe_mode(mode: str) -> str:
+def cutmaster_set_keyframe_mode(mode: str) -> str:
     """Set the keyframe mode.
 
     Args:

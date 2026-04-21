@@ -22,12 +22,12 @@ Get editorial feedback on the current timeline.
 
 ## Workflow
 
-1. Call `celavii_get_current_timeline` to confirm a timeline is active
-2. Call `celavii_timeline_critique` with the user's focus area
+1. Call `cutmaster_get_current_timeline` to confirm a timeline is active
+2. Call `cutmaster_timeline_critique` with the user's focus area
 3. Present the AI's editorial feedback
-4. If the user wants marker suggestions, call `celavii_suggest_markers`
-5. If markers are suggested, offer to add them via `celavii_add_timeline_marker`
-6. If the user wants continuity checking, call `celavii_visual_continuity_check`
+4. If the user wants marker suggestions, call `cutmaster_suggest_markers`
+5. If markers are suggested, offer to add them via `cutmaster_add_timeline_marker`
+6. If the user wants continuity checking, call `cutmaster_visual_continuity_check`
 
 ## Review Aspects
 

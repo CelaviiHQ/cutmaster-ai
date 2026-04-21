@@ -108,7 +108,7 @@ def timeline_time_to_source(tl, seconds: float, track_index: int = 1) -> dict:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_resolve_timeline_time_to_source(
+def cutmaster_resolve_timeline_time_to_source(
     seconds: float,
     track_index: int = 1,
 ) -> str:

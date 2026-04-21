@@ -29,15 +29,15 @@ Import an editorial timeline and relink it to source media.
 
 ## Workflow
 
-1. Call `celavii_conform_timeline` with the timeline file path and media path
+1. Call `cutmaster_conform_timeline` with the timeline file path and media path
 2. Report import results: timeline name, clip count, online/offline status
-3. If offline clips remain, offer to run `celavii_relink_offline_clips` with a different path
-4. Run `celavii_verify_timeline_media` for final verification
+3. If offline clips remain, offer to run `cutmaster_relink_offline_clips` with a different path
+4. Run `cutmaster_verify_timeline_media` for final verification
 5. Report: "Conform complete — X/Y clips online"
 
 ## If Clips Are Offline
 
 Ask the user for the correct media path, then:
-1. Call `celavii_relink_offline_clips` with the new path
-2. Re-verify with `celavii_verify_timeline_media`
+1. Call `cutmaster_relink_offline_clips` with the new path
+2. Re-verify with `cutmaster_verify_timeline_media`
 3. Repeat until all clips are online or user accepts the state

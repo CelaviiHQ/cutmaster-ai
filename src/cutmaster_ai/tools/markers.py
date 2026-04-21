@@ -15,7 +15,7 @@ from .timeline_edit import _get_timeline_item
 
 @mcp.tool
 @safe_resolve_call
-def celavii_add_timeline_marker(
+def cutmaster_add_timeline_marker(
     frame: int,
     color: str = "Blue",
     name: str = "",
@@ -47,7 +47,7 @@ def celavii_add_timeline_marker(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_timeline_markers() -> str:
+def cutmaster_get_timeline_markers() -> str:
     """Get all markers on the current timeline."""
     _, project, _ = _boilerplate()
     tl = project.GetCurrentTimeline()
@@ -59,7 +59,7 @@ def celavii_get_timeline_markers() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_delete_timeline_marker_at_frame(frame: int) -> str:
+def cutmaster_delete_timeline_marker_at_frame(frame: int) -> str:
     """Delete a timeline marker at a specific frame.
 
     Args:
@@ -75,7 +75,7 @@ def celavii_delete_timeline_marker_at_frame(frame: int) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_delete_timeline_markers_by_color(color: str) -> str:
+def cutmaster_delete_timeline_markers_by_color(color: str) -> str:
     """Delete all timeline markers of a specific color.
 
     Args:
@@ -93,7 +93,7 @@ def celavii_delete_timeline_markers_by_color(color: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_update_timeline_marker_custom_data(frame: int, custom_data: str) -> str:
+def cutmaster_update_timeline_marker_custom_data(frame: int, custom_data: str) -> str:
     """Update the custom data on a timeline marker.
 
     Args:
@@ -115,7 +115,7 @@ def celavii_update_timeline_marker_custom_data(frame: int, custom_data: str) -> 
 
 @mcp.tool
 @safe_resolve_call
-def celavii_add_item_marker(
+def cutmaster_add_item_marker(
     frame: int,
     color: str = "Blue",
     name: str = "",
@@ -153,7 +153,7 @@ def celavii_add_item_marker(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_item_markers(
+def cutmaster_get_item_markers(
     track_type: str = "video",
     track_index: int = 1,
     item_index: int = 0,
@@ -167,7 +167,7 @@ def celavii_get_item_markers(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_delete_item_marker_at_frame(
+def cutmaster_delete_item_marker_at_frame(
     frame: int,
     track_type: str = "video",
     track_index: int = 1,
@@ -186,7 +186,7 @@ def celavii_delete_item_marker_at_frame(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_delete_item_markers_by_color(
+def cutmaster_delete_item_markers_by_color(
     color: str,
     track_type: str = "video",
     track_index: int = 1,
@@ -212,7 +212,7 @@ def celavii_delete_item_markers_by_color(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_add_clip_marker(
+def cutmaster_add_clip_marker(
     clip_name: str,
     frame: int,
     color: str = "Blue",
@@ -244,7 +244,7 @@ def celavii_add_clip_marker(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_clip_markers(clip_name: str) -> str:
+def cutmaster_get_clip_markers(clip_name: str) -> str:
     """Get all markers on a media pool clip.
 
     Args:

@@ -11,7 +11,7 @@ from ..resolve import get_resolve
 
 @mcp.tool
 @safe_resolve_call
-def celavii_execute_python(code: str) -> str:
+def cutmaster_execute_python(code: str) -> str:
     """Execute arbitrary Python code with DaVinci Resolve API objects in scope.
 
     Available variables in scope:
@@ -76,7 +76,7 @@ def celavii_execute_python(code: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_execute_lua(script: str) -> str:
+def cutmaster_execute_lua(script: str) -> str:
     """Execute a Lua script in the Fusion environment.
 
     This runs in the Fusion scripting context, useful for advanced Fusion

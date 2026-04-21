@@ -4,36 +4,36 @@ description: Production manager for DaVinci Resolve. Handles project overview, s
 when_to_use: Use when the user needs project status, media pool overview, database management, project settings, import/export projects, or general project administration.
 color: "#1ABC9C"
 tools:
-  - mcp__cutmaster-ai__celavii_get_version
-  - mcp__cutmaster-ai__celavii_switch_page
-  - mcp__cutmaster-ai__celavii_list_projects
-  - mcp__cutmaster-ai__celavii_get_current_project
-  - mcp__cutmaster-ai__celavii_create_project
-  - mcp__cutmaster-ai__celavii_open_project
-  - mcp__cutmaster-ai__celavii_save_project
-  - mcp__cutmaster-ai__celavii_close_project
-  - mcp__cutmaster-ai__celavii_export_project
-  - mcp__cutmaster-ai__celavii_import_project
-  - mcp__cutmaster-ai__celavii_archive_project
-  - mcp__cutmaster-ai__celavii_restore_project
-  - mcp__cutmaster-ai__celavii_list_project_folders
-  - mcp__cutmaster-ai__celavii_get_current_database
-  - mcp__cutmaster-ai__celavii_list_databases
-  - mcp__cutmaster-ai__celavii_switch_database
-  - mcp__cutmaster-ai__celavii_get_project_setting
-  - mcp__cutmaster-ai__celavii_set_project_setting
-  - mcp__cutmaster-ai__celavii_list_timelines
-  - mcp__cutmaster-ai__celavii_get_current_timeline
-  - mcp__cutmaster-ai__celavii_list_bins
-  - mcp__cutmaster-ai__celavii_list_clips
-  - mcp__cutmaster-ai__celavii_search_clips
-  - mcp__cutmaster-ai__celavii_get_clip_info
-  - mcp__cutmaster-ai__celavii_list_volumes
-  - mcp__cutmaster-ai__celavii_get_render_jobs
-  - mcp__cutmaster-ai__celavii_is_rendering
-  - mcp__cutmaster-ai__celavii_render_status
-  - mcp__cutmaster-ai__celavii_verify_timeline_media
-  - mcp__cutmaster-ai__celavii_frame_info
+  - mcp__cutmaster-ai__cutmaster_get_version
+  - mcp__cutmaster-ai__cutmaster_switch_page
+  - mcp__cutmaster-ai__cutmaster_list_projects
+  - mcp__cutmaster-ai__cutmaster_get_current_project
+  - mcp__cutmaster-ai__cutmaster_create_project
+  - mcp__cutmaster-ai__cutmaster_open_project
+  - mcp__cutmaster-ai__cutmaster_save_project
+  - mcp__cutmaster-ai__cutmaster_close_project
+  - mcp__cutmaster-ai__cutmaster_export_project
+  - mcp__cutmaster-ai__cutmaster_import_project
+  - mcp__cutmaster-ai__cutmaster_archive_project
+  - mcp__cutmaster-ai__cutmaster_restore_project
+  - mcp__cutmaster-ai__cutmaster_list_project_folders
+  - mcp__cutmaster-ai__cutmaster_get_current_database
+  - mcp__cutmaster-ai__cutmaster_list_databases
+  - mcp__cutmaster-ai__cutmaster_switch_database
+  - mcp__cutmaster-ai__cutmaster_get_project_setting
+  - mcp__cutmaster-ai__cutmaster_set_project_setting
+  - mcp__cutmaster-ai__cutmaster_list_timelines
+  - mcp__cutmaster-ai__cutmaster_get_current_timeline
+  - mcp__cutmaster-ai__cutmaster_list_bins
+  - mcp__cutmaster-ai__cutmaster_list_clips
+  - mcp__cutmaster-ai__cutmaster_search_clips
+  - mcp__cutmaster-ai__cutmaster_get_clip_info
+  - mcp__cutmaster-ai__cutmaster_list_volumes
+  - mcp__cutmaster-ai__cutmaster_get_render_jobs
+  - mcp__cutmaster-ai__cutmaster_is_rendering
+  - mcp__cutmaster-ai__cutmaster_render_status
+  - mcp__cutmaster-ai__cutmaster_verify_timeline_media
+  - mcp__cutmaster-ai__cutmaster_frame_info
 ---
 
 # Producer Agent
@@ -61,18 +61,18 @@ When asked for a project status, gather and report:
 ## Workflow Patterns
 
 ### Project Setup
-1. Check databases: `celavii_list_databases`
-2. Create project: `celavii_create_project`
-3. Configure settings: `celavii_set_project_setting`
+1. Check databases: `cutmaster_list_databases`
+2. Create project: `cutmaster_create_project`
+3. Configure settings: `cutmaster_set_project_setting`
 
 ### Project Handoff
-1. Save: `celavii_save_project`
-2. Archive: `celavii_archive_project` (includes media)
-3. Or export: `celavii_export_project` (project only)
+1. Save: `cutmaster_save_project`
+2. Archive: `cutmaster_archive_project` (includes media)
+3. Or export: `cutmaster_export_project` (project only)
 
 ### Daily Status
-1. Open project: `celavii_open_project`
-2. List timelines: `celavii_list_timelines`
-3. Check media: `celavii_verify_timeline_media`
-4. Check renders: `celavii_render_status`
+1. Open project: `cutmaster_open_project`
+2. List timelines: `cutmaster_list_timelines`
+3. Check media: `cutmaster_verify_timeline_media`
+4. Check renders: `cutmaster_render_status`
 5. Report summary to user

@@ -24,17 +24,17 @@ Import media files into DaVinci Resolve's media pool with organisation.
 
 ### Simple Ingest
 1. Parse the user's source path and options
-2. Call `celavii_ingest_media` with source_path, target_bin, and media_types
+2. Call `cutmaster_ingest_media` with source_path, target_bin, and media_types
 3. Report: "Imported X files into [bin name]"
 
 ### Structured Ingest (--mirror)
-1. Call `celavii_ingest_with_bins` with source_path
+1. Call `cutmaster_ingest_with_bins` with source_path
 2. This auto-creates bins matching the folder structure
 3. Report: "Imported X files, created Y bins"
 
 ### With Metadata
 If the user wants to tag clips (e.g. scene, day, camera):
-1. Call `celavii_ingest_media` with set_metadata dict
+1. Call `cutmaster_ingest_media` with set_metadata dict
 2. Example metadata: `{"Scene": "1", "Camera": "A", "Day": "1"}`
 
 ## Media Type Filters

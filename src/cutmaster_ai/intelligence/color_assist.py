@@ -50,7 +50,7 @@ def _parse_cdl_from_text(text: str) -> dict | None:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_color_assist(
+def cutmaster_color_assist(
     intent: str = "",
     apply: bool = False,
     node: str = "auto",
@@ -66,7 +66,7 @@ def celavii_color_assist(
     them directly.
 
     Works standalone OR within the 6-node log grading structure
-    (use `six_node_mode=True` after running `celavii_setup_log_grade`).
+    (use `six_node_mode=True` after running `cutmaster_setup_log_grade`).
     In 6-node mode, corrections are applied to the correct nodes:
     white balance → WB (node 1), exposure → EXP (node 2), etc.
 
@@ -79,7 +79,7 @@ def celavii_color_assist(
               node best suited in 6-node mode). Use 'wb', 'exp', 'sat', 'curves'
               to target specific 6-node structure nodes, or an integer like '2'.
         six_node_mode: True when working within the 6-node log grading structure
-                       (set up by celavii_setup_log_grade). AI will give advice
+                       (set up by cutmaster_setup_log_grade). AI will give advice
                        tailored to each node's role rather than a single CDL.
         track_type: Track type for the target clip.
         track_index: 1-based track index.
@@ -213,7 +213,7 @@ def celavii_color_assist(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_match_to_reference(
+def cutmaster_match_to_reference(
     reference_path: str,
     apply: bool = False,
     track_type: str = "video",

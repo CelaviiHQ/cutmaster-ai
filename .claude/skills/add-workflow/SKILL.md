@@ -26,7 +26,7 @@ from ..resolve import _boilerplate
 
 @mcp.tool
 @safe_resolve_call
-def celavii_your_workflow(
+def cutmaster_your_workflow(
     param: str,
     option: str = "default",
     apply_to_all: bool = False,

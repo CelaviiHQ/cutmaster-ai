@@ -13,7 +13,7 @@ from ..resolve import _boilerplate, _ser, get_resolve
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_version() -> str:
+def cutmaster_get_version() -> str:
     """Get DaVinci Resolve product name, version, and current page."""
     resolve = get_resolve()
     if not resolve:
@@ -30,7 +30,7 @@ def celavii_get_version() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_switch_page(page: str) -> str:
+def cutmaster_switch_page(page: str) -> str:
     """Switch to a Resolve page.
 
     Valid pages: media, cut, edit, fusion, color, fairlight, deliver
@@ -54,7 +54,7 @@ def celavii_switch_page(page: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_list_projects() -> str:
+def cutmaster_list_projects() -> str:
     """List all projects in the current database folder."""
     resolve = get_resolve()
     if not resolve:
@@ -70,7 +70,7 @@ def celavii_list_projects() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_current_project() -> str:
+def cutmaster_get_current_project() -> str:
     """Get the name and details of the currently open project."""
     _, project, _ = _boilerplate()
     tl_count = project.GetTimelineCount() or 0
@@ -93,7 +93,7 @@ def celavii_get_current_project() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_create_project(name: str) -> str:
+def cutmaster_create_project(name: str) -> str:
     """Create a new project with the given name."""
     resolve = get_resolve()
     if not resolve:
@@ -109,7 +109,7 @@ def celavii_create_project(name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_open_project(name: str) -> str:
+def cutmaster_open_project(name: str) -> str:
     """Open an existing project by name."""
     resolve = get_resolve()
     if not resolve:
@@ -129,7 +129,7 @@ def celavii_open_project(name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_save_project() -> str:
+def cutmaster_save_project() -> str:
     """Save the current project."""
     _, project, _ = _boilerplate()
     name = project.GetName()
@@ -144,7 +144,7 @@ def celavii_save_project() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_close_project() -> str:
+def cutmaster_close_project() -> str:
     """Close the current project (returns to Project Manager)."""
     resolve = get_resolve()
     if not resolve:
@@ -160,7 +160,7 @@ def celavii_close_project() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_delete_project(name: str) -> str:
+def cutmaster_delete_project(name: str) -> str:
     """Delete a project by name. The project must not be currently open."""
     resolve = get_resolve()
     if not resolve:
@@ -177,7 +177,7 @@ def celavii_delete_project(name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_export_project(name: str, path: str, with_stills: bool = True) -> str:
+def cutmaster_export_project(name: str, path: str, with_stills: bool = True) -> str:
     """Export a project to a .drp file.
 
     Args:
@@ -195,7 +195,7 @@ def celavii_export_project(name: str, path: str, with_stills: bool = True) -> st
 
 @mcp.tool
 @safe_resolve_call
-def celavii_import_project(path: str, name: str = "") -> str:
+def cutmaster_import_project(path: str, name: str = "") -> str:
     """Import a project from a .drp file.
 
     Args:
@@ -215,7 +215,7 @@ def celavii_import_project(path: str, name: str = "") -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_archive_project(
+def cutmaster_archive_project(
     name: str,
     path: str,
     archive_src_media: bool = True,
@@ -243,7 +243,7 @@ def celavii_archive_project(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_restore_project(path: str, name: str = "") -> str:
+def cutmaster_restore_project(path: str, name: str = "") -> str:
     """Restore a project from a .dra archive.
 
     Args:
@@ -268,7 +268,7 @@ def celavii_restore_project(path: str, name: str = "") -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_list_project_folders() -> str:
+def cutmaster_list_project_folders() -> str:
     """List folders in the current Project Manager location."""
     resolve = get_resolve()
     if not resolve:
@@ -282,7 +282,7 @@ def celavii_list_project_folders() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_open_project_folder(name: str) -> str:
+def cutmaster_open_project_folder(name: str) -> str:
     """Navigate into a Project Manager folder."""
     resolve = get_resolve()
     if not resolve:
@@ -294,7 +294,7 @@ def celavii_open_project_folder(name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_goto_root_folder() -> str:
+def cutmaster_goto_root_folder() -> str:
     """Navigate to the root of the Project Manager."""
     resolve = get_resolve()
     if not resolve:
@@ -306,7 +306,7 @@ def celavii_goto_root_folder() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_goto_parent_folder() -> str:
+def cutmaster_goto_parent_folder() -> str:
     """Navigate up one level in the Project Manager."""
     resolve = get_resolve()
     if not resolve:
@@ -318,7 +318,7 @@ def celavii_goto_parent_folder() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_create_project_folder(name: str) -> str:
+def cutmaster_create_project_folder(name: str) -> str:
     """Create a new folder in the current Project Manager location."""
     resolve = get_resolve()
     if not resolve:
@@ -330,7 +330,7 @@ def celavii_create_project_folder(name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_delete_project_folder(name: str) -> str:
+def cutmaster_delete_project_folder(name: str) -> str:
     """Delete a folder in the Project Manager. Must be empty."""
     resolve = get_resolve()
     if not resolve:
@@ -347,7 +347,7 @@ def celavii_delete_project_folder(name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_current_database() -> str:
+def cutmaster_get_current_database() -> str:
     """Get the currently active database."""
     resolve = get_resolve()
     if not resolve:
@@ -359,7 +359,7 @@ def celavii_get_current_database() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_list_databases() -> str:
+def cutmaster_list_databases() -> str:
     """List all available databases."""
     resolve = get_resolve()
     if not resolve:
@@ -371,7 +371,7 @@ def celavii_list_databases() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_switch_database(db_name: str, db_type: str = "Disk") -> str:
+def cutmaster_switch_database(db_name: str, db_type: str = "Disk") -> str:
     """Switch to a different database.
 
     Args:
@@ -393,7 +393,7 @@ def celavii_switch_database(db_name: str, db_type: str = "Disk") -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_project_setting(key: str = "") -> str:
+def cutmaster_get_project_setting(key: str = "") -> str:
     """Get a project setting by key, or all settings if key is empty.
 
     Common keys: timelineResolutionWidth, timelineResolutionHeight,
@@ -410,7 +410,7 @@ def celavii_get_project_setting(key: str = "") -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_project_setting(key: str, value: str) -> str:
+def cutmaster_set_project_setting(key: str, value: str) -> str:
     """Set a project setting.
 
     Args:

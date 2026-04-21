@@ -14,7 +14,7 @@ from ..resolve import _boilerplate, _find_clip_by_name
 
 @mcp.tool
 @safe_resolve_call
-def celavii_list_timelines() -> str:
+def cutmaster_list_timelines() -> str:
     """List all timelines in the current project."""
     _, project, _ = _boilerplate()
     count = project.GetTimelineCount() or 0
@@ -30,7 +30,7 @@ def celavii_list_timelines() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_current_timeline() -> str:
+def cutmaster_get_current_timeline() -> str:
     """Get info about the currently active timeline."""
     _, project, _ = _boilerplate()
     tl = project.GetCurrentTimeline()
@@ -56,7 +56,7 @@ def celavii_get_current_timeline() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_create_timeline(name: str) -> str:
+def cutmaster_create_timeline(name: str) -> str:
     """Create a new empty timeline.
 
     Args:
@@ -69,7 +69,7 @@ def celavii_create_timeline(name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_create_timeline_from_clips(name: str, clip_names: list[str]) -> str:
+def cutmaster_create_timeline_from_clips(name: str, clip_names: list[str]) -> str:
     """Create a timeline populated with the specified clips.
 
     Args:
@@ -90,7 +90,7 @@ def celavii_create_timeline_from_clips(name: str, clip_names: list[str]) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_current_timeline(name: str) -> str:
+def cutmaster_set_current_timeline(name: str) -> str:
     """Switch to a timeline by name.
 
     Args:
@@ -108,7 +108,7 @@ def celavii_set_current_timeline(name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_delete_timelines(names: list[str]) -> str:
+def cutmaster_delete_timelines(names: list[str]) -> str:
     """Delete timelines by name.
 
     Args:
@@ -129,7 +129,7 @@ def celavii_delete_timelines(names: list[str]) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_duplicate_timeline(new_name: str = "") -> str:
+def cutmaster_duplicate_timeline(new_name: str = "") -> str:
     """Duplicate the current timeline.
 
     Args:
@@ -145,7 +145,7 @@ def celavii_duplicate_timeline(new_name: str = "") -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_timeline_name(name: str) -> str:
+def cutmaster_set_timeline_name(name: str) -> str:
     """Rename the current timeline.
 
     Args:
@@ -166,7 +166,7 @@ def celavii_set_timeline_name(name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_track_count(track_type: str = "video") -> str:
+def cutmaster_get_track_count(track_type: str = "video") -> str:
     """Get the number of tracks of a given type.
 
     Args:
@@ -184,7 +184,7 @@ def celavii_get_track_count(track_type: str = "video") -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_add_track(track_type: str, sub_type: str = "") -> str:
+def cutmaster_add_track(track_type: str, sub_type: str = "") -> str:
     """Add a track to the current timeline.
 
     Args:
@@ -203,7 +203,7 @@ def celavii_add_track(track_type: str, sub_type: str = "") -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_delete_track(track_type: str, track_index: int) -> str:
+def cutmaster_delete_track(track_type: str, track_index: int) -> str:
     """Delete a track from the current timeline.
 
     Args:
@@ -222,7 +222,7 @@ def celavii_delete_track(track_type: str, track_index: int) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_track_name(track_type: str, track_index: int) -> str:
+def cutmaster_get_track_name(track_type: str, track_index: int) -> str:
     """Get the name of a track.
 
     Args:
@@ -239,7 +239,7 @@ def celavii_get_track_name(track_type: str, track_index: int) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_track_name(track_type: str, track_index: int, name: str) -> str:
+def cutmaster_set_track_name(track_type: str, track_index: int, name: str) -> str:
     """Rename a track.
 
     Args:
@@ -257,7 +257,7 @@ def celavii_set_track_name(track_type: str, track_index: int, name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_track_enabled(track_type: str, track_index: int, enabled: bool) -> str:
+def cutmaster_set_track_enabled(track_type: str, track_index: int, enabled: bool) -> str:
     """Enable or disable a track.
 
     Args:
@@ -276,7 +276,7 @@ def celavii_set_track_enabled(track_type: str, track_index: int, enabled: bool) 
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_track_lock(track_type: str, track_index: int, locked: bool) -> str:
+def cutmaster_set_track_lock(track_type: str, track_index: int, locked: bool) -> str:
     """Lock or unlock a track.
 
     Args:
@@ -300,7 +300,7 @@ def celavii_set_track_lock(track_type: str, track_index: int, locked: bool) -> s
 
 @mcp.tool
 @safe_resolve_call
-def celavii_export_timeline(
+def cutmaster_export_timeline(
     path: str,
     export_type: str = "FCPXML",
     export_subtype: str = "",
@@ -328,7 +328,7 @@ def celavii_export_timeline(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_import_timeline(path: str) -> str:
+def cutmaster_import_timeline(path: str) -> str:
     """Import a timeline from a file (AAF, EDL, XML, FCPXML, OTIO).
 
     Args:
@@ -344,7 +344,7 @@ def celavii_import_timeline(path: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_append_clips_to_timeline(clip_names: list[str]) -> str:
+def cutmaster_append_clips_to_timeline(clip_names: list[str]) -> str:
     """Append clips from the media pool to the end of the current timeline.
 
     Args:

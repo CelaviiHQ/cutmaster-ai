@@ -67,7 +67,7 @@ def snapshot_project(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_snapshot_project(snapshot_dir: str = "", label: str = "pre_cutmaster") -> str:
+def cutmaster_snapshot_project(snapshot_dir: str = "", label: str = "pre_cutmaster") -> str:
     """Export the current project to a .drp snapshot (non-destructive backup).
 
     Use before any destructive or large-scale timeline operation. If the user

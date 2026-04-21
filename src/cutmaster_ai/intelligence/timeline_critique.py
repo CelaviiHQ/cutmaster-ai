@@ -83,7 +83,7 @@ def _get_timeline_structure() -> dict:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_timeline_critique(
+def cutmaster_timeline_critique(
     focus: str = "",
 ) -> str:
     """Get AI editorial feedback on the current timeline.
@@ -136,13 +136,13 @@ def celavii_timeline_critique(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_suggest_markers(
+def cutmaster_suggest_markers(
     criteria: str = "Mark any clips shorter than 1 second, any gaps, and any jump cuts.",
 ) -> str:
     """AI analyzes the timeline and suggests where markers should be placed.
 
     Returns a list of suggested markers with frame positions, colors,
-    and notes. Does NOT add them — use celavii_add_timeline_marker to apply.
+    and notes. Does NOT add them — use cutmaster_add_timeline_marker to apply.
 
     Args:
         criteria: What to look for (e.g. 'short clips', 'gaps',
@@ -198,7 +198,7 @@ def celavii_suggest_markers(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_visual_continuity_check() -> str:
+def cutmaster_visual_continuity_check() -> str:
     """Check visual continuity by analyzing frames at each cut point.
 
     Exports frames before and after each cut on video track 1 and uses
@@ -243,7 +243,7 @@ def celavii_visual_continuity_check() -> str:
         "3. Any naming patterns suggesting out-of-order shots\n"
         "4. Clips with unusual durations\n\n"
         "Note: This is structure-based analysis only. For visual continuity, "
-        "use celavii_compare_frames at specific cut points."
+        "use cutmaster_compare_frames at specific cut points."
     )
 
     response = client.models.generate_content(

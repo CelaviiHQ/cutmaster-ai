@@ -13,7 +13,7 @@ from ..resolve import _boilerplate, _ser, get_resolve
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_render_formats() -> str:
+def cutmaster_get_render_formats() -> str:
     """List all available render formats."""
     _, project, _ = _boilerplate()
     formats = project.GetRenderFormats() or {}
@@ -22,7 +22,7 @@ def celavii_get_render_formats() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_render_codecs(format_name: str) -> str:
+def cutmaster_get_render_codecs(format_name: str) -> str:
     """List available codecs for a render format.
 
     Args:
@@ -35,7 +35,7 @@ def celavii_get_render_codecs(format_name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_render_resolutions(format_name: str, codec: str) -> str:
+def cutmaster_get_render_resolutions(format_name: str, codec: str) -> str:
     """List available resolutions for a format/codec combination.
 
     Args:
@@ -49,7 +49,7 @@ def celavii_get_render_resolutions(format_name: str, codec: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_render_format_and_codec(format_name: str, codec: str) -> str:
+def cutmaster_set_render_format_and_codec(format_name: str, codec: str) -> str:
     """Set the current render format and codec.
 
     Args:
@@ -63,7 +63,7 @@ def celavii_set_render_format_and_codec(format_name: str, codec: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_render_format_and_codec() -> str:
+def cutmaster_get_render_format_and_codec() -> str:
     """Get the current render format and codec."""
     _, project, _ = _boilerplate()
     info = project.GetCurrentRenderFormatAndCodec() or {}
@@ -77,7 +77,7 @@ def celavii_get_render_format_and_codec() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_render_settings() -> str:
+def cutmaster_get_render_settings() -> str:
     """Get all current render settings."""
     _, project, _ = _boilerplate()
     settings = project.GetRenderSettings() or {}
@@ -86,7 +86,7 @@ def celavii_get_render_settings() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_render_settings(settings: dict) -> str:
+def cutmaster_set_render_settings(settings: dict) -> str:
     """Set render settings.
 
     Args:
@@ -110,7 +110,7 @@ def celavii_set_render_settings(settings: dict) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_list_render_presets() -> str:
+def cutmaster_list_render_presets() -> str:
     """List all available render presets."""
     _, project, _ = _boilerplate()
     presets = project.GetRenderPresetList() or []
@@ -121,7 +121,7 @@ def celavii_list_render_presets() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_load_render_preset(name: str) -> str:
+def cutmaster_load_render_preset(name: str) -> str:
     """Load a render preset by name.
 
     Args:
@@ -134,7 +134,7 @@ def celavii_load_render_preset(name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_save_render_preset(name: str) -> str:
+def cutmaster_save_render_preset(name: str) -> str:
     """Save current render settings as a new preset.
 
     Args:
@@ -147,7 +147,7 @@ def celavii_save_render_preset(name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_import_render_preset(path: str) -> str:
+def cutmaster_import_render_preset(path: str) -> str:
     """Import a render preset from a file.
 
     Args:
@@ -162,7 +162,7 @@ def celavii_import_render_preset(path: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_export_render_preset(name: str, path: str) -> str:
+def cutmaster_export_render_preset(name: str, path: str) -> str:
     """Export a render preset to a file.
 
     Args:
@@ -183,7 +183,7 @@ def celavii_export_render_preset(name: str, path: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_add_render_job() -> str:
+def cutmaster_add_render_job() -> str:
     """Add the current timeline to the render queue with current settings."""
     _, project, _ = _boilerplate()
     job_id = project.AddRenderJob()
@@ -192,7 +192,7 @@ def celavii_add_render_job() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_render_jobs() -> str:
+def cutmaster_get_render_jobs() -> str:
     """List all render jobs in the queue."""
     _, project, _ = _boilerplate()
     jobs = project.GetRenderJobList() or []
@@ -203,7 +203,7 @@ def celavii_get_render_jobs() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_delete_render_job(job_id: str) -> str:
+def cutmaster_delete_render_job(job_id: str) -> str:
     """Delete a render job from the queue.
 
     Args:
@@ -216,7 +216,7 @@ def celavii_delete_render_job(job_id: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_delete_all_render_jobs() -> str:
+def cutmaster_delete_all_render_jobs() -> str:
     """Clear all render jobs from the queue."""
     _, project, _ = _boilerplate()
     result = project.DeleteAllRenderJobs()
@@ -230,7 +230,7 @@ def celavii_delete_all_render_jobs() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_start_render(job_ids: list[str] | None = None, interactive: bool = False) -> str:
+def cutmaster_start_render(job_ids: list[str] | None = None, interactive: bool = False) -> str:
     """Start rendering jobs in the queue.
 
     Args:
@@ -247,7 +247,7 @@ def celavii_start_render(job_ids: list[str] | None = None, interactive: bool = F
 
 @mcp.tool
 @safe_resolve_call
-def celavii_stop_render() -> str:
+def cutmaster_stop_render() -> str:
     """Stop the current render."""
     _, project, _ = _boilerplate()
     project.StopRendering()
@@ -256,7 +256,7 @@ def celavii_stop_render() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_is_rendering() -> str:
+def cutmaster_is_rendering() -> str:
     """Check if rendering is currently in progress."""
     _, project, _ = _boilerplate()
     result = project.IsRenderingInProgress()
@@ -265,7 +265,7 @@ def celavii_is_rendering() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_render_job_status(job_id: str) -> str:
+def cutmaster_get_render_job_status(job_id: str) -> str:
     """Get the status of a specific render job.
 
     Args:

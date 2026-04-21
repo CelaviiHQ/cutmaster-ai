@@ -5,7 +5,7 @@ paths directly and reassembling audio to match the edit list. Validated in
 phase 0 (v0_ffmpeg_concat.py) with 0-frame drift on a 9-segment DJI timeline.
 
 Falls back with a clear error if any timeline item has no accessible source
-path — the caller can switch to ``celavii_quick_deliver`` audio-only.
+path — the caller can switch to ``cutmaster_quick_deliver`` audio-only.
 """
 
 from __future__ import annotations
@@ -147,7 +147,7 @@ def extract_timeline_audio(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_extract_timeline_audio(
+def cutmaster_extract_timeline_audio(
     out_path: str = "",
     track_index: int = 1,
     sample_rate: int = 16000,
@@ -168,7 +168,7 @@ def celavii_extract_timeline_audio(
         - Bypasses Resolve's render queue, so the UI does not lock.
         - Fails if any timeline item is a compound/nested/generator or if
           the source file has moved. In that case fall back to
-          ``celavii_quick_deliver`` with an audio-only preset.
+          ``cutmaster_quick_deliver`` with an audio-only preset.
     """
     _, project, _ = _boilerplate()
     tl = project.GetCurrentTimeline()

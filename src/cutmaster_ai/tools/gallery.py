@@ -14,7 +14,7 @@ from ..resolve import _boilerplate, _resolve_safe_dir
 
 @mcp.tool
 @safe_resolve_call
-def celavii_list_gallery_albums() -> str:
+def cutmaster_list_gallery_albums() -> str:
     """List all still albums in the gallery."""
     _, project, _ = _boilerplate()
     gallery = project.GetGallery()
@@ -32,7 +32,7 @@ def celavii_list_gallery_albums() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_current_album() -> str:
+def cutmaster_get_current_album() -> str:
     """Get the currently selected still album."""
     _, project, _ = _boilerplate()
     gallery = project.GetGallery()
@@ -47,11 +47,11 @@ def celavii_get_current_album() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_current_album(album_index: int) -> str:
+def cutmaster_set_current_album(album_index: int) -> str:
     """Set the current still album by index.
 
     Args:
-        album_index: 0-based album index from celavii_list_gallery_albums.
+        album_index: 0-based album index from cutmaster_list_gallery_albums.
     """
     _, project, _ = _boilerplate()
     gallery = project.GetGallery()
@@ -71,7 +71,7 @@ def celavii_set_current_album(album_index: int) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_list_power_grade_albums() -> str:
+def cutmaster_list_power_grade_albums() -> str:
     """List all power grade albums."""
     _, project, _ = _boilerplate()
     gallery = project.GetGallery()
@@ -88,7 +88,7 @@ def celavii_list_power_grade_albums() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_list_stills() -> str:
+def cutmaster_list_stills() -> str:
     """List all stills in the current album."""
     _, project, _ = _boilerplate()
     gallery = project.GetGallery()
@@ -111,7 +111,7 @@ def celavii_list_stills() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_still_label(still_index: int, label: str) -> str:
+def cutmaster_set_still_label(still_index: int, label: str) -> str:
     """Set the label on a still in the current album.
 
     Args:
@@ -134,7 +134,7 @@ def celavii_set_still_label(still_index: int, label: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_export_stills(
+def cutmaster_export_stills(
     output_path: str,
     still_indices: list[int] | None = None,
     prefix: str = "still",
@@ -180,7 +180,7 @@ def celavii_export_stills(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_import_stills(file_paths: list[str]) -> str:
+def cutmaster_import_stills(file_paths: list[str]) -> str:
     """Import stills into the current album.
 
     Args:
@@ -199,7 +199,7 @@ def celavii_import_stills(file_paths: list[str]) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_delete_stills(still_indices: list[int]) -> str:
+def cutmaster_delete_stills(still_indices: list[int]) -> str:
     """Delete stills from the current album.
 
     Args:

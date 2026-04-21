@@ -67,9 +67,9 @@ tools = r["result"]["tools"]
 print(f"Tools registered: {len(tools)}")
 
 # 4. Call a tool
-send("tools/call", {"name": "celavii_get_version", "arguments": {}}, 3)
+send("tools/call", {"name": "cutmaster_get_version", "arguments": {}}, 3)
 r = recv()
-print(f"celavii_get_version: {r['result']['content'][0]['text']}")
+print(f"cutmaster_get_version: {r['result']['content'][0]['text']}")
 
 # 5. List resources
 send("resources/list", {}, 4)
@@ -85,7 +85,7 @@ print("ALL TESTS PASSED")
 1. **Server starts** without import errors
 2. **Initialize handshake** returns server info with name and version
 3. **tools/list** returns 233+ tools
-4. **tools/call** on `celavii_get_version` returns the Resolve version (requires Resolve running)
+4. **tools/call** on `cutmaster_get_version` returns the Resolve version (requires Resolve running)
 5. **resources/list** returns 5 resources
 
 ## Prerequisites

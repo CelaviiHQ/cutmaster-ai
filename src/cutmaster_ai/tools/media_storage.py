@@ -7,7 +7,7 @@ from ..resolve import get_resolve
 
 @mcp.tool
 @safe_resolve_call
-def celavii_list_volumes() -> str:
+def cutmaster_list_volumes() -> str:
     """List all mounted media storage volumes."""
     resolve = get_resolve()
     if not resolve:
@@ -23,7 +23,7 @@ def celavii_list_volumes() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_browse_storage(path: str) -> str:
+def cutmaster_browse_storage(path: str) -> str:
     """List sub-folders in a media storage path.
 
     Args:
@@ -43,7 +43,7 @@ def celavii_browse_storage(path: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_list_files_in_storage(path: str) -> str:
+def cutmaster_list_files_in_storage(path: str) -> str:
     """List files in a media storage path.
 
     Args:
@@ -63,7 +63,7 @@ def celavii_list_files_in_storage(path: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_import_from_storage(paths: list[str]) -> str:
+def cutmaster_import_from_storage(paths: list[str]) -> str:
     """Import media files from storage directly into the media pool.
 
     Args:
@@ -83,7 +83,7 @@ def celavii_import_from_storage(paths: list[str]) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_reveal_in_storage(path: str) -> str:
+def cutmaster_reveal_in_storage(path: str) -> str:
     """Reveal a file or folder in the Media Storage browser.
 
     Args:

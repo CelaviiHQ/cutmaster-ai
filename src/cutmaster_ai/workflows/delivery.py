@@ -13,7 +13,7 @@ from ..resolve import _boilerplate, _resolve_safe_dir
 
 @mcp.tool
 @safe_resolve_call
-def celavii_quick_deliver(
+def cutmaster_quick_deliver(
     preset: str = "h264",
     output_path: str = "",
     filename: str = "",
@@ -107,7 +107,7 @@ def celavii_quick_deliver(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_batch_deliver(
+def cutmaster_batch_deliver(
     presets: list[str],
     output_path: str = "",
 ) -> str:
@@ -184,7 +184,7 @@ def celavii_batch_deliver(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_render_status() -> str:
+def cutmaster_render_status() -> str:
     """Check the status of all render jobs in the queue.
 
     Returns each job's completion percentage, status, and timing.

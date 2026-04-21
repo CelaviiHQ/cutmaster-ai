@@ -86,7 +86,7 @@ def frame_to_seconds(tl, frame: int) -> float:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_seconds_to_frame(seconds: float) -> str:
+def cutmaster_seconds_to_frame(seconds: float) -> str:
     """Convert timeline-seconds to an absolute timeline frame on the current timeline.
 
     Args:
@@ -113,7 +113,7 @@ def celavii_seconds_to_frame(seconds: float) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_frame_to_seconds(frame: int) -> str:
+def cutmaster_frame_to_seconds(frame: int) -> str:
     """Convert an absolute timeline frame to seconds (relative to timeline start).
 
     Args:

@@ -31,7 +31,7 @@ def _get_timeline_item(project, track_type: str, track_index: int, item_index: i
 
 @mcp.tool
 @safe_resolve_call
-def celavii_list_timeline_items(
+def cutmaster_list_timeline_items(
     track_type: str = "video",
     track_index: int = 1,
 ) -> str:
@@ -69,7 +69,7 @@ def celavii_list_timeline_items(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_item_property(
+def cutmaster_get_item_property(
     track_type: str = "video",
     track_index: int = 1,
     item_index: int = 0,
@@ -94,7 +94,7 @@ def celavii_get_item_property(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_item_property(
+def cutmaster_set_item_property(
     key: str,
     value: str,
     track_type: str = "video",
@@ -131,7 +131,7 @@ def celavii_set_item_property(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_composite_mode(
+def cutmaster_set_composite_mode(
     mode: str,
     track_type: str = "video",
     track_index: int = 1,
@@ -155,7 +155,7 @@ def celavii_set_composite_mode(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_opacity(
+def cutmaster_set_opacity(
     opacity: float,
     track_type: str = "video",
     track_index: int = 1,
@@ -177,7 +177,7 @@ def celavii_set_opacity(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_transform(
+def cutmaster_set_transform(
     track_type: str = "video",
     track_index: int = 1,
     item_index: int = 0,
@@ -239,7 +239,7 @@ def celavii_set_transform(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_crop(
+def cutmaster_set_crop(
     track_type: str = "video",
     track_index: int = 1,
     item_index: int = 0,
@@ -285,7 +285,7 @@ def celavii_set_crop(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_speed(
+def cutmaster_set_speed(
     speed: float,
     track_type: str = "video",
     track_index: int = 1,
@@ -314,7 +314,7 @@ def celavii_set_speed(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_set_clip_enabled(
+def cutmaster_set_clip_enabled(
     enabled: bool,
     track_type: str = "video",
     track_index: int = 1,
@@ -342,7 +342,7 @@ def celavii_set_clip_enabled(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_insert_generator(name: str) -> str:
+def cutmaster_insert_generator(name: str) -> str:
     """Insert a generator into the current timeline at the playhead.
 
     Args:
@@ -358,7 +358,7 @@ def celavii_insert_generator(name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_insert_title(name: str) -> str:
+def cutmaster_insert_title(name: str) -> str:
     """Insert a title into the current timeline at the playhead.
 
     Args:
@@ -374,7 +374,7 @@ def celavii_insert_title(name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_insert_fusion_title(name: str) -> str:
+def cutmaster_insert_fusion_title(name: str) -> str:
     """Insert a Fusion title into the current timeline at the playhead.
 
     Args:
@@ -392,7 +392,7 @@ def celavii_insert_fusion_title(name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_insert_fusion_generator(name: str) -> str:
+def cutmaster_insert_fusion_generator(name: str) -> str:
     """Insert a Fusion generator into the current timeline at the playhead.
 
     Args:
@@ -408,7 +408,7 @@ def celavii_insert_fusion_generator(name: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_create_compound_clip(
+def cutmaster_create_compound_clip(
     track_type: str = "video",
     track_index: int = 1,
     item_indices: list[int] | None = None,
@@ -435,7 +435,7 @@ def celavii_create_compound_clip(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_create_fusion_clip(
+def cutmaster_create_fusion_clip(
     track_type: str = "video",
     track_index: int = 1,
     item_indices: list[int] | None = None,

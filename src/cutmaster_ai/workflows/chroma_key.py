@@ -163,7 +163,7 @@ def _setup_chroma_key_comp(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_chroma_key(
+def cutmaster_chroma_key(
     key_color: str = "green",
     key_color_r: float = -1.0,
     key_color_g: float = -1.0,

@@ -76,7 +76,7 @@ def _analyze_frame(prompt: str, model: str = "gemini-2.0-flash") -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_analyze_frame(
+def cutmaster_analyze_frame(
     prompt: str = "Describe this video frame in detail, including composition, lighting, color palette, and any text visible.",
 ) -> str:
     """Analyze the current timeline frame using Gemini vision AI.
@@ -92,7 +92,7 @@ def celavii_analyze_frame(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_ocr_frame(
+def cutmaster_ocr_frame(
     language: str = "English",
 ) -> str:
     """Extract text from the current frame using Gemini OCR.
@@ -115,7 +115,7 @@ def celavii_ocr_frame(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_describe_shot() -> str:
+def cutmaster_describe_shot() -> str:
     """Get a cinematography-focused description of the current frame.
 
     Analyzes shot type, camera angle, lens, lighting, and composition.
@@ -137,7 +137,7 @@ def celavii_describe_shot() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_compare_frames(
+def cutmaster_compare_frames(
     reference_path: str,
     comparison_prompt: str = "",
 ) -> str:
@@ -238,7 +238,7 @@ def celavii_compare_frames(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_frame_info() -> str:
+def cutmaster_frame_info() -> str:
     """Get metadata about the current frame without AI analysis.
 
     Returns timecode, timeline name, and current clip info.

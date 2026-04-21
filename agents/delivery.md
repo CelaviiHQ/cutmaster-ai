@@ -4,32 +4,32 @@ description: Delivery specialist for DaVinci Resolve. Handles render configurati
 when_to_use: Use when the user needs to render, export, configure output formats, manage render presets, or work on the Deliver page.
 color: "#E74C3C"
 tools:
-  - mcp__cutmaster-ai__celavii_switch_page
-  - mcp__cutmaster-ai__celavii_get_current_timeline
-  - mcp__cutmaster-ai__celavii_get_render_formats
-  - mcp__cutmaster-ai__celavii_get_render_codecs
-  - mcp__cutmaster-ai__celavii_get_render_resolutions
-  - mcp__cutmaster-ai__celavii_set_render_format_and_codec
-  - mcp__cutmaster-ai__celavii_get_render_format_and_codec
-  - mcp__cutmaster-ai__celavii_get_render_settings
-  - mcp__cutmaster-ai__celavii_set_render_settings
-  - mcp__cutmaster-ai__celavii_list_render_presets
-  - mcp__cutmaster-ai__celavii_load_render_preset
-  - mcp__cutmaster-ai__celavii_save_render_preset
-  - mcp__cutmaster-ai__celavii_import_render_preset
-  - mcp__cutmaster-ai__celavii_export_render_preset
-  - mcp__cutmaster-ai__celavii_add_render_job
-  - mcp__cutmaster-ai__celavii_get_render_jobs
-  - mcp__cutmaster-ai__celavii_delete_render_job
-  - mcp__cutmaster-ai__celavii_delete_all_render_jobs
-  - mcp__cutmaster-ai__celavii_start_render
-  - mcp__cutmaster-ai__celavii_stop_render
-  - mcp__cutmaster-ai__celavii_is_rendering
-  - mcp__cutmaster-ai__celavii_get_render_job_status
-  - mcp__cutmaster-ai__celavii_quick_deliver
-  - mcp__cutmaster-ai__celavii_batch_deliver
-  - mcp__cutmaster-ai__celavii_render_status
-  - mcp__cutmaster-ai__celavii_verify_timeline_media
+  - mcp__cutmaster-ai__cutmaster_switch_page
+  - mcp__cutmaster-ai__cutmaster_get_current_timeline
+  - mcp__cutmaster-ai__cutmaster_get_render_formats
+  - mcp__cutmaster-ai__cutmaster_get_render_codecs
+  - mcp__cutmaster-ai__cutmaster_get_render_resolutions
+  - mcp__cutmaster-ai__cutmaster_set_render_format_and_codec
+  - mcp__cutmaster-ai__cutmaster_get_render_format_and_codec
+  - mcp__cutmaster-ai__cutmaster_get_render_settings
+  - mcp__cutmaster-ai__cutmaster_set_render_settings
+  - mcp__cutmaster-ai__cutmaster_list_render_presets
+  - mcp__cutmaster-ai__cutmaster_load_render_preset
+  - mcp__cutmaster-ai__cutmaster_save_render_preset
+  - mcp__cutmaster-ai__cutmaster_import_render_preset
+  - mcp__cutmaster-ai__cutmaster_export_render_preset
+  - mcp__cutmaster-ai__cutmaster_add_render_job
+  - mcp__cutmaster-ai__cutmaster_get_render_jobs
+  - mcp__cutmaster-ai__cutmaster_delete_render_job
+  - mcp__cutmaster-ai__cutmaster_delete_all_render_jobs
+  - mcp__cutmaster-ai__cutmaster_start_render
+  - mcp__cutmaster-ai__cutmaster_stop_render
+  - mcp__cutmaster-ai__cutmaster_is_rendering
+  - mcp__cutmaster-ai__cutmaster_get_render_job_status
+  - mcp__cutmaster-ai__cutmaster_quick_deliver
+  - mcp__cutmaster-ai__cutmaster_batch_deliver
+  - mcp__cutmaster-ai__cutmaster_render_status
+  - mcp__cutmaster-ai__cutmaster_verify_timeline_media
 ---
 
 # Delivery Agent
@@ -57,18 +57,18 @@ You are a post-production delivery specialist managing renders and outputs.
 ## Workflow Patterns
 
 ### Quick Single Render
-1. Verify: `celavii_verify_timeline_media`
-2. Render: `celavii_quick_deliver` with preset
-3. Monitor: `celavii_render_status`
+1. Verify: `cutmaster_verify_timeline_media`
+2. Render: `cutmaster_quick_deliver` with preset
+3. Monitor: `cutmaster_render_status`
 
 ### Multi-Format Delivery
-1. Render all: `celavii_batch_deliver` with multiple presets
-2. Monitor: `celavii_render_status`
+1. Render all: `cutmaster_batch_deliver` with multiple presets
+2. Monitor: `cutmaster_render_status`
 
 ### Custom Configuration
-1. Check formats: `celavii_get_render_formats`
-2. Check codecs: `celavii_get_render_codecs`
-3. Set format: `celavii_set_render_format_and_codec`
-4. Configure: `celavii_set_render_settings`
-5. Queue: `celavii_add_render_job`
-6. Render: `celavii_start_render`
+1. Check formats: `cutmaster_get_render_formats`
+2. Check codecs: `cutmaster_get_render_codecs`
+3. Set format: `cutmaster_set_render_format_and_codec`
+4. Configure: `cutmaster_set_render_settings`
+5. Queue: `cutmaster_add_render_job`
+6. Render: `cutmaster_start_render`

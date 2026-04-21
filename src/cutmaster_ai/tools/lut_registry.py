@@ -8,7 +8,7 @@ LUTs are installed to:
   ~/Library/Application Support/Blackmagic Design/DaVinci Resolve/LUT/CutMaster/{vendor}/
 
 The registry maps cameras → official LUT download URLs → local install paths.
-Once installed, `celavii_setup_log_grade(camera="osmo pocket 3")` picks them up
+Once installed, `cutmaster_setup_log_grade(camera="osmo pocket 3")` picks them up
 automatically — no more "apply CST manually" messages.
 """
 
@@ -85,7 +85,7 @@ LUT_REGISTRY: dict[str, dict] = {
         "install_notes": (
             "1. Go to https://www.dji.com/downloads and find your camera model\n"
             "2. Download the D-Log M to Rec.709 LUT (usually a .zip file)\n"
-            "3. Run: celavii_install_lut_file('/path/to/downloaded/DJI_DLogM_to_Rec709.cube', 'dji-dlog-m')\n"
+            "3. Run: cutmaster_install_lut_file('/path/to/downloaded/DJI_DLogM_to_Rec709.cube', 'dji-dlog-m')\n"
             "   Or unzip and copy the .cube file to the CutMaster/DJI/ folder."
         ),
         "resolve_cst": {
@@ -145,7 +145,7 @@ LUT_REGISTRY: dict[str, dict] = {
             "1. Go to https://onlinemanual.insta360.com/x4/en-us/faq/video/lut\n"
             "   or search 'Insta360 LUT download' for your specific model\n"
             "2. Download the LUT pack (usually a .zip)\n"
-            "3. Run: celavii_install_lut_file('/path/to/Insta360_Log_to_Rec709.cube', 'insta360')"
+            "3. Run: cutmaster_install_lut_file('/path/to/Insta360_Log_to_Rec709.cube', 'insta360')"
         ),
         "resolve_cst": None,  # Not in Resolve's OFX CST
     },
@@ -165,7 +165,7 @@ LUT_REGISTRY: dict[str, dict] = {
         "install_notes": (
             "1. Go to https://community.gopro.com/s/article/GoPro-LUTs\n"
             "2. Download the official GoPro LUT pack\n"
-            "3. Run: celavii_install_lut_file('/path/to/GoPro_Protune_to_Rec709.cube', 'gopro')"
+            "3. Run: cutmaster_install_lut_file('/path/to/GoPro_Protune_to_Rec709.cube', 'gopro')"
         ),
         "resolve_cst": {
             "input_color_space": "Rec.709",
@@ -256,7 +256,7 @@ LUT_REGISTRY: dict[str, dict] = {
             "Nikon provides official N-Log LUTs on their Download Center.\n"
             "1. Go to https://downloadcenter.nikonimglib.com and search for your camera\n"
             "2. Download the N-Log 3D LUT\n"
-            "3. Run: celavii_install_lut_file('/path/to/NLog_to_Rec709.cube', 'nikon-nlog')"
+            "3. Run: cutmaster_install_lut_file('/path/to/NLog_to_Rec709.cube', 'nikon-nlog')"
         ),
         "resolve_cst": {
             "input_color_space": "Nikon N-Gamut",
@@ -280,7 +280,7 @@ LUT_REGISTRY: dict[str, dict] = {
             "Fujifilm provides official F-Log2 LUTs on their support site.\n"
             "1. Go to https://fujifilm-x.com/en-us/support/lut/\n"
             "2. Download the F-Log2 to Rec.709 LUT\n"
-            "3. Run: celavii_install_lut_file('/path/to/FLog2_to_Rec709.cube', 'fujifilm-flog2')"
+            "3. Run: cutmaster_install_lut_file('/path/to/FLog2_to_Rec709.cube', 'fujifilm-flog2')"
         ),
         "resolve_cst": {
             "input_color_space": "FujiFilm F-Gamut",
@@ -411,7 +411,7 @@ def _get_installed_luts(registry_key: str) -> list[Path]:
 def get_cst_lut_for_camera(camera: str) -> str | None:
     """Return the installed CST LUT path for a camera, or None.
 
-    Used by celavii_setup_log_grade to auto-detect installed LUTs.
+    Used by cutmaster_setup_log_grade to auto-detect installed LUTs.
     """
     key = _resolve_registry_key(camera)
     if not key:
@@ -435,7 +435,7 @@ def get_cst_lut_for_camera(camera: str) -> str | None:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_lut_library_status() -> str:
+def cutmaster_lut_library_status() -> str:
     """Show the status of the LUT library — what's installed and what's available.
 
     Lists every supported camera, whether its LUT is installed, and
@@ -487,7 +487,7 @@ def celavii_lut_library_status() -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_install_lut_file(
+def cutmaster_install_lut_file(
     file_path: str,
     camera: str,
 ) -> str:
@@ -495,7 +495,7 @@ def celavii_install_lut_file(
 
     Use this after downloading a manufacturer LUT. The file will be
     copied to the correct location and automatically picked up by
-    celavii_setup_log_grade next time you use it.
+    cutmaster_setup_log_grade next time you use it.
 
     Args:
         file_path: Path to the .cube file (or .zip containing .cube files).
@@ -561,7 +561,7 @@ def celavii_install_lut_file(
             "cst_lut_path": cst_path,
             "next": (
                 f"Your LUT is installed! Now run:\n"
-                f"  celavii_setup_log_grade(camera='{camera}')\n"
+                f"  cutmaster_setup_log_grade(camera='{camera}')\n"
                 f"and the CST will be applied automatically to node 5."
             ),
         },
@@ -571,7 +571,7 @@ def celavii_install_lut_file(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_get_lut_install_guide(camera: str) -> str:
+def cutmaster_get_lut_install_guide(camera: str) -> str:
     """Get step-by-step instructions for installing the LUT for a specific camera.
 
     Tells you exactly where to download it, what file to look for,
@@ -602,7 +602,7 @@ def celavii_get_lut_install_guide(camera: str) -> str:
     if installed:
         guide["status"] = "Already installed and ready to use!"
         guide["installed_files"] = [str(p) for p in installed]
-        guide["usage"] = f"celavii_setup_log_grade(camera='{camera}')"
+        guide["usage"] = f"cutmaster_setup_log_grade(camera='{camera}')"
     else:
         guide["status"] = "Not installed yet"
         guide["install_directory"] = str(vendor_dir)
@@ -633,8 +633,8 @@ def celavii_get_lut_install_guide(camera: str) -> str:
                 "steps": entry["install_notes"].split("\n"),
                 "download_page": entry.get("download_page", ""),
                 "after_download": (
-                    f"Run: celavii_install_lut_file('/path/to/your_downloaded_file.cube', '{camera}')\n"
-                    f"Then: celavii_setup_log_grade(camera='{camera}') will apply it automatically."
+                    f"Run: cutmaster_install_lut_file('/path/to/your_downloaded_file.cube', '{camera}')\n"
+                    f"Then: cutmaster_setup_log_grade(camera='{camera}') will apply it automatically."
                 ),
             }
         )
@@ -646,7 +646,7 @@ def celavii_get_lut_install_guide(camera: str) -> str:
 
 @mcp.tool
 @safe_resolve_call
-def celavii_scan_lut_folder() -> str:
+def cutmaster_scan_lut_folder() -> str:
     """Scan the Resolve LUT folders and show all installed LUTs.
 
     Checks both the system LUT folder and the CutMaster user LUT folder.

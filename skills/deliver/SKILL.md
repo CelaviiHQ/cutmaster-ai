@@ -39,10 +39,10 @@ Render the current timeline with minimal friction.
 ## Workflow
 
 1. Parse the user's preset and output preferences
-2. Call `celavii_quick_deliver` with the appropriate preset, output path, and filename
+2. Call `cutmaster_quick_deliver` with the appropriate preset, output path, and filename
 3. Report the render job status
-4. If the user asks to monitor, use `celavii_render_status` to poll progress
+4. If the user asks to monitor, use `cutmaster_render_status` to poll progress
 
 ## Multi-Format Delivery
 
-If the user requests multiple formats (e.g. "deliver h264 and prores422hq"), use `celavii_batch_deliver` instead.
+If the user requests multiple formats (e.g. "deliver h264 and prores422hq"), use `cutmaster_batch_deliver` instead.

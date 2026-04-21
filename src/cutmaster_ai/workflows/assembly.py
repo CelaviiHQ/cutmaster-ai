@@ -12,7 +12,7 @@ from ..resolve import _boilerplate, _find_bin, _find_clip_by_name
 
 @mcp.tool
 @safe_resolve_call
-def celavii_quick_assembly(
+def cutmaster_quick_assembly(
     timeline_name: str,
     clip_names: list[str] | None = None,
     bin_path: str = "",
@@ -86,7 +86,7 @@ def celavii_quick_assembly(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_assembly_from_bin(
+def cutmaster_assembly_from_bin(
     timeline_name: str,
     bin_path: str,
     video_tracks: int = 1,
@@ -156,7 +156,7 @@ def celavii_assembly_from_bin(
 
 @mcp.tool
 @safe_resolve_call
-def celavii_add_clips_to_track(
+def cutmaster_add_clips_to_track(
     clip_names: list[str],
     track_type: str = "video",
     track_index: int = 1,
