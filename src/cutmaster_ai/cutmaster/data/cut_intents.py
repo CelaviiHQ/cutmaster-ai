@@ -97,6 +97,10 @@ PEAK_HIGHLIGHT = CutIntentBundle(
     selection_strategy="peak-hunt",
     pacing_modifier=0.6,
     default_reorder_mode="free",
+    role_override=(
+        "short-form highlight editor — surfaces the single strongest moment "
+        "from a longer recording and shapes it as a standalone clip"
+    ),
     hook_rule_override=(
         "the single highest-engagement moment in the window — peak emotion, "
         "strongest quote, or most quotable exchange"

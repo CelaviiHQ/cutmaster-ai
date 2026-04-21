@@ -39,8 +39,29 @@ ContentType = Literal[
     "podcast",
     "presentation",
     "reaction",
+]
+"""The 8 resolved content types. Every value keys into ``CONTENT_PROFILES``.
+
+Use this type inside the pipeline — ``ResolvedAxes.content_type``, cascade
+output, Director prompt plumbing. Never contains ``auto_detect``.
+"""
+
+RequestedContentType = Literal[
+    "vlog",
+    "product_demo",
+    "wedding",
+    "interview",
+    "tutorial",
+    "podcast",
+    "presentation",
+    "reaction",
     "auto_detect",
 ]
+"""The 9 wire-level content types. ``auto_detect`` is a sentinel meaning
+"ask the cascade" and only appears on request boundaries
+(``AnalyzeRequest.content_type`` and friends). Resolvers must map it to
+one of the 8 ``ContentType`` values before producing a ``ResolvedAxes``.
+"""
 
 # Four values: the existing three from PresetBundle + per_clip_chronological,
 # introduced in the three-axis model for cases like Interview or Podcast

@@ -89,6 +89,13 @@ def test_narrative_inherits_everything_from_content() -> None:
     assert ci.marker_vocabulary_override is None
 
 
+def test_peak_highlight_overrides_role() -> None:
+    """Peak-hunting has a distinct editorial instinct from narrative editing
+    regardless of content type — the cut intent supplies its own role."""
+    ci = get_cut_intent("peak_highlight")
+    assert ci.role_override and "highlight" in ci.role_override.lower()
+
+
 def test_multi_clip_overrides_role_and_marker() -> None:
     ci = get_cut_intent("multi_clip")
     assert ci.role_override and "viral" in ci.role_override.lower()

@@ -96,3 +96,26 @@ def test_get_content_profile_rejects_legacy_cut_intent_keys() -> None:
     for intent_key in ("tightener", "clip_hunter", "short_generator"):
         with pytest.raises(KeyError):
             get_content_profile(intent_key)
+
+
+def test_get_content_profile_rejects_auto_detect() -> None:
+    """``auto_detect`` is a RequestedContentType only — it's a sentinel for
+    "ask the cascade" and must never resolve to a profile directly."""
+    with pytest.raises(KeyError):
+        get_content_profile("auto_detect")
+
+
+def test_requested_content_type_superset_of_content_type() -> None:
+    """RequestedContentType = ContentType + {auto_detect}. Keep them aligned
+    so wire-side code and resolved-side code can't drift."""
+    from typing import get_args
+
+    from cutmaster_ai.cutmaster.data.content_profiles import (
+        ContentType,
+        RequestedContentType,
+    )
+
+    resolved = set(get_args(ContentType))
+    requested = set(get_args(RequestedContentType))
+    assert requested - resolved == {"auto_detect"}
+    assert resolved - requested == set()
