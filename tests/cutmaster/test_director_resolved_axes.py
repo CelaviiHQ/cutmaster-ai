@@ -636,18 +636,19 @@ def test_stash_resolved_axes_persists_on_run(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(state, "save", lambda run: None)
 
     run: dict = {"run_id": "test"}
-    payload = pipeline.stash_resolved_axes(
+    resolved = pipeline.stash_resolved_axes(
         run,
         content_type="vlog",
         cut_intent="narrative",
         duration_s=120.0,
         timeline_mode="raw_dump",
     )
-    assert payload is not None
-    assert run["resolved_axes"] == payload
-    assert payload["content_type"] == "vlog"
-    assert payload["cut_intent"] == "narrative"
-    assert payload["reorder_mode"] == "preserve_macro"
+    assert resolved is not None
+    assert resolved.content_type == "vlog"
+    assert resolved.cut_intent == "narrative"
+    assert resolved.reorder_mode == "preserve_macro"
+    # Persisted form is the dict dump — JSON-safe for state.save().
+    assert run["resolved_axes"] == resolved.model_dump()
 
 
 def test_stash_resolved_axes_returns_none_on_incompatible(monkeypatch) -> None:
@@ -656,12 +657,12 @@ def test_stash_resolved_axes_returns_none_on_incompatible(monkeypatch) -> None:
     monkeypatch.setattr(state, "save", lambda run: None)
     run: dict = {"run_id": "test"}
     # surgical_tighten × raw_dump is blocked by axis_compat.
-    payload = pipeline.stash_resolved_axes(
+    resolved = pipeline.stash_resolved_axes(
         run,
         content_type="vlog",
         cut_intent="surgical_tighten",
         duration_s=600.0,
         timeline_mode="raw_dump",
     )
-    assert payload is None
+    assert resolved is None
     assert "resolved_axes" not in run

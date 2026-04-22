@@ -1469,6 +1469,60 @@ def test_analyze_themes_legacy_preset_remaps_and_logs(monkeypatch, caplog):
     assert alias_records[0].mapped_cut_intent == "assembled_short"
 
 
+def test_build_plan_stashes_resolved_axes_via_pipeline_helper(client, monkeypatch, scrubbed_run):
+    """The /build-plan route delegates request-level axes persistence to
+    ``pipeline.stash_resolved_axes`` so the analyze-side and build-side
+    stashes share one source of truth for ``run["resolved_axes"]``."""
+    captured = _three_axis_test_env(monkeypatch, scrubbed_run)
+
+    import cutmaster_ai.cutmaster.core.pipeline as pipeline_mod
+
+    real_stash = pipeline_mod.stash_resolved_axes
+    stash_calls: list[dict] = []
+
+    def _spy(run, **kwargs):
+        stash_calls.append({"run_id": run.get("run_id"), **kwargs})
+        return real_stash(run, **kwargs)
+
+    monkeypatch.setattr(routes.build.pipeline, "stash_resolved_axes", _spy)
+
+    r = client.post(
+        "/cutmaster/build-plan",
+        json={
+            "run_id": scrubbed_run["run_id"],
+            "preset": "interview",
+            "content_type": "interview",
+            "user_settings": {
+                "target_length_s": 60,
+                "themes": [],
+                "cut_intent": "peak_highlight",
+            },
+        },
+    )
+    assert r.status_code == 200, r.text
+
+    # Helper fired exactly once, with the three-axis primitives derived
+    # from the request body (not the already-resolved ResolvedAxes).
+    assert len(stash_calls) == 1
+    call = stash_calls[0]
+    assert call["content_type"] == "interview"
+    assert call["cut_intent"] == "peak_highlight"
+    assert call["timeline_mode"] == "raw_dump"
+
+    # The run-level stash (written before plan generation) carries the
+    # same payload the helper persists — distinct from the plan-level
+    # ``run["plan"]["resolved_axes"]`` written after Director runs.
+    persisted = state.load(scrubbed_run["run_id"])
+    assert persisted["resolved_axes"]["content_type"] == "interview"
+    assert persisted["resolved_axes"]["cut_intent"] == "peak_highlight"
+    assert persisted["resolved_axes"] == persisted["plan"]["resolved_axes"]
+
+    # The resolved axes threaded into the Director came from the helper
+    # output (same object, not a re-computation).
+    assert captured["resolved"] is not None
+    assert captured["resolved"].content_type == "interview"
+
+
 def test_remap_legacy_preset_table():
     """Unit-level coverage of the remapper — every migration-table row."""
     from cutmaster_ai.http.routes.cutmaster._models import _remap_legacy_preset

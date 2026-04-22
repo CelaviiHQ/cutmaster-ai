@@ -29,16 +29,18 @@ def stash_resolved_axes(
     num_clips: int = 1,
     reorder_allowed: bool = True,
     takes_already_scrubbed: bool = False,
-) -> dict | None:
+):
     """Cache the resolved three-axis recipe on the run state.
 
-    Called once per analyze or per build invocation (Phase 4 wires the
-    request-side plumbing). Subsequent stages read
-    ``run["resolved_axes"]`` instead of recomputing — keeps every stage
-    looking at the same pacing / reorder / prompt-builder decision.
+    Called once per analyze or per build invocation. Subsequent stages
+    read ``run["resolved_axes"]`` (the dict form, for JSON persistence)
+    or take the returned ``ResolvedAxes`` object directly — keeps every
+    stage looking at the same pacing / reorder / prompt-builder
+    decision.
 
-    Returns the persisted dict (or ``None`` when resolution fails — the
-    caller can fall back to the legacy preset path).
+    Returns the resolved :class:`ResolvedAxes` (also persisted as a dict
+    on ``run["resolved_axes"]``). Returns ``None`` when resolution
+    fails — the caller can fall back to the legacy preset path.
     """
     # Lazy import so pipeline.py stays importable when the three-axis
     # modules aren't built yet (edge-case CI test envs).
@@ -58,10 +60,9 @@ def stash_resolved_axes(
         log.warning("stash_resolved_axes: failed to resolve axes — %s", exc)
         return None
 
-    payload = axes.model_dump()
-    run["resolved_axes"] = payload
+    run["resolved_axes"] = axes.model_dump()
     state.save(run)
-    return payload
+    return axes
 
 
 def _find_timeline_by_name(project, name: str):

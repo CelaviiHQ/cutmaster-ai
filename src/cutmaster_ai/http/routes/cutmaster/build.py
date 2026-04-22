@@ -26,7 +26,7 @@ from ....cutmaster.analysis.tightener import (
     tightener_stats,
 )
 from ....cutmaster.core import director as director_mod
-from ....cutmaster.core import state
+from ....cutmaster.core import pipeline, state
 from ....cutmaster.core.director import (
     CutSegment,
     DirectorPlan,
@@ -54,9 +54,7 @@ from ....cutmaster.data.axis_compat import (
     cut_intent_mode_incompatibility_reason,
 )
 from ....cutmaster.data.axis_resolution import (
-    IncompatibleAxesError,
     ResolvedAxes,
-    resolve_axes,
 )
 from ....cutmaster.data.presets import (
     PRESETS,
@@ -137,43 +135,6 @@ def _effective_content_type(body: BuildPlanRequest) -> str | None:
     if body.preset in _LEGACY_CONTENT_TYPE_PRESETS:
         return body.preset
     return None
-
-
-def _resolve_axes_for_build(
-    body: BuildPlanRequest,
-    mode: str,
-    duration_s: float,
-) -> ResolvedAxes | None:
-    """Best-effort compute of :class:`ResolvedAxes` for the build handler.
-
-    Returns ``None`` when the axes can't be resolved from what the
-    request carries (e.g. the caller asked for ``auto_detect`` without
-    running the cascade, or supplied an incompatible combination). In
-    that case the build falls back to the legacy ``PresetBundle`` path;
-    the CUTMASTER_USE_RESOLVED_AXES flag gate in the prompt builders
-    already handles both paths transparently.
-    """
-    content_type = _effective_content_type(body)
-    if content_type is None:
-        return None
-    try:
-        return resolve_axes(
-            content_type,
-            cut_intent=_effective_cut_intent(body),
-            duration_s=duration_s,
-            timeline_mode=mode,
-            num_clips=body.user_settings.num_clips,
-            reorder_allowed=body.user_settings.reorder_allowed,
-            takes_already_scrubbed=body.user_settings.takes_already_scrubbed,
-        )
-    except (KeyError, IncompatibleAxesError) as exc:
-        log.info(
-            "resolve_axes fallback — %s (content_type=%s, mode=%s)",
-            exc,
-            content_type,
-            mode,
-        )
-        return None
 
 
 # v4 Phase 4.4: per-layer activation flows through
@@ -370,11 +331,24 @@ async def build_plan(body: BuildPlanRequest) -> dict:
     # same recipe. ``None`` when the caller didn't supply axis-keyed
     # context — the flag gate in the prompt builders falls back to the
     # legacy preset path and the render is byte-identical to pre-Phase 3.
+    # Persistence + resolution both live in ``pipeline.stash_resolved_axes``
+    # so the build route and any future analyze-side caller stash the
+    # same shape on ``run["resolved_axes"]``.
     duration_s = _transcript_duration_s(scrubbed)
-    resolved_axes = _resolve_axes_for_build(body, mode, duration_s)
+    content_type = _effective_content_type(body)
+    resolved_axes: ResolvedAxes | None = None
+    if content_type is not None:
+        resolved_axes = pipeline.stash_resolved_axes(
+            run,
+            content_type=content_type,
+            cut_intent=_effective_cut_intent(body),
+            duration_s=duration_s,
+            timeline_mode=mode,
+            num_clips=body.user_settings.num_clips,
+            reorder_allowed=body.user_settings.reorder_allowed,
+            takes_already_scrubbed=body.user_settings.takes_already_scrubbed,
+        )
     if resolved_axes is not None:
-        run["resolved_axes"] = resolved_axes.model_dump()
-        state.save(run)
         log.info(
             "cutmaster.build: resolved_axes content_type=%s cut_intent=%s reorder=%s builder=%s",
             resolved_axes.content_type,
