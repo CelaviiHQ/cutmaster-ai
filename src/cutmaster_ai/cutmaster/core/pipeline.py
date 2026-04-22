@@ -19,6 +19,51 @@ from .timeouts import MARKER_TIMEOUT_S, STT_TIMEOUT_S, with_timeout
 log = logging.getLogger("cutmaster-ai.cutmaster.pipeline")
 
 
+def stash_resolved_axes(
+    run: dict,
+    *,
+    content_type: str,
+    cut_intent: str | None,
+    duration_s: float,
+    timeline_mode: str,
+    num_clips: int = 1,
+    reorder_allowed: bool = True,
+    takes_already_scrubbed: bool = False,
+) -> dict | None:
+    """Cache the resolved three-axis recipe on the run state.
+
+    Called once per analyze or per build invocation (Phase 4 wires the
+    request-side plumbing). Subsequent stages read
+    ``run["resolved_axes"]`` instead of recomputing — keeps every stage
+    looking at the same pacing / reorder / prompt-builder decision.
+
+    Returns the persisted dict (or ``None`` when resolution fails — the
+    caller can fall back to the legacy preset path).
+    """
+    # Lazy import so pipeline.py stays importable when the three-axis
+    # modules aren't built yet (edge-case CI test envs).
+    from ..data.axis_resolution import IncompatibleAxesError, resolve_axes
+
+    try:
+        axes = resolve_axes(
+            content_type,
+            cut_intent=cut_intent,
+            duration_s=duration_s,
+            timeline_mode=timeline_mode,
+            num_clips=num_clips,
+            reorder_allowed=reorder_allowed,
+            takes_already_scrubbed=takes_already_scrubbed,
+        )
+    except (KeyError, IncompatibleAxesError) as exc:
+        log.warning("stash_resolved_axes: failed to resolve axes — %s", exc)
+        return None
+
+    payload = axes.model_dump()
+    run["resolved_axes"] = payload
+    state.save(run)
+    return payload
+
+
 def _find_timeline_by_name(project, name: str):
     for i in range(1, project.GetTimelineCount() + 1):
         t = project.GetTimelineByIndex(i)

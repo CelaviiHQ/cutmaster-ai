@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
@@ -38,9 +40,121 @@ from ..stt.per_clip import clip_metadata_table
 from ..stt.speakers import apply_speaker_labels, detect_speakers, speaker_stats
 
 if TYPE_CHECKING:
+    from ..data.axis_resolution import ResolvedAxes
     from ..data.presets import PresetBundle
 
 log = logging.getLogger("cutmaster-ai.cutmaster.director")
+
+
+# ---------------------------------------------------------------------------
+# Three-axis feature flag + ResolvedAxes → preset-facade adapter
+# ---------------------------------------------------------------------------
+#
+# Rollout gate for the three-axis model. While the flag is off the six
+# prompt builders walk their legacy PresetBundle paths unchanged; baseline
+# prompt fixtures land byte-for-byte. Flag-on, each builder swaps the
+# preset for a facade synthesised from the resolved axes. Removed in
+# Phase 7 once telemetry shows zero legacy-preset traffic.
+
+
+def _use_resolved_axes() -> bool:
+    """True when ``CUTMASTER_USE_RESOLVED_AXES`` is set to a truthy value."""
+    return os.environ.get("CUTMASTER_USE_RESOLVED_AXES", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
+def _resolved_prompt_view(resolved: ResolvedAxes) -> SimpleNamespace:
+    """PresetBundle-shaped facade over ``resolved`` + its content profile.
+
+    The prompt f-strings and block helpers read attributes off the
+    preset object (``role``, ``hook_rule``, ``min_segment_s``, ...).
+    This facade gives them the same attribute shape but routes pacing
+    and reorder from ``resolved`` and lets :class:`CutIntentBundle`
+    overrides win for role / hook_rule / marker_vocabulary.
+    """
+    from ..data.content_profiles import get_content_profile
+    from ..data.cut_intents import get_cut_intent
+
+    profile = get_content_profile(resolved.content_type)
+    intent = get_cut_intent(resolved.cut_intent)
+    return SimpleNamespace(
+        key=profile.key,
+        label=profile.label,
+        role=intent.role_override or profile.role,
+        hook_rule=intent.hook_rule_override or profile.hook_rule,
+        pacing=profile.pacing,
+        min_segment_s=resolved.segment_pacing.min,
+        target_segment_s=resolved.segment_pacing.target,
+        max_segment_s=resolved.segment_pacing.max,
+        reorder_mode=resolved.reorder_mode,
+        cue_vocabulary=list(profile.cue_vocabulary),
+        marker_vocabulary=list(
+            intent.marker_vocabulary_override
+            if intent.marker_vocabulary_override is not None
+            else profile.marker_vocabulary
+        ),
+        theme_axes=list(profile.theme_axes),
+        scrub_defaults=dict(profile.scrub_defaults),
+        exclude_categories=list(profile.exclude_categories),
+        speaker_awareness=profile.speaker_awareness,
+        default_custom_focus_placeholder=profile.default_custom_focus_placeholder,
+        selection_strategy=resolved.selection_strategy,
+    )
+
+
+def _pick_preset_view(
+    preset: PresetBundle | None,
+    resolved: ResolvedAxes | None,
+) -> PresetBundle | SimpleNamespace | None:
+    """Pick the preset-facade for a prompt call honouring the feature flag.
+
+    Returns the ResolvedAxes facade when the flag is on and ``resolved``
+    was supplied; otherwise returns ``preset`` unchanged (legacy path).
+    """
+    if resolved is not None and _use_resolved_axes():
+        return _resolved_prompt_view(resolved)
+    return preset
+
+
+def _selection_strategy_footer(resolved: ResolvedAxes | None) -> str:
+    """Short SELECTION STRATEGY footer rendered on the flag-on path.
+
+    Empty when ``resolved`` is ``None`` or the strategy is narrative-arc —
+    the flat/assembled prompts already read as narrative-arc by default,
+    so adding a footer for the nominal case would be pure noise.
+    """
+    if resolved is None:
+        return ""
+    strategy = resolved.selection_strategy
+    if strategy == "peak-hunt":
+        return (
+            "### SELECTION STRATEGY — PEAK HUNT\n"
+            "Land on the single highest-energy moment. Trim setup ruthlessly; "
+            "the hook and the peak are often the same beat."
+        )
+    if strategy == "preserve-takes":
+        return (
+            "### SELECTION STRATEGY — PRESERVE TAKES\n"
+            "Take order is locked. Tighten inside each take; do not reorder "
+            "across takes."
+        )
+    if strategy == "top-n":
+        return (
+            "### SELECTION STRATEGY — TOP N\n"
+            "Rank moments by engagement; each surviving beat must stand on "
+            "its own."
+        )
+    if strategy == "montage":
+        return (
+            "### SELECTION STRATEGY — MONTAGE\n"
+            "Compose from scattered spans with a single through-line. Jump "
+            "cuts welcome; every beat earns its screen time."
+        )
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -1047,27 +1161,46 @@ not under-cut to protect editorial purity; the editor will drop segments \
 they don't like in review."""
 
 
-def _pacing_block(preset: PresetBundle | None) -> str:
-    """Render structured pacing bounds as an explicit PACING block."""
-    if preset is None:
+def _pacing_block(view: SimpleNamespace | None) -> str:
+    """Render structured pacing bounds as an explicit PACING block.
+
+    Phase 3c.3: the dual-signature shim from 3a.4 collapses. The helper
+    now expects a ResolvedAxes-derived view (``SimpleNamespace`` from
+    :func:`_resolved_prompt_view`), but because :class:`PresetBundle`
+    exposes identical attributes (``min_segment_s`` / ``max_segment_s``
+    / ``target_segment_s`` / ``label`` / ``pacing``) the flag-off path
+    still duck-types cleanly until :class:`PresetBundle` goes away in
+    Phase 7.
+    """
+    if view is None:
         return ""
     return (
         "### PACING BOUNDS\n"
         f"Every individual segment must run between "
-        f"**{preset.min_segment_s:.0f}s** and **{preset.max_segment_s:.0f}s**. "
-        f"Aim for ~**{preset.target_segment_s:.0f}s** per segment — that's the "
-        f"pacing this content type ({preset.label}) expects. "
-        f"Segments shorter than {preset.min_segment_s:.0f}s feel like jump cuts; "
-        f"longer than {preset.max_segment_s:.0f}s kills retention. "
-        f"Style note: {preset.pacing}."
+        f"**{view.min_segment_s:.0f}s** and **{view.max_segment_s:.0f}s**. "
+        f"Aim for ~**{view.target_segment_s:.0f}s** per segment — that's the "
+        f"pacing this content type ({view.label}) expects. "
+        f"Segments shorter than {view.min_segment_s:.0f}s feel like jump cuts; "
+        f"longer than {view.max_segment_s:.0f}s kills retention. "
+        f"Style note: {view.pacing}."
     )
 
 
-def _reorder_mode_block(preset: PresetBundle | None, chapters: list[dict] | None = None) -> str:
-    """Render REORDER POLICY block matching the preset's reorder_mode."""
-    if preset is None:
+def _reorder_mode_block(
+    view: SimpleNamespace | None,
+    chapters: list[dict] | None = None,
+) -> str:
+    """Render REORDER POLICY block matching the view's reorder_mode.
+
+    Phase 3c.3: the dual-signature shim from 3a.4 collapses — the helper
+    expects a ResolvedAxes-derived view. ``PresetBundle`` duck-types
+    cleanly (same ``reorder_mode`` attribute) until Phase 7. The
+    4-value ``per_clip_chronological`` reorder mode only reaches this
+    helper on the flag-on path.
+    """
+    if view is None:
         return ""
-    mode = getattr(preset, "reorder_mode", "free")
+    mode = getattr(view, "reorder_mode", "free")
     if mode == "free":
         return ""
     if mode == "locked":
@@ -1095,6 +1228,14 @@ def _reorder_mode_block(preset: PresetBundle | None, chapters: list[dict] | None
             "position 0 in the output. Do not move content from a later "
             "chapter ahead of content from an earlier chapter."
             f"{ch_note}"
+        )
+    if mode == "per_clip_chronological":
+        return (
+            "### REORDER POLICY — PER-CLIP CHRONOLOGICAL\n"
+            "Each emitted clip must preserve its internal source-time order; "
+            "within a single clip words must play forwards. Across clips you "
+            "may reorder freely by engagement rank — the clips themselves are "
+            "standalone units."
         )
     return ""
 
@@ -1172,10 +1313,24 @@ def _covered_clip_indexes(plan: DirectorPlan, transcript: list[dict]) -> set[int
     return covered
 
 
-def _prompt(preset: PresetBundle, transcript: list[dict], user_settings: dict | None) -> str:
-    exclude = _exclude_block(preset, user_settings)
+def _prompt(
+    preset: PresetBundle,
+    transcript: list[dict],
+    user_settings: dict | None,
+    resolved: ResolvedAxes | None = None,
+) -> str:
+    """Flat / raw-dump Director prompt.
+
+    Handles ``narrative × raw_dump`` and ``peak_highlight × any`` on the
+    flag-on path — the peak path appends the :func:`_selection_strategy_footer`
+    block. Flag-off path ignores ``resolved`` and renders the legacy
+    PresetBundle prompt byte-for-byte.
+    """
+    preset_view = _pick_preset_view(preset, resolved)
+    strategy_footer = _selection_strategy_footer(resolved) if preset_view is not preset else ""
+    exclude = _exclude_block(preset_view, user_settings)
     focus = _focus_block(user_settings)
-    speakers = _speaker_block(preset, transcript, user_settings)
+    speakers = _speaker_block(preset_view, transcript, user_settings)
     clip_meta = _clip_metadata_block(transcript)
     shot_tags = _shot_tag_block(transcript)
     audio_cues = _audio_cue_block(transcript, mode="raw_dump")
@@ -1184,25 +1339,25 @@ def _prompt(preset: PresetBundle, transcript: list[dict], user_settings: dict | 
         b for b in (exclude, focus, speakers, clip_meta, shot_tags, audio_cues, boundary_rej) if b
     )
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
-    recipe = _target_length_recipe_block(user_settings, preset)
+    recipe = _target_length_recipe_block(user_settings, preset_view)
     hook = _selected_hook_block(user_settings)
-    pacing = _pacing_block(preset)
+    pacing = _pacing_block(preset_view)
     coverage = _coverage_block(transcript)
     take_groups = _take_groups_block(transcript)
     chapters = (user_settings or {}).get("chapters") if user_settings else None
-    reorder = _reorder_mode_block(preset, chapters)
+    reorder = _reorder_mode_block(preset_view, chapters)
     recipe_section = "\n\n".join(
-        b for b in (hook, recipe, pacing, coverage, take_groups, reorder) if b
+        b for b in (hook, recipe, pacing, coverage, take_groups, reorder, strategy_footer) if b
     )
     recipe_section = f"\n\n{recipe_section}" if recipe_section else ""
     relabelled = _maybe_relabel_transcript(transcript, user_settings)
     sentences = _coalesce_to_sentences(relabelled)
-    return f"""You are a {preset.role}.
+    return f"""You are a {preset_view.role}.
 
 You will receive a SENTENCES array where each row is one sentence with an index `i`, speaker `spk`, time range `t=[t_start, t_end]` in seconds, and the sentence `text`. Your job is to select a contiguous RANGE of sentences (one or more) per CutSegment and emit the range's outer timestamps. Stitched together, the segments form a compelling cut.{recipe_section}
 
 RULES — follow exactly:
-1. Identify the HOOK: {preset.hook_rule}. The hook's CutSegment becomes position 0 in the output, even if it's not the earliest in the transcript.
+1. Identify the HOOK: {preset_view.hook_rule}. The hook's CutSegment becomes position 0 in the output, even if it's not the earliest in the transcript.
 2. Every segment's duration must respect the PACING BOUNDS block above.
 3. Do not alter, edit, paraphrase, or summarize ANY word. You may only select whole sentences.
 4. For each CutSegment, `start_s` MUST equal `t[0]` of the first sentence in the range, and `end_s` MUST equal `t[1]` of the last sentence in the range. Never pick a timestamp that is not a sentence edge.
@@ -1225,9 +1380,15 @@ def build_cut_plan(
     transcript: list[dict],
     preset: PresetBundle,
     user_settings: dict | None = None,
+    resolved: ResolvedAxes | None = None,
 ) -> DirectorPlan:
-    """Run the Director agent, retrying on verbatim-timestamp violations."""
-    prompt = _prompt(preset, transcript, user_settings)
+    """Run the Director agent, retrying on verbatim-timestamp violations.
+
+    ``resolved`` is passed through to :func:`_prompt` on the flag-on path;
+    the flag-off path (no resolved or flag unset) renders the legacy
+    PresetBundle prompt byte-for-byte.
+    """
+    prompt = _prompt(preset, transcript, user_settings, resolved=resolved)
     target_length_s: float | None = None
     selected_hook_s: float | None = None
     chapters = None
@@ -1340,10 +1501,12 @@ def _assembled_prompt(
     preset: PresetBundle,
     takes: list[dict],
     user_settings: dict | None,
+    resolved: ResolvedAxes | None = None,
 ) -> str:
     """Render the assembled-mode prompt.
 
-    ``takes`` shape per entry:
+    ``takes`` shape per entry::
+
         {
           "item_index": int,
           "source_name": str,
@@ -1352,9 +1515,16 @@ def _assembled_prompt(
                           "start_time": float, "end_time": float,
                           "speaker_id": str}, ...]
         }
+
+    Serves both ``narrative × assembled`` and ``surgical_tighten × assembled``
+    on the flag-on path — the surgical path renders a ``preserve-takes``
+    selection footer. Flag-off path ignores ``resolved`` and renders the
+    legacy PresetBundle prompt byte-for-byte.
     """
     reorder_allowed = bool((user_settings or {}).get("reorder_allowed", True))
-    exclude = _exclude_block(preset, user_settings)
+    preset_view = _pick_preset_view(preset, resolved)
+    strategy_footer = _selection_strategy_footer(resolved) if preset_view is not preset else ""
+    exclude = _exclude_block(preset_view, user_settings)
     focus = _focus_block(user_settings)
     # Flatten all takes' transcripts for speaker detection — speakers span
     # takes, not just one item. Detection reads the same relabelled view the
@@ -1362,24 +1532,35 @@ def _assembled_prompt(
     flat_words: list[dict] = []
     for t in takes:
         flat_words.extend(t.get("transcript") or [])
-    speakers = _speaker_block(preset, flat_words, user_settings)
+    speakers = _speaker_block(preset_view, flat_words, user_settings)
     clip_meta = _clip_metadata_block(flat_words)
     shot_tags = _shot_tag_block(flat_words)
     audio_cues = _audio_cue_block(flat_words, mode="assembled")
     boundary_rej = _boundary_rejections_block(user_settings)
     optional_blocks = "\n\n".join(
-        b for b in (exclude, focus, speakers, clip_meta, shot_tags, audio_cues, boundary_rej) if b
+        b
+        for b in (
+            exclude,
+            focus,
+            speakers,
+            clip_meta,
+            shot_tags,
+            audio_cues,
+            boundary_rej,
+            strategy_footer,
+        )
+        if b
     )
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     takes_for_prompt = _shape_takes_for_prompt(takes, user_settings)
 
-    return f"""You are a {preset.role}.
+    return f"""You are a {preset_view.role}.
 
 The editor has pre-cut this timeline into takes on the video track. Each TAKE below is one timeline item — a self-contained clip. Your job is to choose which takes survive and which word-index spans inside each take are kept.
 
 RULES — follow exactly:
-1. Identify the HOOK: {preset.hook_rule}. Set `hook_index` to the position of the hook take within your returned `selections` array.
-2. Pacing: {preset.pacing}.
+1. Identify the HOOK: {preset_view.hook_rule}. Set `hook_index` to the position of the hook take within your returned `selections` array.
+2. Pacing: {preset_view.pacing}.
 3. You MUST NOT merge material across takes. Every kept_word_span references word indices within ONE take's transcript.
 4. kept_word_spans must reference valid `i` values from that take's transcript. Spans are inclusive on both ends: [a, b] keeps words i=a through i=b.
 5. Within a take, spans must be non-overlapping and in ascending order of `a`.
@@ -1486,10 +1667,15 @@ def build_assembled_cut_plan(
     takes: list[dict],
     preset: PresetBundle,
     user_settings: dict | None = None,
+    resolved: ResolvedAxes | None = None,
 ) -> AssembledDirectorPlan:
-    """Run the assembled-mode Director, retrying on structural violations."""
+    """Run the assembled-mode Director, retrying on structural violations.
+
+    ``resolved`` is passed through to :func:`_assembled_prompt` on the
+    flag-on path.
+    """
     reorder_allowed = bool((user_settings or {}).get("reorder_allowed", True))
-    prompt = _assembled_prompt(preset, takes, user_settings)
+    prompt = _assembled_prompt(preset, takes, user_settings, resolved=resolved)
     return llm.call_structured(
         agent="director",
         prompt=prompt,
@@ -1582,11 +1768,15 @@ def _clip_hunter_prompt(
     user_settings: dict | None,
     target_clip_length_s: float,
     num_clips: int,
+    resolved: ResolvedAxes | None = None,
 ) -> str:
-    exclude = _exclude_block(preset, user_settings)
+    """Clip Hunter prompt — ``multi_clip × *`` on the flag-on path."""
+    preset_view = _pick_preset_view(preset, resolved)
+    strategy_footer = _selection_strategy_footer(resolved) if preset_view is not preset else ""
+    exclude = _exclude_block(preset_view, user_settings)
     focus = _focus_block(user_settings)
     themes = _themes_block(user_settings)
-    speakers = _speaker_block(preset, transcript, user_settings)
+    speakers = _speaker_block(preset_view, transcript, user_settings)
     clip_meta = _clip_metadata_block(transcript)
     shot_tags = _shot_tag_block(transcript)
     audio_cues = _audio_cue_block(transcript, mode="clip_hunter")
@@ -1602,6 +1792,7 @@ def _clip_hunter_prompt(
             shot_tags,
             audio_cues,
             boundary_rej,
+            strategy_footer,
         )
         if b
     )
@@ -1609,7 +1800,7 @@ def _clip_hunter_prompt(
     transcript_for_prompt = _shape_for_prompt(transcript, user_settings)
     low = target_clip_length_s * 0.6
     high = target_clip_length_s * 1.4
-    return f"""You are a {preset.role}.
+    return f"""You are a {preset_view.role}.
 
 You will receive a transcript array. Your job is to surface the {num_clips} most viral-worthy, self-contained moments as a ranked list of clip candidates.
 
@@ -1619,8 +1810,8 @@ RULES — follow exactly:
 3. Candidates must NOT overlap each other — cover different regions of the transcript.
 4. Return candidates in descending engagement order (the strongest pick at index 0).
 5. For each candidate, `start_s` MUST equal the `start_time` of the first word in the clip, and `end_s` MUST equal the `end_time` of the last word. Do not round, truncate, or invent timestamps.
-6. {preset.hook_rule} — use that heuristic to rank engagement.
-7. Pacing note: {preset.pacing}.
+6. {preset_view.hook_rule} — use that heuristic to rank engagement.
+7. Pacing note: {preset_view.pacing}.
 8. `quote` should be 4–10 words drawn from the clip — use it to identify the moment.
 9. `suggested_caption` ≤ 120 characters, ready to paste on TikTok / Shorts / Reels.
 10. Prefer candidates that touch the DETECTED THEMES block (when present) — they reflect the episode's real subject matter, not just surface-level drama.
@@ -1720,14 +1911,20 @@ def build_clip_hunter_plan(
     user_settings: dict | None = None,
     target_clip_length_s: float = 60.0,
     num_clips: int = 3,
+    resolved: ResolvedAxes | None = None,
 ) -> ClipHunterPlan:
-    """Run the Clip Hunter Director. Retries on structural violations."""
+    """Run the Clip Hunter Director. Retries on structural violations.
+
+    ``resolved`` is passed through to :func:`_clip_hunter_prompt` on the
+    flag-on path.
+    """
     prompt = _clip_hunter_prompt(
         preset,
         transcript,
         user_settings,
         target_clip_length_s,
         num_clips,
+        resolved=resolved,
     )
     return llm.call_structured(
         agent="director",
@@ -1842,11 +2039,15 @@ def _short_generator_prompt(
     user_settings: dict | None,
     target_short_length_s: float,
     num_shorts: int,
+    resolved: ResolvedAxes | None = None,
 ) -> str:
-    exclude = _exclude_block(preset, user_settings)
+    """Short Generator prompt — ``assembled_short × *`` on the flag-on path."""
+    preset_view = _pick_preset_view(preset, resolved)
+    strategy_footer = _selection_strategy_footer(resolved) if preset_view is not preset else ""
+    exclude = _exclude_block(preset_view, user_settings)
     focus = _focus_block(user_settings)
     themes = _themes_block(user_settings)
-    speakers = _speaker_block(preset, transcript, user_settings)
+    speakers = _speaker_block(preset_view, transcript, user_settings)
     clip_meta = _clip_metadata_block(transcript)
     shot_tags = _shot_tag_block(transcript)
     audio_cues = _audio_cue_block(transcript, mode="short_generator")
@@ -1862,6 +2063,7 @@ def _short_generator_prompt(
             shot_tags,
             audio_cues,
             boundary_rej,
+            strategy_footer,
         )
         if b
     )
@@ -1874,7 +2076,7 @@ def _short_generator_prompt(
     low = max(target_short_length_s * 0.75, target_short_length_s - 15)  # aspirational floor
     min_spans = max(6, min(8, round(target_short_length_s / 8)))  # ~8s avg spans
     avg_span = target_short_length_s / min_spans
-    return f"""You are a {preset.role}.
+    return f"""You are a {preset_view.role}.
 
 You receive a transcript and will **compose {num_shorts} punchy assembled shorts** — each a list of source spans jump-cut together around a single through-line theme.
 
@@ -1890,11 +2092,11 @@ If the transcript genuinely does not have {target_short_length_s:.0f}s of conten
 
 ### RULES:
 1. Each short has a clear THEME — a through-line (e.g. "why AR replaces phones", "the loneliness debate"). Every span must serve that theme.
-2. The FIRST span is the HOOK — it must earn the next 5s on its own. Use {preset.hook_rule}.
+2. The FIRST span is the HOOK — it must earn the next 5s on its own. Use {preset_view.hook_rule}.
 3. Subsequent spans advance the short: setup → payoff, claim → callback, question → answer. Mark the role on each span.
 4. Each span's `start_s` MUST equal the `start_time` of its first word; `end_s` MUST equal `end_time` of its last word. Verbatim — no rounding.
 5. Within a short, spans MUST NOT overlap each other in source time. Across shorts, overlap is allowed.
-6. Pacing: {preset.pacing}.
+6. Pacing: {preset_view.pacing}.
 7. Return candidates in descending engagement order.
 8. `suggested_caption` ≤ 120 chars, social-ready.
 
@@ -2021,10 +2223,15 @@ def build_short_generator_plan(
     user_settings: dict | None,
     target_short_length_s: float,
     num_shorts: int,
+    resolved: ResolvedAxes | None = None,
 ) -> ShortGeneratorPlan:
-    """Run the Short Generator Director, retrying on validation errors."""
+    """Run the Short Generator Director, retrying on validation errors.
+
+    ``resolved`` is passed through to :func:`_short_generator_prompt` on
+    the flag-on path.
+    """
     prompt = _short_generator_prompt(
-        preset, transcript, user_settings, target_short_length_s, num_shorts
+        preset, transcript, user_settings, target_short_length_s, num_shorts, resolved=resolved
     )
     return llm.call_structured(
         agent="director",
@@ -2138,24 +2345,39 @@ def _curated_prompt(
     preset: PresetBundle,
     takes: list[dict],
     user_settings: dict | None,
+    resolved: ResolvedAxes | None = None,
 ) -> str:
-    exclude = _exclude_block(preset, user_settings)
+    """Curated prompt — ``narrative × curated`` on the flag-on path."""
+    preset_view = _pick_preset_view(preset, resolved)
+    strategy_footer = _selection_strategy_footer(resolved) if preset_view is not preset else ""
+    exclude = _exclude_block(preset_view, user_settings)
     focus = _focus_block(user_settings)
     flat_words: list[dict] = []
     for t in takes:
         flat_words.extend(t.get("transcript") or [])
-    speakers = _speaker_block(preset, flat_words, user_settings)
+    speakers = _speaker_block(preset_view, flat_words, user_settings)
     clip_meta = _clip_metadata_block(flat_words)
     shot_tags = _shot_tag_block(flat_words)
     audio_cues = _audio_cue_block(flat_words, mode="curated")
     boundary_rej = _boundary_rejections_block(user_settings)
     optional_blocks = "\n\n".join(
-        b for b in (exclude, focus, speakers, clip_meta, shot_tags, audio_cues, boundary_rej) if b
+        b
+        for b in (
+            exclude,
+            focus,
+            speakers,
+            clip_meta,
+            shot_tags,
+            audio_cues,
+            boundary_rej,
+            strategy_footer,
+        )
+        if b
     )
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     takes_for_prompt = _shape_takes_for_prompt(takes, user_settings)
 
-    return f"""You are a {preset.role}.
+    return f"""You are a {preset_view.role}.
 
 The editor has curated their final takes (A-roll picked — no duplicates). Your job is to arrange them into the strongest narrative. You may split a take into multiple non-contiguous spans and interleave those spans with other takes' spans.
 
@@ -2163,8 +2385,8 @@ HARD RULE — CURATED INVARIANT:
 Every take listed below MUST contribute at least one span to your plan. Dropping a take is not allowed — the editor explicitly promised these are the keepers.
 
 RULES — follow exactly:
-1. Identify the HOOK: {preset.hook_rule}. Set `hook_order` to the ``order`` value of the hook selection.
-2. Pacing: {preset.pacing}.
+1. Identify the HOOK: {preset_view.hook_rule}. Set `hook_order` to the ``order`` value of the hook selection.
+2. Pacing: {preset_view.pacing}.
 3. You MAY reorder takes freely to build the best narrative.
 4. You MAY include the same take more than once at non-overlapping spans, each with its own ``order`` value — use this for callbacks when dramatically stronger.
 5. kept_word_spans reference valid `i` values from that take's transcript. Spans are inclusive on both ends.
@@ -2208,9 +2430,14 @@ def build_curated_cut_plan(
     takes: list[dict],
     preset: PresetBundle,
     user_settings: dict | None = None,
+    resolved: ResolvedAxes | None = None,
 ) -> CuratedDirectorPlan:
-    """Run the Curated Director, retrying on invariant violations."""
-    prompt = _curated_prompt(preset, takes, user_settings)
+    """Run the Curated Director, retrying on invariant violations.
+
+    ``resolved`` is passed through to :func:`_curated_prompt` on the
+    flag-on path.
+    """
+    prompt = _curated_prompt(preset, takes, user_settings, resolved=resolved)
     return llm.call_structured(
         agent="director",
         prompt=prompt,
@@ -2271,19 +2498,34 @@ def _rough_cut_prompt(
     takes: list[dict],
     groups: list[dict],
     user_settings: dict | None,
+    resolved: ResolvedAxes | None = None,
 ) -> str:
-    exclude = _exclude_block(preset, user_settings)
+    """Rough cut prompt — ``narrative × rough_cut`` on the flag-on path."""
+    preset_view = _pick_preset_view(preset, resolved)
+    strategy_footer = _selection_strategy_footer(resolved) if preset_view is not preset else ""
+    exclude = _exclude_block(preset_view, user_settings)
     focus = _focus_block(user_settings)
     flat_words: list[dict] = []
     for t in takes:
         flat_words.extend(t.get("transcript") or [])
-    speakers = _speaker_block(preset, flat_words, user_settings)
+    speakers = _speaker_block(preset_view, flat_words, user_settings)
     clip_meta = _clip_metadata_block(flat_words)
     shot_tags = _shot_tag_block(flat_words)
     audio_cues = _audio_cue_block(flat_words, mode="rough_cut")
     boundary_rej = _boundary_rejections_block(user_settings)
     optional_blocks = "\n\n".join(
-        b for b in (exclude, focus, speakers, clip_meta, shot_tags, audio_cues, boundary_rej) if b
+        b
+        for b in (
+            exclude,
+            focus,
+            speakers,
+            clip_meta,
+            shot_tags,
+            audio_cues,
+            boundary_rej,
+            strategy_footer,
+        )
+        if b
     )
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     takes_for_prompt = _shape_takes_for_prompt(takes, user_settings)
@@ -2296,7 +2538,7 @@ def _rough_cut_prompt(
         for g in groups
     ]
 
-    return f"""You are a {preset.role}.
+    return f"""You are a {preset_view.role}.
 
 The editor has delivered a rough cut — candidate takes with A/B (or more) alternates for the same moment. Each GROUP below is a set of alternate takes the editor wants considered together. Your job: pick a winner per group (or intercut two when dramatically stronger), then sequence the winners into the strongest narrative.
 
@@ -2304,8 +2546,8 @@ HARD RULE — ROUGH CUT INVARIANT:
 Every group below MUST contribute at least one span to your plan. Dropping a whole group is not allowed — the editor marked each group as a moment that matters.
 
 RULES — follow exactly:
-1. Identify the HOOK: {preset.hook_rule}. Set `hook_order` to the ``order`` value of the hook selection.
-2. Pacing: {preset.pacing}.
+1. Identify the HOOK: {preset_view.hook_rule}. Set `hook_order` to the ``order`` value of the hook selection.
+2. Pacing: {preset_view.pacing}.
 3. For each group, typically pick ONE winning take. Choose two from the same group only when intercutting them is dramatically stronger than either alone.
 4. Across groups you MAY reorder freely.
 5. kept_word_spans reference valid `i` values from that take's transcript. Spans inclusive on both ends, non-overlapping within a selection.
@@ -2432,9 +2674,14 @@ def build_rough_cut_plan(
     groups: list[dict],
     preset: PresetBundle,
     user_settings: dict | None = None,
+    resolved: ResolvedAxes | None = None,
 ) -> CuratedDirectorPlan:
-    """Run the Rough cut Director, retrying on invariant violations."""
-    prompt = _rough_cut_prompt(preset, takes, groups, user_settings)
+    """Run the Rough cut Director, retrying on invariant violations.
+
+    ``resolved`` is passed through to :func:`_rough_cut_prompt` on the
+    flag-on path.
+    """
+    prompt = _rough_cut_prompt(preset, takes, groups, user_settings, resolved=resolved)
     return llm.call_structured(
         agent="director",
         prompt=prompt,
