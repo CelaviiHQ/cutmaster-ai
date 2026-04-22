@@ -1,5 +1,11 @@
 /** TypeScript mirror of the backend Pydantic models. */
 
+/**
+ * @deprecated since Phase 4 of the three-axis model. Send
+ * ``content_type`` + ``UserSettings.cut_intent`` on new requests. The
+ * backend auto-remaps ``PresetKey`` for one release so legacy clients
+ * keep working; Phase 7 removes the alias.
+ */
 export type PresetKey =
   | "vlog"
   | "product_demo"
@@ -13,6 +19,75 @@ export type PresetKey =
   | "clip_hunter"
   | "short_generator"
   | "auto";
+
+// -----------------------------------------------------------------------
+// Three-axis model (Phase 4) — content type, cut intent, resolved axes.
+// -----------------------------------------------------------------------
+
+/** The 8 resolved content types. Never contains ``auto_detect``. */
+export type ContentType =
+  | "vlog"
+  | "product_demo"
+  | "wedding"
+  | "interview"
+  | "tutorial"
+  | "podcast"
+  | "presentation"
+  | "reaction";
+
+/** Wire-level content types. ``auto_detect`` means "run the cascade". */
+export type RequestedContentType = ContentType | "auto_detect";
+
+/** Axis 2 — what the user is making from the content. */
+export type CutIntent =
+  | "narrative"
+  | "peak_highlight"
+  | "multi_clip"
+  | "assembled_short"
+  | "surgical_tighten";
+
+/** How the Director may reorder segments relative to source time. */
+export type ReorderMode =
+  | "free"
+  | "preserve_macro"
+  | "locked"
+  | "per_clip_chronological";
+
+/** Which axis strategy drives segment selection. */
+export type SelectionStrategy =
+  | "narrative-arc"
+  | "peak-hunt"
+  | "top-n"
+  | "montage"
+  | "preserve-takes";
+
+/** Which Director prompt builder the resolved axes route to. */
+export type PromptBuilder =
+  | "_prompt"
+  | "_assembled_prompt"
+  | "_clip_hunter_prompt"
+  | "_short_generator_prompt"
+  | "_curated_prompt"
+  | "_rough_cut_prompt";
+
+/** Per-segment duration bounds in seconds. */
+export interface SegmentPacing {
+  min: number;
+  target: number;
+  max: number;
+}
+
+/** Fully resolved cut recipe — Axis 1 × Axis 2 × duration × timeline_mode. */
+export interface ResolvedAxes {
+  content_type: ContentType;
+  cut_intent: CutIntent;
+  reorder_mode: ReorderMode;
+  segment_pacing: SegmentPacing;
+  selection_strategy: SelectionStrategy;
+  prompt_builder: PromptBuilder;
+  rationale: string[];
+  unusual: boolean;
+}
 
 export interface ExcludeCategory {
   key: string;
@@ -160,6 +235,9 @@ export interface BuildPlanResult {
   tightener?: TightenerSummary;
   clip_hunter?: ClipHunterSummary;
   timeline_state?: TimelineStateMeta;
+  /** Three-axis recipe (Phase 4.6). Present when the request supplied
+   *  axes-keyed context; absent for pure legacy-preset calls. */
+  resolved_axes?: ResolvedAxes;
 }
 
 export type FormatKey = "horizontal" | "vertical_short" | "square";
@@ -198,6 +276,8 @@ export interface UserSettings {
   num_clips?: number;
   speaker_labels?: Record<string, string> | null;
   selected_hook_s?: number | null;
+  // Three-axis Axis 2 (Phase 4). null = auto-resolve by duration / num_clips.
+  cut_intent?: CutIntent | null;
   // v4 Phase 4.4 sensory-layer toggles. Master drives the matrix; the
   // per-layer fields are tri-state overrides (null = defer to matrix,
   // true = force on, false = force off).
@@ -334,6 +414,8 @@ export interface RunSummary {
   created_at: string | null;
   timeline_name: string;
   preset: string;
+  /** Three-axis Axis 1, populated from the legacy ``preset`` alias. */
+  content_type?: RequestedContentType | null;
   status: string;
   has_transcript: boolean;
   has_plan: boolean;

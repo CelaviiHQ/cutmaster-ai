@@ -155,7 +155,7 @@ def test_build_plan_assembled_mode_uses_assembled_director(
 
     call_log: dict[str, object] = {}
 
-    def fake_build_assembled(takes, preset, settings):
+    def fake_build_assembled(takes, preset, settings, resolved=None):
         call_log["takes"] = takes
         call_log["settings"] = settings
         return AssembledDirectorPlan(
@@ -273,7 +273,7 @@ def test_build_plan_assembled_uses_raw_transcript_when_takes_already_scrubbed(
 
     seen_takes: dict[str, object] = {}
 
-    def fake_build_assembled(takes, preset, settings):
+    def fake_build_assembled(takes, preset, settings, resolved=None):
         seen_takes["takes"] = takes
         return AssembledDirectorPlan(
             hook_index=0,
@@ -341,7 +341,7 @@ def test_build_plan_clip_hunter_stores_candidates_and_skips_director(
     the Marker LLM entirely."""
     from cutmaster_ai.cutmaster.core.director import ClipCandidate, ClipHunterPlan
 
-    def fake_hunter(transcript, preset, settings, target, num):
+    def fake_hunter(transcript, preset, settings, target, num, resolved=None):
         return ClipHunterPlan(
             candidates=[
                 ClipCandidate(
@@ -1252,3 +1252,237 @@ def test_build_plan_omitted_v2_fields_use_safe_defaults(client, monkeypatch, scr
     saved_settings = persisted["plan"]["user_settings"]
     assert saved_settings["exclude_categories"] == []
     assert saved_settings["custom_focus"] is None
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — three-axis HTTP API plumbing
+# ---------------------------------------------------------------------------
+
+
+def _three_axis_test_env(monkeypatch, scrubbed_run):
+    """Stub the Resolve + LLM boundary so /build-plan can run headless.
+
+    Returns a ``captured`` dict the test populates when the route reaches
+    the Director call; individual tests assert on ``captured["resolved"]``
+    to verify the axes plumbing fired.
+    """
+    plan = DirectorPlan(
+        hook_index=0,
+        selected_clips=[CutSegment(start_s=0.0, end_s=0.95, reason="hook")],
+        reasoning="ok",
+    )
+    captured: dict = {}
+
+    def _fake_build_cut(transcript, preset, settings, resolved=None):
+        captured["resolved"] = resolved
+        captured["preset"] = preset.key if hasattr(preset, "key") else None
+        return plan
+
+    monkeypatch.setattr(routes.build, "build_cut_plan", _fake_build_cut)
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+
+    fake_tl = MagicMock()
+    fake_tl.GetSetting.return_value = "24"
+
+    def fake_boilerplate():
+        return MagicMock(), MagicMock(), MagicMock()
+
+    import cutmaster_ai.cutmaster.core.pipeline as pipeline_mod
+    import cutmaster_ai.resolve as resolve_mod
+
+    monkeypatch.setattr(resolve_mod, "_boilerplate", fake_boilerplate)
+    monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl)
+    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs, **_kw: [])
+
+    return captured
+
+
+def test_build_plan_with_content_type_and_cut_intent_resolves_axes(
+    client, monkeypatch, scrubbed_run
+):
+    """New-API callers supplying content_type + cut_intent get a
+    ResolvedAxes threaded through to the Director builder and surfaced
+    on the persisted plan."""
+    captured = _three_axis_test_env(monkeypatch, scrubbed_run)
+
+    r = client.post(
+        "/cutmaster/build-plan",
+        json={
+            "run_id": scrubbed_run["run_id"],
+            "preset": "interview",
+            "content_type": "interview",
+            "user_settings": {
+                "target_length_s": 60,
+                "themes": [],
+                "cut_intent": "peak_highlight",
+            },
+        },
+    )
+    assert r.status_code == 200, r.text
+
+    assert captured["resolved"] is not None
+    assert captured["resolved"].content_type == "interview"
+    assert captured["resolved"].cut_intent == "peak_highlight"
+    # Persisted plan carries the resolved_axes dict for the Review UI.
+    persisted = state.load(scrubbed_run["run_id"])
+    axes = persisted["plan"]["resolved_axes"]
+    assert axes["content_type"] == "interview"
+    assert axes["cut_intent"] == "peak_highlight"
+    assert axes["prompt_builder"] == "_prompt"
+
+
+def test_build_plan_with_content_type_only_auto_resolves_cut_intent(
+    client, monkeypatch, scrubbed_run
+):
+    """``content_type`` without ``cut_intent`` triggers auto-resolution
+    inside ``resolve_axes`` — duration-band heuristic picks the intent.
+    ``num_clips=1`` forces the path through the duration heuristic (the
+    resolver's ``num_clips > 1`` branch wins otherwise)."""
+    captured = _three_axis_test_env(monkeypatch, scrubbed_run)
+
+    r = client.post(
+        "/cutmaster/build-plan",
+        json={
+            "run_id": scrubbed_run["run_id"],
+            "preset": "interview",
+            "content_type": "interview",
+            "user_settings": {"target_length_s": 60, "themes": [], "num_clips": 1},
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert captured["resolved"] is not None
+    # 2-second transcript → under 45s band → peak_highlight.
+    assert captured["resolved"].cut_intent == "peak_highlight"
+
+
+def test_build_plan_legacy_short_generator_preset_remaps_and_logs(monkeypatch, caplog):
+    """Legacy ``preset=short_generator`` on ``BuildPlanRequest`` remaps to
+    ``(content_type=auto_detect, cut_intent=assembled_short)`` AND emits
+    ``legacy_preset_alias_used`` — Phase 4.3 structured telemetry. Tested
+    at the model layer so this doesn't depend on the Short Generator
+    validator's ``num_shorts * 3s`` source-length floor."""
+    import logging
+
+    from cutmaster_ai.http.routes.cutmaster._models import BuildPlanRequest
+
+    with caplog.at_level(logging.INFO, logger="cutmaster-ai.http.cutmaster.models"):
+        req = BuildPlanRequest(run_id="abc", preset="short_generator")
+
+    assert req.content_type == "auto_detect"
+    assert req.user_settings.cut_intent == "assembled_short"
+
+    alias_records = [
+        r for r in caplog.records if getattr(r, "event", None) == "legacy_preset_alias_used"
+    ]
+    assert alias_records, "expected legacy_preset_alias_used log entry"
+    rec = alias_records[0]
+    assert rec.endpoint == "build_plan"
+    assert rec.preset == "short_generator"
+    assert rec.mapped_content_type == "auto_detect"
+    assert rec.mapped_cut_intent == "assembled_short"
+
+
+def test_build_plan_legacy_tightener_remaps_timeline_mode_override(monkeypatch, caplog):
+    """``tightener`` remapping also forces ``timeline_mode=assembled`` on
+    UserSettings — the legacy preset's hard-coded behaviour survives the
+    axis split."""
+    from cutmaster_ai.http.routes.cutmaster._models import BuildPlanRequest
+
+    req = BuildPlanRequest(run_id="abc", preset="tightener")
+    assert req.content_type == "auto_detect"
+    assert req.user_settings.cut_intent == "surgical_tighten"
+    assert req.user_settings.timeline_mode == "assembled"
+
+
+def test_build_plan_legacy_tightener_with_raw_dump_mode_rejected_by_axis_compat(
+    client, monkeypatch, scrubbed_run
+):
+    """Legacy ``preset=tightener`` + ``timeline_mode=raw_dump`` — Phase
+    4.5's axis-compat guard returns a 400 citing the surgical-tighten
+    requirement. Note: the tightener branch is exempt from the guard
+    by design, so this case doesn't actually 400 today (tightener force-
+    normalises to assembled). This test documents the new-API path:
+    caller explicitly sets ``cut_intent=surgical_tighten`` on a
+    non-tightener preset."""
+    # New-API shape: cut_intent directly + raw_dump mode.
+    r = client.post(
+        "/cutmaster/build-plan",
+        json={
+            "run_id": scrubbed_run["run_id"],
+            "preset": "interview",
+            "content_type": "interview",
+            "user_settings": {
+                "target_length_s": 60,
+                "themes": [],
+                "cut_intent": "surgical_tighten",
+                "timeline_mode": "raw_dump",
+            },
+        },
+    )
+    assert r.status_code == 400
+    assert "surgical tighten" in r.json()["detail"].lower()
+
+
+def test_build_plan_wedding_narrative_surfaces_preserve_macro_reorder(
+    client, monkeypatch, scrubbed_run
+):
+    """Wedding × Narrative on a raw_dump source → resolver emits
+    reorder_mode=preserve_macro, round-tripped on the plan payload."""
+    captured = _three_axis_test_env(monkeypatch, scrubbed_run)
+
+    r = client.post(
+        "/cutmaster/build-plan",
+        json={
+            "run_id": scrubbed_run["run_id"],
+            "preset": "wedding",
+            "content_type": "wedding",
+            "user_settings": {
+                "target_length_s": 600,
+                "themes": [],
+                "cut_intent": "narrative",
+            },
+        },
+    )
+    assert r.status_code == 200, r.text
+
+    persisted = state.load(scrubbed_run["run_id"])
+    assert persisted["plan"]["resolved_axes"]["reorder_mode"] == "preserve_macro"
+    assert captured["resolved"].reorder_mode == "preserve_macro"
+
+
+def test_analyze_themes_legacy_preset_remaps_and_logs(monkeypatch, caplog):
+    """The remapper fires on /analyze-themes too — regression test for
+    the 4th request boundary (proposal §0 called this out as missed in v1)."""
+    import logging
+
+    from cutmaster_ai.http.routes.cutmaster._models import AnalyzeThemesRequest
+
+    with caplog.at_level(logging.INFO, logger="cutmaster-ai.http.cutmaster.models"):
+        req = AnalyzeThemesRequest(run_id="abc", preset="short_generator")
+
+    assert req.content_type == "auto_detect"
+    alias_records = [
+        r for r in caplog.records if getattr(r, "event", None) == "legacy_preset_alias_used"
+    ]
+    assert alias_records, "expected legacy_preset_alias_used log entry"
+    assert alias_records[0].endpoint == "analyze_themes"
+    assert alias_records[0].mapped_cut_intent == "assembled_short"
+
+
+def test_remap_legacy_preset_table():
+    """Unit-level coverage of the remapper — every migration-table row."""
+    from cutmaster_ai.http.routes.cutmaster._models import _remap_legacy_preset
+
+    assert _remap_legacy_preset("tightener") == (
+        "auto_detect",
+        "surgical_tighten",
+        {"timeline_mode": "assembled"},
+    )
+    assert _remap_legacy_preset("clip_hunter") == ("auto_detect", "multi_clip", {})
+    assert _remap_legacy_preset("short_generator") == ("auto_detect", "assembled_short", {})
+    # Content-type presets pass through as themselves with cut_intent=None.
+    assert _remap_legacy_preset("vlog") == ("vlog", None, {})
+    assert _remap_legacy_preset("interview") == ("interview", None, {})
+    # Unknown / "auto" fall back to auto_detect.
+    assert _remap_legacy_preset("auto") == ("auto_detect", None, {})
+    assert _remap_legacy_preset("nonexistent") == ("auto_detect", None, {})

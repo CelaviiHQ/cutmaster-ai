@@ -2,16 +2,137 @@
 
 from __future__ import annotations
 
-from typing import Literal
+import logging
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from ....cutmaster.analysis.scrubber import ScrubParams
+from ....cutmaster.data.content_profiles import RequestedContentType
+from ....cutmaster.data.cut_intents import CutIntent
+
+log = logging.getLogger("cutmaster-ai.http.cutmaster.models")
+
+
+# ---------------------------------------------------------------------------
+# Phase 4.2 — legacy preset → (content_type, cut_intent, overrides) remapper
+# ---------------------------------------------------------------------------
+#
+# Translates the 12-preset picker's output into the three-axis model's
+# explicit variables. Four call sites (AnalyzeRequest, AnalyzeThemesRequest,
+# BuildPlanRequest, RunSummary) use this to absorb legacy clients during
+# the deprecation window. Phase 7 removes the remapper + the structured
+# log once 30 days of zero ``legacy_preset_alias_used`` traffic confirm
+# no lingering callers.
+
+# Three legacy presets are cut intents wearing a content-type costume;
+# the rest are first-class content types. "auto" means "run the cascade".
+_LEGACY_CUT_INTENT_PRESETS: dict[str, tuple[RequestedContentType, CutIntent, dict]] = {
+    "tightener": ("auto_detect", "surgical_tighten", {"timeline_mode": "assembled"}),
+    "clip_hunter": ("auto_detect", "multi_clip", {}),
+    "short_generator": ("auto_detect", "assembled_short", {}),
+}
+
+_LEGACY_CONTENT_TYPE_PRESETS: frozenset[str] = frozenset(
+    {
+        "vlog",
+        "product_demo",
+        "wedding",
+        "interview",
+        "tutorial",
+        "podcast",
+        "presentation",
+        "reaction",
+    }
+)
+
+
+def _remap_legacy_preset(raw: str) -> tuple[RequestedContentType, CutIntent | None, dict]:
+    """Split a legacy preset key into ``(content_type, cut_intent, overrides)``.
+
+    Cut-intent presets (tightener / clip_hunter / short_generator) map to
+    ``auto_detect`` + the matching intent; ``tightener`` additionally
+    forces ``timeline_mode=assembled``. Content-type presets (vlog,
+    interview, ...) map to themselves with ``cut_intent=None`` so the
+    resolver auto-picks via duration bands. ``"auto"`` keeps
+    ``auto_detect`` and leaves the cut intent unresolved.
+
+    Unknown keys fall back to ``("auto_detect", None, {})`` — the resolver
+    + compat check produce the right error downstream rather than the
+    remapper raising on a typo.
+    """
+    if raw in _LEGACY_CUT_INTENT_PRESETS:
+        return _LEGACY_CUT_INTENT_PRESETS[raw]
+    if raw in _LEGACY_CONTENT_TYPE_PRESETS:
+        return (raw, None, {})  # type: ignore[return-value]
+    # "auto" + unknown both resolve through the cascade during analyze;
+    # the build-plan handler rejects unknown presets before this matters.
+    return ("auto_detect", None, {})
+
+
+def _apply_legacy_preset_alias(values: Any, endpoint: str) -> Any:
+    """Populate ``content_type`` / ``cut_intent`` from a legacy ``preset`` field.
+
+    When the caller only supplied the legacy ``preset`` string (no
+    ``content_type`` override), remap and emit a structured log entry
+    so Phase 7's 30-day telemetry gate has quantitative traffic.
+
+    Accepts the pydantic ``@model_validator(mode="after")`` model-instance
+    shape; returns the instance (possibly with fields updated).
+    """
+    # Only remap when the caller hasn't already set the axes-keyed fields.
+    raw_preset = getattr(values, "preset", None)
+    content_type = getattr(values, "content_type", None)
+    if not raw_preset or content_type is not None:
+        return values
+
+    mapped_ct, mapped_intent, overrides = _remap_legacy_preset(raw_preset)
+
+    if hasattr(values, "content_type"):
+        values.content_type = mapped_ct
+    # cut_intent lives on UserSettings for BuildPlanRequest; AnalyzeRequest
+    # doesn't carry UserSettings — we only surface the mapped value via the
+    # structured log so pipeline/build stages can re-derive it.
+    user_settings = getattr(values, "user_settings", None)
+    if user_settings is not None and getattr(user_settings, "cut_intent", None) is None:
+        user_settings.cut_intent = mapped_intent
+        if "timeline_mode" in overrides:
+            user_settings.timeline_mode = overrides["timeline_mode"]  # type: ignore[assignment]
+
+    log.info(
+        "legacy_preset_alias_used",
+        extra={
+            "event": "legacy_preset_alias_used",
+            "endpoint": endpoint,
+            "preset": raw_preset,
+            "mapped_content_type": mapped_ct,
+            "mapped_cut_intent": mapped_intent,
+        },
+    )
+    return values
 
 
 class AnalyzeRequest(BaseModel):
     timeline_name: str
-    preset: str = "auto"
+    preset: str = Field(
+        default="auto",
+        description=(
+            "DEPRECATED alias for ``content_type`` + ``cut_intent`` — kept "
+            "during the three-axis migration so legacy clients keep "
+            "working. See Phase 4 of "
+            "Implementation/workflow/three-axis-model.md. When ``content_type`` "
+            "is unset, the server remaps ``preset`` and emits a "
+            "``legacy_preset_alias_used`` structured log."
+        ),
+    )
+    content_type: RequestedContentType | None = Field(
+        default=None,
+        description=(
+            "Three-axis Axis 1 — the resolved content-type key (``vlog``, "
+            "``interview``, ...) or the ``auto_detect`` sentinel. When set, "
+            "wins over the legacy ``preset`` field."
+        ),
+    )
     scrub_params: ScrubParams | None = Field(default=None)
     per_clip_stt: bool = Field(
         default=False,
@@ -113,6 +234,10 @@ class AnalyzeRequest(BaseModel):
         ),
     )
 
+    @model_validator(mode="after")
+    def _apply_legacy_alias(self) -> AnalyzeRequest:
+        return _apply_legacy_preset_alias(self, endpoint="analyze")
+
 
 class AnalyzeResponse(BaseModel):
     run_id: str
@@ -174,13 +299,38 @@ class DetectPresetRequest(BaseModel):
 
 class AnalyzeThemesRequest(BaseModel):
     run_id: str
-    preset: str
+    preset: str = Field(
+        default="auto",
+        description=(
+            "DEPRECATED alias for ``content_type`` — kept during the three-axis migration window."
+        ),
+    )
+    content_type: RequestedContentType | None = Field(
+        default=None,
+        description="Three-axis Axis 1 — wins over ``preset`` when set.",
+    )
+
+    @model_validator(mode="after")
+    def _apply_legacy_alias(self) -> AnalyzeThemesRequest:
+        return _apply_legacy_preset_alias(self, endpoint="analyze_themes")
 
 
 class UserSettings(BaseModel):
     target_length_s: int | None = None
     themes: list[str] = []
     scrub_params: ScrubParams | None = None
+    # Three-axis Axis 2. ``None`` = auto-resolve by duration / heuristics.
+    # Populated by the legacy-preset remapper when the caller sent a
+    # cut-intent preset (``tightener`` / ``clip_hunter`` / ``short_generator``).
+    # See Phase 4 of Implementation/workflow/three-axis-model.md.
+    cut_intent: CutIntent | None = Field(
+        default=None,
+        description=(
+            "Three-axis Axis 2 — cut intent (narrative / peak_highlight / "
+            "multi_clip / assembled_short / surgical_tighten). ``None`` "
+            "lets the axis resolver auto-pick from duration and num_clips."
+        ),
+    )
     # v2-0 groundwork: content-category exclusion + free-text focus.
     # The Director prompt wiring lands in v2-1; these fields are accepted
     # and round-tripped through state now so older clients (v1 panel) keep
@@ -313,8 +463,25 @@ class UserSettings(BaseModel):
 
 class BuildPlanRequest(BaseModel):
     run_id: str
-    preset: str
+    preset: str = Field(
+        description=(
+            "DEPRECATED alias for ``content_type`` — kept during the "
+            "three-axis migration window. When ``content_type`` is unset, "
+            "the server remaps and emits ``legacy_preset_alias_used``."
+        ),
+    )
+    content_type: RequestedContentType | None = Field(
+        default=None,
+        description=(
+            "Three-axis Axis 1 — content type. ``None`` falls back to the "
+            "legacy ``preset`` remapping."
+        ),
+    )
     user_settings: UserSettings = Field(default_factory=UserSettings)
+
+    @model_validator(mode="after")
+    def _apply_legacy_alias(self) -> BuildPlanRequest:
+        return _apply_legacy_preset_alias(self, endpoint="build_plan")
 
 
 class ExecuteRequest(BaseModel):
@@ -374,12 +541,24 @@ class RunSummary(BaseModel):
     created_at: str | None = None
     timeline_name: str
     preset: str
+    content_type: RequestedContentType | None = Field(
+        default=None,
+        description=(
+            "Three-axis Axis 1. Populated from the legacy ``preset`` alias "
+            "at load time so the panel's run list can render the new "
+            "content-type label without a second round-trip."
+        ),
+    )
     status: str
     has_transcript: bool
     has_plan: bool
     execute_history: list[dict] = Field(default_factory=list)
     size_kb: float
     last_modified: float
+
+    @model_validator(mode="after")
+    def _apply_legacy_alias(self) -> RunSummary:
+        return _apply_legacy_preset_alias(self, endpoint="run_summary")
 
 
 class RunListResponse(BaseModel):

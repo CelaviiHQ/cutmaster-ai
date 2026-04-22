@@ -126,7 +126,7 @@ def test_curated_reorder_false_normalises_to_assembled(client, monkeypatch, scru
     fake_items = [{"item_index": 0, "source_name": "take1.mov", "start_s": 0.0, "end_s": 2.0}]
     monkeypatch.setattr(routes.build, "read_items_on_track", lambda _tl, track_index=1: fake_items)
 
-    def fake_assembled(takes, preset, settings):
+    def fake_assembled(takes, preset, settings, resolved=None):
         return AssembledDirectorPlan(
             hook_index=0,
             selections=[AssembledItemSelection(item_index=0, kept_word_spans=[WordSpan(a=0, b=1)])],
@@ -170,7 +170,7 @@ def test_curated_mode_calls_curated_director(client, monkeypatch, scrubbed_run):
 
     call_log: dict = {}
 
-    def fake_curated(takes, preset, settings):
+    def fake_curated(takes, preset, settings, resolved=None):
         call_log["takes"] = takes
         return CuratedDirectorPlan(
             hook_order=0,
@@ -242,7 +242,7 @@ def test_rough_cut_mode_runs_group_detector_and_director(client, monkeypatch, sc
 
     call_log: dict = {}
 
-    def fake_rough(takes, groups, preset, settings):
+    def fake_rough(takes, groups, preset, settings, resolved=None):
         call_log["takes"] = takes
         call_log["groups"] = groups
         # Pick take 0 as the winner of the single color group.
@@ -312,7 +312,7 @@ def test_rough_cut_all_singletons_flag_set(client, monkeypatch, scrubbed_run):
         lambda _tl, track_index=1: grouped_items,
     )
 
-    def fake_rough(takes, groups, preset, settings):
+    def fake_rough(takes, groups, preset, settings, resolved=None):
         # Two singleton groups → must cover both.
         return CuratedDirectorPlan(
             hook_order=0,

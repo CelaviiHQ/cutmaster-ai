@@ -50,6 +50,14 @@ from ....cutmaster.core.validator_loop import (
     BoundaryValidationResult,
     run_with_boundary_validation,
 )
+from ....cutmaster.data.axis_compat import (
+    cut_intent_mode_incompatibility_reason,
+)
+from ....cutmaster.data.axis_resolution import (
+    IncompatibleAxesError,
+    ResolvedAxes,
+    resolve_axes,
+)
 from ....cutmaster.data.presets import (
     PRESETS,
     get_preset,
@@ -76,6 +84,96 @@ from ._models import BuildPlanRequest
 log = logging.getLogger("cutmaster-ai.http.cutmaster")
 
 router = APIRouter()
+
+
+# ---------------------------------------------------------------------------
+# Phase 4.5 + 4.6 — three-axis compat check + resolved-axes plumbing
+# ---------------------------------------------------------------------------
+
+
+# Legacy preset keys that pre-decide the cut intent. Mirrors
+# ``_LEGACY_CUT_INTENT_PRESETS`` in ``_models.py`` but lives here so the
+# build handler can run the axis-compat guard without an import-cycle.
+_PRESET_TO_CUT_INTENT: dict[str, str] = {
+    "tightener": "surgical_tighten",
+    "clip_hunter": "multi_clip",
+    "short_generator": "assembled_short",
+}
+
+
+def _effective_cut_intent(body: BuildPlanRequest) -> str | None:
+    """Derive the cut intent for compatibility / axis resolution.
+
+    ``UserSettings.cut_intent`` wins when set (new-API callers). Otherwise
+    legacy cut-intent presets map to their matching intent; content-type
+    presets leave it ``None`` so ``resolve_axes`` can auto-pick.
+    """
+    explicit = body.user_settings.cut_intent
+    if explicit is not None:
+        return explicit
+    return _PRESET_TO_CUT_INTENT.get(body.preset)
+
+
+def _transcript_duration_s(scrubbed: list[dict]) -> float:
+    """Return the last word's ``end_time`` — used as ``duration_s`` input."""
+    if not scrubbed:
+        return 0.0
+    try:
+        return float(scrubbed[-1].get("end_time", 0.0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _effective_content_type(body: BuildPlanRequest) -> str | None:
+    """Prefer the new ``content_type`` field; fall back to remapping the preset."""
+    if body.content_type is not None:
+        return body.content_type
+    # ``body.preset`` is always a legacy key post-validation (cut-intent
+    # presets map to auto_detect, content-type presets map to themselves).
+    # Return the raw preset name when it's a content-type key; None otherwise
+    # so the resolver skips (cascade must already have run during analyze).
+    from ._models import _LEGACY_CONTENT_TYPE_PRESETS
+
+    if body.preset in _LEGACY_CONTENT_TYPE_PRESETS:
+        return body.preset
+    return None
+
+
+def _resolve_axes_for_build(
+    body: BuildPlanRequest,
+    mode: str,
+    duration_s: float,
+) -> ResolvedAxes | None:
+    """Best-effort compute of :class:`ResolvedAxes` for the build handler.
+
+    Returns ``None`` when the axes can't be resolved from what the
+    request carries (e.g. the caller asked for ``auto_detect`` without
+    running the cascade, or supplied an incompatible combination). In
+    that case the build falls back to the legacy ``PresetBundle`` path;
+    the CUTMASTER_USE_RESOLVED_AXES flag gate in the prompt builders
+    already handles both paths transparently.
+    """
+    content_type = _effective_content_type(body)
+    if content_type is None:
+        return None
+    try:
+        return resolve_axes(
+            content_type,
+            cut_intent=_effective_cut_intent(body),
+            duration_s=duration_s,
+            timeline_mode=mode,
+            num_clips=body.user_settings.num_clips,
+            reorder_allowed=body.user_settings.reorder_allowed,
+            takes_already_scrubbed=body.user_settings.takes_already_scrubbed,
+        )
+    except (KeyError, IncompatibleAxesError) as exc:
+        log.info(
+            "resolve_axes fallback — %s (content_type=%s, mode=%s)",
+            exc,
+            content_type,
+            mode,
+        )
+        return None
 
 
 # v4 Phase 4.4: per-layer activation flows through
@@ -216,19 +314,30 @@ async def build_plan(body: BuildPlanRequest) -> dict:
     # they still build against the legacy V1 assumption.
     video_track_idx = int(run.get("video_track") or 1)
 
-    # v2-11: compatibility guard + reorder=false handling for new modes.
+    # v2-11 / Phase 4.5: compatibility guard + reorder=false handling.
     # Must run before the preset-specific branches so an incompatible combo
     # returns 400 rather than a confusing Director-side failure.
     #
     # Tightener is a self-normalising workflow preset — its own branch
-    # forces assembled+reorder_off later. Skip the compat guard for it so
-    # callers that don't know the constraint (or v1 clients) don't break.
-    if body.preset != "tightener" and not preset_mode_compatible(body.preset, mode):
-        raise HTTPException(
-            status_code=400,
-            detail=preset_mode_incompatibility_reason(body.preset, mode)
-            or f"preset '{body.preset}' is not compatible with mode '{mode}'",
-        )
+    # forces assembled+reorder_off later. Skip the guard for it so callers
+    # that don't know the constraint (or v1 clients) don't break.
+    #
+    # Primary gate is the three-axis matrix (`cut_intent_mode_compatible`)
+    # keyed on the effective ``(cut_intent, timeline_mode)`` pair. The
+    # legacy ``preset_mode_compatible`` helper stays as a belt-and-braces
+    # fallback during the migration window — removed in Phase 7.
+    if body.preset != "tightener":
+        effective_intent = _effective_cut_intent(body)
+        if effective_intent is not None:
+            axis_reason = cut_intent_mode_incompatibility_reason(effective_intent, mode)
+            if axis_reason is not None:
+                raise HTTPException(status_code=400, detail=axis_reason)
+        if not preset_mode_compatible(body.preset, mode):
+            raise HTTPException(
+                status_code=400,
+                detail=preset_mode_incompatibility_reason(body.preset, mode)
+                or f"preset '{body.preset}' is not compatible with mode '{mode}'",
+            )
     if mode == "curated" and not body.user_settings.reorder_allowed:
         # Curated + reorder_off is semantically equivalent to Assembled —
         # normalise silently and log so /state reflects what actually ran.
@@ -255,6 +364,24 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         body.preset,
         body.run_id,
     )
+
+    # Phase 4.6: compute the three-axis resolution once so every stage
+    # (prompt builder, compat check, downstream telemetry) reads the
+    # same recipe. ``None`` when the caller didn't supply axis-keyed
+    # context — the flag gate in the prompt builders falls back to the
+    # legacy preset path and the render is byte-identical to pre-Phase 3.
+    duration_s = _transcript_duration_s(scrubbed)
+    resolved_axes = _resolve_axes_for_build(body, mode, duration_s)
+    if resolved_axes is not None:
+        run["resolved_axes"] = resolved_axes.model_dump()
+        state.save(run)
+        log.info(
+            "cutmaster.build: resolved_axes content_type=%s cut_intent=%s reorder=%s builder=%s",
+            resolved_axes.content_type,
+            resolved_axes.cut_intent,
+            resolved_axes.reorder_mode,
+            resolved_axes.prompt_builder,
+        )
 
     # v4 Layer A: populated by the wrapping loop in modes that enable it.
     # Stays None for modes where Layer A is skipped (assembled, tightener,
@@ -328,6 +455,7 @@ async def build_plan(body: BuildPlanRequest) -> dict:
                     settings_dict,
                     target_clip_length_s,
                     num_clips,
+                    resolved=resolved_axes,
                 ),
                 DIRECTOR_TIMEOUT_S,
                 "Clip Hunter Director",
@@ -406,6 +534,8 @@ async def build_plan(body: BuildPlanRequest) -> dict:
                 "source_duration_s": last_word_end,
             },
         }
+        if resolved_axes is not None:
+            run["plan"]["resolved_axes"] = resolved_axes.model_dump()
         await _persist_plan(body.run_id, run["plan"])
         return run["plan"]
 
@@ -471,6 +601,7 @@ async def build_plan(body: BuildPlanRequest) -> dict:
                     eff_settings,
                     target_short_length_s,
                     num_shorts,
+                    resolved=resolved_axes,
                 ),
                 DIRECTOR_TIMEOUT_S,
                 "Short Generator Director",
@@ -570,6 +701,8 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         }
         if boundary_result is not None:
             run["plan"]["boundary_validation"] = boundary_result.to_summary()
+        if resolved_axes is not None:
+            run["plan"]["resolved_axes"] = resolved_axes.model_dump()
         await _persist_plan(body.run_id, run["plan"])
         return run["plan"]
 
@@ -657,6 +790,8 @@ async def build_plan(body: BuildPlanRequest) -> dict:
             "resolved_segments": [r.model_dump() for r in resolved],
             "tightener": tighten_summary,
         }
+        if resolved_axes is not None:
+            run["plan"]["resolved_axes"] = resolved_axes.model_dump()
         await _persist_plan(body.run_id, run["plan"])
         return run["plan"]
 
@@ -737,7 +872,14 @@ async def build_plan(body: BuildPlanRequest) -> dict:
 
             async def _rc_base(eff_settings: dict):
                 return await with_timeout(
-                    asyncio.to_thread(build_rough_cut_plan, takes, groups, preset, eff_settings),
+                    asyncio.to_thread(
+                        build_rough_cut_plan,
+                        takes,
+                        groups,
+                        preset,
+                        eff_settings,
+                        resolved=resolved_axes,
+                    ),
                     DIRECTOR_TIMEOUT_S,
                     "Rough cut Director",
                 )
@@ -773,7 +915,13 @@ async def build_plan(body: BuildPlanRequest) -> dict:
 
             async def _cur_base(eff_settings: dict):
                 return await with_timeout(
-                    asyncio.to_thread(build_curated_cut_plan, takes, preset, eff_settings),
+                    asyncio.to_thread(
+                        build_curated_cut_plan,
+                        takes,
+                        preset,
+                        eff_settings,
+                        resolved=resolved_axes,
+                    ),
                     DIRECTOR_TIMEOUT_S,
                     "Curated Director",
                 )
@@ -861,7 +1009,13 @@ async def build_plan(body: BuildPlanRequest) -> dict:
 
         try:
             assembled_plan = await with_timeout(
-                asyncio.to_thread(build_assembled_cut_plan, takes, preset, settings_dict),
+                asyncio.to_thread(
+                    build_assembled_cut_plan,
+                    takes,
+                    preset,
+                    settings_dict,
+                    resolved=resolved_axes,
+                ),
                 DIRECTOR_TIMEOUT_S,
                 "Assembled Director",
             )
@@ -910,7 +1064,9 @@ async def build_plan(body: BuildPlanRequest) -> dict:
                 mode=mode,
                 settings=settings_dict,
                 base_call=lambda settings: with_timeout(
-                    asyncio.to_thread(build_cut_plan, scrubbed, preset, settings),
+                    asyncio.to_thread(
+                        build_cut_plan, scrubbed, preset, settings, resolved=resolved_axes
+                    ),
                     DIRECTOR_TIMEOUT_S,
                     "Director",
                 ),
@@ -949,6 +1105,11 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         "markers": markers.model_dump(),
         "resolved_segments": [r.model_dump() for r in resolved],
     }
+    # Phase 4.6: surface the three-axis recipe so the Review UI can show
+    # the resolved chip ("Interview · Peak Highlight · 60 s → 3/7/17 s")
+    # without re-deriving from preset + settings.
+    if resolved_axes is not None:
+        run["plan"]["resolved_axes"] = resolved_axes.model_dump()
     # v2-11: attach mode-specific metadata for Curated / Rough cut runs.
     if mode in ("curated", "rough_cut"):
         run["plan"]["timeline_state"] = _v2_11_meta  # type: ignore[name-defined]
