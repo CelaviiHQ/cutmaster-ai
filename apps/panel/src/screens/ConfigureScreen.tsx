@@ -7,7 +7,16 @@ import {
     resolveSensoryLayers,
     sensoryModeKey,
 } from "../sensory";
+import {
+    CUT_INTENTS,
+    cutIntentModeIncompatibilityReason,
+    getCutIntent,
+    isUnusualCombination,
+    resolveCutIntent,
+} from "../axes";
 import type {
+    ContentType,
+    CutIntent,
     FormatKey,
     FormatSpec,
     PresetBundle,
@@ -15,8 +24,22 @@ import type {
     PresetRecommendation,
     SpeakerRosterEntry,
     StoryAnalysis,
+    TimelineMode,
     UserSettings,
 } from "../types";
+
+// Content-type presets recognised by the three-axis model. Used to guard
+// the resolver / picker from running on legacy cut-intent preset keys.
+const CONTENT_TYPE_PRESETS: ReadonlySet<string> = new Set([
+    "vlog",
+    "product_demo",
+    "wedding",
+    "interview",
+    "tutorial",
+    "podcast",
+    "presentation",
+    "reaction",
+]);
 
 const SPEAKER_AWARE_PRESETS: ReadonlySet<PresetKey> = new Set([
     "interview",
@@ -234,9 +257,43 @@ export default function ConfigureScreen({
     const isTightener = preset === "tightener";
     const isClipHunter = preset === "clip_hunter";
     const isShortGenerator = preset === "short_generator";
+
+    // Phase 5.3 + 5.6 — three-axis derivations.
+    // ``cut_intent === null`` means "Auto"; the resolver picks by
+    // duration / num_clips / content-type exception. Panel-side mirror
+    // of ``resolve_cut_intent`` stays in sync with the backend so the
+    // chip preview matches what the server will decide. Only content-
+    // type presets resolve; legacy cut-intent presets keep the old
+    // num_clips-slider path until they're pruned in Phase 7.
+    const timelineModeNow = (settings.timeline_mode ?? "raw_dump") as TimelineMode;
+    const explicitCutIntent = settings.cut_intent ?? null;
+    const canResolveAxes = CONTENT_TYPE_PRESETS.has(preset);
+    const resolvedCutIntentPreview =
+        canResolveAxes && !explicitCutIntent
+            ? resolveCutIntent(
+                  preset as ContentType,
+                  settings.target_length_s ?? 60,
+                  settings.num_clips ?? 1,
+                  timelineModeNow,
+                  !!settings.takes_already_scrubbed,
+              )
+            : null;
+    const effectiveCutIntent: CutIntent | null =
+        explicitCutIntent ?? resolvedCutIntentPreview?.intent ?? null;
+    const effectiveCutIntentInfo =
+        effectiveCutIntent ? getCutIntent(effectiveCutIntent) : null;
+
+    // Multi-candidate = num_clips slider is relevant. New-API path: the
+    // Axis 2 cut_intent is (or auto-resolves to) multi_clip. Legacy
+    // presets + multi_clip cover the same UI need.
+    const isMultiClipIntent = effectiveCutIntent === "multi_clip";
+    const isAssembledShortIntent = effectiveCutIntent === "assembled_short";
     // Short Generator + Clip Hunter share the "N candidates + target length"
-    // shape, so UI rules that hide sequencing-preset cards apply to both.
-    const isMultiCandidate = isClipHunter || isShortGenerator;
+    // shape, so UI rules that hide sequencing-preset cards apply to both
+    // legacy presets AND the axis-resolved cut intents.
+    const isMultiCandidate =
+        isClipHunter || isShortGenerator || isMultiClipIntent || isAssembledShortIntent;
+
     const showSpeakerCard =
         SPEAKER_AWARE_PRESETS.has(preset) &&
         speakerRoster != null &&
@@ -307,11 +364,17 @@ export default function ConfigureScreen({
             )}
 
             <div className="card">
-                <h2>Preset</h2>
+                <h2>Content type</h2>
+                <p className="muted" style={{ marginBottom: "var(--s-2)" }}>
+                    What's on the timeline? Override here if the analyzer
+                    picked the wrong content type.
+                </p>
                 <select
                     value={preset}
                     onChange={(e) => handlePresetChange(e.target.value as PresetKey)}
                 >
+                    {/* Phase 5.2 — content-type dropdown shrinks to 8 options
+                        (down from 11). Cut-intent presets moved to Axis 2. */}
                     {[
                         "vlog",
                         "product_demo",
@@ -321,16 +384,220 @@ export default function ConfigureScreen({
                         "podcast",
                         "presentation",
                         "reaction",
-                        "tightener",
-                        "clip_hunter",
-                        "short_generator",
                     ].map((p) => (
                         <option key={p} value={p}>
                             {p}
                         </option>
                     ))}
+                    {/* Legacy cut-intent presets remain selectable when the
+                        run was created before Phase 5 so the dropdown stays
+                        representative of the actual run state. */}
+                    {["tightener", "clip_hunter", "short_generator"].includes(preset) && (
+                        <option value={preset} disabled>
+                            {preset} (legacy — pick a content type above)
+                        </option>
+                    )}
                 </select>
             </div>
+
+            {/* Phase 5.4 — Resolved chip. Inline one-liner showing the
+                effective (content_type, cut_intent, target_length_s,
+                pacing) tuple. Clicking the details below expands Axis 2
+                for override. Stays quiet when the preset is legacy
+                (pre-Phase 5 run that hasn't been re-Configured). */}
+            {canResolveAxes && !isTightener && effectiveCutIntent && (
+                <div
+                    className="muted"
+                    style={{
+                        padding: "var(--s-3) var(--s-4)",
+                        marginBottom: "var(--s-3)",
+                        background: "var(--surface-3)",
+                        borderRadius: "var(--radius-md)",
+                        fontSize: "var(--fs-2)",
+                    }}
+                >
+                    {explicitCutIntent === null ? "Auto → " : ""}
+                    <strong>
+                        {preset.charAt(0).toUpperCase() + preset.slice(1)}
+                    </strong>
+                    {" · "}
+                    <strong>{effectiveCutIntentInfo?.label ?? effectiveCutIntent}</strong>
+                    {settings.target_length_s
+                        ? ` · ${settings.target_length_s}s target`
+                        : ""}
+                    {resolvedCutIntentPreview && (
+                        <>
+                            {" — "}
+                            <span style={{ fontStyle: "italic" }}>
+                                {resolvedCutIntentPreview.reason}
+                            </span>
+                        </>
+                    )}
+                </div>
+            )}
+
+            {/* Phase 5.3 + 5.5 + 5.7 — Axis 2 picker. Collapsed by
+                default; the summary surfaces Auto + the resolved preview
+                so casual users never have to think about cut intents.
+                Power users expand to override, and incompatible combos
+                grey out with a tooltip explaining why. */}
+            {canResolveAxes && !isTightener && (
+                <details
+                    className="card card--advanced"
+                    open={explicitCutIntent !== null}
+                    style={
+                        resolvedCutIntentPreview &&
+                        effectiveCutIntent &&
+                        isUnusualCombination(preset as ContentType, effectiveCutIntent)
+                            ? { borderColor: "var(--warn, #d97706)" }
+                            : undefined
+                    }
+                >
+                    <summary>
+                        <span>
+                            Output style
+                            <span
+                                className="muted"
+                                style={{ fontSize: "var(--fs-2)", marginLeft: "var(--s-2)" }}
+                            >
+                                {explicitCutIntent === null ? (
+                                    <>
+                                        · Auto
+                                        {resolvedCutIntentPreview && (
+                                            <> → {getCutIntent(resolvedCutIntentPreview.intent)?.label}</>
+                                        )}
+                                    </>
+                                ) : (
+                                    <>· {effectiveCutIntentInfo?.label ?? explicitCutIntent}</>
+                                )}
+                            </span>
+                        </span>
+                    </summary>
+                    <div className="card-body">
+                        <p className="muted" style={{ marginBottom: "var(--s-3)" }}>
+                            What are you making from this content? Auto picks
+                            based on your target length; override here when
+                            the default doesn't match your intent.
+                        </p>
+
+                        {/* Auto row — picks based on duration + num_clips. */}
+                        <label
+                            className="exclude-item"
+                            style={{ marginBottom: "var(--s-2)" }}
+                        >
+                            <input
+                                type="radio"
+                                name="cut-intent"
+                                checked={explicitCutIntent === null}
+                                onChange={() =>
+                                    onSettingsChange({ ...settings, cut_intent: null })
+                                }
+                            />
+                            <span className="exclude-body">
+                                <span className="exclude-label">Auto</span>
+                                <br />
+                                <span className="exclude-desc">
+                                    {resolvedCutIntentPreview ? (
+                                        <>
+                                            Picks <strong>{getCutIntent(
+                                                resolvedCutIntentPreview.intent,
+                                            )?.label}</strong>{" "}
+                                            — {resolvedCutIntentPreview.reason}.
+                                        </>
+                                    ) : (
+                                        <>Pick a target length first to see the Auto pick.</>
+                                    )}
+                                </span>
+                            </span>
+                        </label>
+
+                        {CUT_INTENTS.map((ci) => {
+                            const blockedReason = cutIntentModeIncompatibilityReason(
+                                ci.key,
+                                timelineModeNow,
+                            );
+                            const disabled = blockedReason !== null;
+                            const unusual = isUnusualCombination(
+                                preset as ContentType,
+                                ci.key,
+                            );
+                            return (
+                                <label
+                                    key={ci.key}
+                                    className="exclude-item"
+                                    title={blockedReason ?? undefined}
+                                    style={{
+                                        marginBottom: "var(--s-2)",
+                                        opacity: disabled ? 0.4 : 1,
+                                        cursor: disabled ? "not-allowed" : "pointer",
+                                    }}
+                                >
+                                    <input
+                                        type="radio"
+                                        name="cut-intent"
+                                        checked={explicitCutIntent === ci.key}
+                                        disabled={disabled}
+                                        onChange={() =>
+                                            onSettingsChange({
+                                                ...settings,
+                                                cut_intent: ci.key,
+                                            })
+                                        }
+                                    />
+                                    <span className="exclude-body">
+                                        <span className="exclude-label">
+                                            {ci.label}
+                                            {unusual && (
+                                                <span
+                                                    className="muted"
+                                                    style={{
+                                                        fontSize: "var(--fs-2)",
+                                                        marginLeft: "var(--s-2)",
+                                                    }}
+                                                >
+                                                    · unusual for {preset}
+                                                </span>
+                                            )}
+                                        </span>
+                                        <br />
+                                        <span className="exclude-desc">
+                                            {disabled ? blockedReason : ci.description}
+                                        </span>
+                                    </span>
+                                </label>
+                            );
+                        })}
+
+                        {/* Phase 5.5 — unusual-combination hint, neutral tone,
+                            non-blocking. Only fires when the EFFECTIVE intent
+                            (explicit or auto-resolved) is flagged unusual. */}
+                        {effectiveCutIntent &&
+                            isUnusualCombination(
+                                preset as ContentType,
+                                effectiveCutIntent,
+                            ) && (
+                                <p
+                                    className="muted"
+                                    style={{
+                                        marginTop: "var(--s-3)",
+                                        padding: "var(--s-3)",
+                                        background: "var(--surface-3)",
+                                        borderRadius: "var(--radius-md)",
+                                        fontSize: "var(--fs-2)",
+                                    }}
+                                >
+                                    <strong>
+                                        {preset.charAt(0).toUpperCase() + preset.slice(1)}{" "}
+                                        × {effectiveCutIntentInfo?.label} is unusual
+                                    </strong>
+                                    {" — "}
+                                    tutorials usually play linearly. Continue if
+                                    that's what you want.
+                                </p>
+                            )}
+                    </div>
+                </details>
+            )}
 
             {isMultiCandidate && (
                 <div className="card">

@@ -12,6 +12,20 @@ import type {
     UserSettings,
 } from "../types";
 
+// Phase 5.8 — content-type preset whitelist for the build-plan request
+// remapper. Mirrors ``axes.ts::CONTENT_TYPE_PRESETS`` but scoped to this
+// screen so the Review refactor stays local.
+const CONTENT_TYPE_PRESETS_REVIEW: ReadonlySet<string> = new Set([
+    "vlog",
+    "product_demo",
+    "wedding",
+    "interview",
+    "tutorial",
+    "podcast",
+    "presentation",
+    "reaction",
+]);
+
 interface Props {
     runId: string;
     preset: PresetKey;
@@ -116,8 +130,15 @@ export default function ReviewScreen({
             setLoading(true);
             setErr(null);
             try {
+                // Phase 5.8 — send ``content_type`` when the preset is a
+                // content-type key; legacy cut-intent presets (tightener
+                // / clip_hunter / short_generator) still rely on the
+                // backend's auto-remapping.
+                const contentType = CONTENT_TYPE_PRESETS_REVIEW.has(preset)
+                    ? preset
+                    : null;
                 const [p, presetList, cachedThemes] = await Promise.all([
-                    api.buildPlan(runId, preset, settings),
+                    api.buildPlan(runId, preset, settings, contentType),
                     api.listPresets().catch(() => ({ presets: [] })),
                     api.themesCache(runId).catch(() => null),
                 ]);
@@ -145,7 +166,10 @@ export default function ReviewScreen({
         setRegenerating(true);
         setErr(null);
         try {
-            const p = await api.buildPlan(runId, preset, next);
+            const contentType = CONTENT_TYPE_PRESETS_REVIEW.has(preset)
+                ? preset
+                : null;
+            const p = await api.buildPlan(runId, preset, next, contentType);
             setPlan(p);
             onSettingsChange?.(next);
             // Reset any build attempt tied to the prior plan.

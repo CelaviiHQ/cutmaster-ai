@@ -556,6 +556,7 @@ export default function App() {
             {step === "analyze" && runId && (
                 <AnalyzeScreen
                     runId={runId}
+                    presetLabel={preset}
                     onDone={(durationS) => {
                         if (typeof durationS === "number") setAnalyzeDurationS(durationS);
                         setStep("configure");

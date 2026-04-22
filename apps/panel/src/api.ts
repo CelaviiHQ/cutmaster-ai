@@ -129,12 +129,22 @@ export const api = {
       `/cutmaster/themes-cache/${runId}`,
     ),
 
-  buildPlan: (runId: string, preset: string, userSettings: UserSettings) =>
+  buildPlan: (
+    runId: string,
+    preset: string,
+    userSettings: UserSettings,
+    contentType?: string | null,
+  ) =>
     http<BuildPlanResult>("/cutmaster/build-plan", {
       method: "POST",
       body: JSON.stringify({
         run_id: runId,
         preset,
+        // Phase 5.8 — three-axis Axis 1. Panel sends ``content_type``
+        // explicitly when set; backend validator wins over legacy
+        // preset remapping when both arrive. Omit when null so
+        // pre-three-axis clients stay wire-compatible.
+        ...(contentType ? { content_type: contentType } : {}),
         user_settings: userSettings,
       }),
     }),

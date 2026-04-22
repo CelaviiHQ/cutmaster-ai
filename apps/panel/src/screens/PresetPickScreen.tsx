@@ -486,7 +486,20 @@ export default function PresetPickScreen({
                             override in the next step.
                         </p>
                     </div>
-                    {presets.map((p) => (
+                    {/* Phase 5.2 — three-axis split. The legacy cut-intent
+                        presets (tightener / clip_hunter / short_generator)
+                        are no longer content types; they're Axis 2 cut
+                        intents. Filter them out so the grid shows the 8
+                        true content types + Auto (9 total), down from the
+                        pre-phase-5 12. */}
+                    {presets
+                        .filter(
+                            (p) =>
+                                p.key !== "tightener" &&
+                                p.key !== "clip_hunter" &&
+                                p.key !== "short_generator",
+                        )
+                        .map((p) => (
                         <div
                             key={p.key}
                             role="button"

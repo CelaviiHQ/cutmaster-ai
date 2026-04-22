@@ -12,6 +12,10 @@ interface Props {
     // terminal 'done' status. Used by the app shell to update the Saved
     // chip as soon as the run completes, before the user clicks Configure.
     onComplete?: () => void;
+    // Phase 5.9 — content-type label shown under the run id. When
+    // ``auto``, the cascade resolves after transcribe; the label
+    // updates via the detect-preset call on the Configure screen.
+    presetLabel?: string;
 }
 
 const STAGES = [
@@ -29,7 +33,13 @@ const PROVIDER_LABELS: Record<string, string> = {
     deepgram: "Deepgram",
 };
 
-export default function AnalyzeScreen({ runId, onDone, onReset, onComplete }: Props) {
+export default function AnalyzeScreen({
+    runId,
+    onDone,
+    onReset,
+    onComplete,
+    presetLabel,
+}: Props) {
     const { events, terminal } = useSSE(runId);
     const [cancelling, setCancelling] = useState(false);
     const [cancelled, setCancelled] = useState(false);
@@ -86,6 +96,12 @@ export default function AnalyzeScreen({ runId, onDone, onReset, onComplete }: Pr
                         <h2>Running analyze</h2>
                         <p className="muted">
                             Run <code>{runId}</code>
+                            {presetLabel && presetLabel !== "auto" && (
+                                <> · <code>{presetLabel}</code></>
+                            )}
+                            {presetLabel === "auto" && (
+                                <> · auto-detecting content type</>
+                            )}
                         </p>
 
                         {STAGES.map((s) => {
