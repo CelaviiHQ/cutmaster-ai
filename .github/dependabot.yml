@@ -1,0 +1,33 @@
+version: 2
+
+# Keeps runtime + dev dependencies and GitHub Actions current without
+# a human remembering to. Both ecosystems run weekly; open-PR cap keeps
+# the inbox sane. Conventional-commit prefixes align with CLAUDE.md so
+# the CHANGELOG-check workflow treats them uniformly.
+
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "chore(ci)"
+      include: "scope"
