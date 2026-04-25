@@ -3,7 +3,7 @@ import { api } from "../api";
 import type { SourceAspectInfo } from "../api";
 import MascotLoading from "./MascotLoading";
 import {
-    SENSORY_SUBTITLES,
+    SENSORY_MATRIX,
     resolveSensoryLayers,
     sensoryModeKey,
 } from "../sensory";
@@ -1177,13 +1177,13 @@ export default function ConfigureScreen({
                 </div>
             )}
 
-            {/* ── Advanced — shot-aware editing + per-layer overrides ── */}
+            {/* ── Advanced — shot-aware editing (single disclosure) ── */}
             {!isTightener && (
                 <details className="card card--advanced">
                     <summary>
-                        <span>Advanced</span>
+                        <span>Shot-aware editing</span>
                         <span className="muted" style={{ marginLeft: 8, fontSize: "var(--fs-2)" }}>
-                            — shot-aware editing, per-layer overrides
+                            — vision + audio cue layers · {settings.sensory_master_enabled ? "ON" : "off"}
                         </span>
                     </summary>
                     <div className="card-body">
@@ -1219,6 +1219,53 @@ interface SensoryCardProps {
     onSettingsChange: (s: UserSettings) => void;
 }
 
+// Layer-level metadata. Codenames (C / A / Audio) live here as `tag`
+// so the rare power user can still see them on hover, but the headline
+// is the functional name designers think in.
+interface LayerMeta {
+    key: "c" | "a" | "audio";
+    tag: string;            // engineer codename — tooltip only
+    name: string;           // headline
+    desc: string;           // one-line plain-English summary
+    when: "analyze" | "build";
+    cost: string;           // wall-clock or LLM cost summary
+}
+
+const LAYER_META: LayerMeta[] = [
+    {
+        key: "c",
+        tag: "Layer C",
+        name: "Shot tagging",
+        desc: "Gemini vision tags each shot's framing, motion and gesture.",
+        when: "analyze",
+        cost: "+30–60s first run · cached afterwards",
+    },
+    {
+        key: "a",
+        tag: "Layer A",
+        name: "Boundary validator",
+        desc: "Re-runs the Director when a planned cut lands mid-gesture.",
+        when: "build",
+        cost: "+1 LLM call per plan · no analyze cost",
+    },
+    {
+        key: "audio",
+        tag: "Layer Audio",
+        name: "Audio cues",
+        desc: "Pause / silence / RMS energy. Catches beats and fillers the transcript misses.",
+        when: "analyze",
+        cost: "+5–15s first run · cached afterwards",
+    },
+];
+
+// Pretty label for a content-type / cut-intent / mode combo. Used in
+// the "Default mix for X" sentence.
+function presetCombo(preset: PresetKey, timelineMode: string): string {
+    const label = (CONTENT_TYPE_META[preset]?.label ?? preset);
+    const mode = timelineMode.replace("_", " ");
+    return `${label} × ${mode}`;
+}
+
 function SensoryCard({
     settings,
     preset,
@@ -1226,57 +1273,32 @@ function SensoryCard({
     onSettingsChange,
 }: SensoryCardProps) {
     const master = !!settings.sensory_master_enabled;
-    const key = sensoryModeKey(preset, timelineMode);
-    const subtitle =
-        SENSORY_SUBTITLES[key] ?? SENSORY_SUBTITLES.raw_dump;
     const resolved = resolveSensoryLayers(settings, preset);
 
-    // Tri-state per-layer override. Checked reflects the effective
-    // resolution (matrix or explicit). Clicking toggles to the opposite
-    // explicit value; a second click returns to matrix-defer (null).
-    const nextOverride = (
-        current: boolean | null | undefined,
-        effective: boolean,
-    ): boolean | null => {
-        if (current === true) return false;
-        if (current === false) return null;
-        // current is null/undefined — flip to the opposite of the
-        // current effective value so the checkbox click feels natural.
-        return !effective;
-    };
+    // Read the matrix row directly so each layer card can show "default
+    // for this combo: ON/OFF" — the matrix used to be invisible to users.
+    const matrixKey = sensoryModeKey(preset, timelineMode);
+    const matrixRow = SENSORY_MATRIX[matrixKey] ?? SENSORY_MATRIX.raw_dump;
+    const matrixDefault = (k: "c" | "a" | "audio"): boolean =>
+        matrixRow[k] === "default";
 
-    const toggleLayer = (layer: "c" | "a" | "audio") => {
-        if (layer === "c") {
-            onSettingsChange({
-                ...settings,
-                layer_c_enabled: nextOverride(
-                    settings.layer_c_enabled,
-                    resolved.c,
-                ),
-            });
-        } else if (layer === "a") {
-            onSettingsChange({
-                ...settings,
-                layer_a_enabled: nextOverride(
-                    settings.layer_a_enabled,
-                    resolved.a,
-                ),
-            });
-        } else {
-            onSettingsChange({
-                ...settings,
-                layer_audio_enabled: nextOverride(
-                    settings.layer_audio_enabled,
-                    resolved.audio,
-                ),
-            });
-        }
+    // Tri-state state machine, but driven by an explicit segmented control
+    // (default / force-on / force-off) instead of click-counting.
+    type Override = boolean | null;
+    const overrideOf = (k: "c" | "a" | "audio"): Override => {
+        if (k === "c") return settings.layer_c_enabled ?? null;
+        if (k === "a") return settings.layer_a_enabled ?? null;
+        return settings.layer_audio_enabled ?? null;
+    };
+    const setOverride = (k: "c" | "a" | "audio", v: Override) => {
+        if (k === "c") onSettingsChange({ ...settings, layer_c_enabled: v });
+        else if (k === "a") onSettingsChange({ ...settings, layer_a_enabled: v });
+        else onSettingsChange({ ...settings, layer_audio_enabled: v });
     };
 
     const toggleMaster = (on: boolean) => {
-        // Turning master on/off clears any per-layer overrides so the
-        // matrix governs the new state cleanly. Power users can re-flip
-        // overrides under Advanced afterwards.
+        // Turning master on/off clears overrides so the matrix governs
+        // the new state cleanly. Power users can re-set them after.
         onSettingsChange({
             ...settings,
             sensory_master_enabled: on,
@@ -1286,125 +1308,132 @@ function SensoryCard({
         });
     };
 
-    const overrideLabel = (override: boolean | null | undefined) => {
-        if (override === true) return " (forced on)";
-        if (override === false) return " (forced off)";
-        return "";
-    };
+    // Live "currently active" summary — the names of layers that will
+    // actually fire given current settings. Empty when master is off.
+    const activeNames = master
+        ? LAYER_META.filter((l) => resolved[l.key]).map((l) => l.name)
+        : [];
+
+    const defaultMixNames = LAYER_META.filter((l) => matrixDefault(l.key)).map((l) => l.name);
 
     return (
-        <div className="card">
-            <h2>Shot-aware editing</h2>
-            <label
-                style={{
-                    display: "flex",
-                    gap: 6,
-                    alignItems: "center",
-                    margin: 0,
-                    marginTop: 4,
-                }}
-            >
-                <input
-                    type="checkbox"
-                    checked={master}
-                    onChange={(e) => toggleMaster(e.target.checked)}
-                />
-                Enable
-            </label>
-            <p className="muted" style={{ marginTop: 8 }}>
-                {master
-                    ? subtitle
-                    : "Off — transcript-only cuts, matches v3 behaviour."}
-            </p>
-
-            <details className="card card--advanced" style={{ marginTop: 12 }}>
-                <summary>
-                    <span>
-                        Advanced · per-layer overrides
-                        {!master && (
-                            <>
-                                {" "}
-                                <span
-                                    className="muted"
-                                    style={{ fontSize: "var(--fs-2)" }}
-                                >
-                                    · master off
-                                </span>
-                            </>
-                        )}
-                    </span>
-                </summary>
-                <div className="card-body">
-                    <p className="muted" style={{ marginBottom: 8 }}>
-                        The master switch auto-picks layers for this
-                        preset+mode. Tick to force a layer on, tick again
-                        to force off, a third time to return to matrix
-                        defaults.
-                    </p>
-                    <label
-                        style={{
-                            display: "flex",
-                            gap: 6,
-                            alignItems: "center",
-                            margin: 0,
-                            marginBottom: 6,
-                        }}
-                    >
-                        <input
-                            type="checkbox"
-                            checked={resolved.c}
-                            onChange={() => toggleLayer("c")}
-                        />
-                        Layer C — Shot tagging (Gemini vision)
-                        <span className="muted" style={{ fontSize: "var(--fs-2)" }}>
-                            {overrideLabel(settings.layer_c_enabled)}
-                        </span>
-                    </label>
-                    <label
-                        style={{
-                            display: "flex",
-                            gap: 6,
-                            alignItems: "center",
-                            margin: 0,
-                            marginBottom: 6,
-                        }}
-                    >
-                        <input
-                            type="checkbox"
-                            checked={resolved.a}
-                            onChange={() => toggleLayer("a")}
-                        />
-                        Layer A — Boundary validator (post-plan retry)
-                        <span className="muted" style={{ fontSize: "var(--fs-2)" }}>
-                            {overrideLabel(settings.layer_a_enabled)}
-                        </span>
-                    </label>
-                    <label
-                        style={{
-                            display: "flex",
-                            gap: 6,
-                            alignItems: "center",
-                            margin: 0,
-                        }}
-                    >
-                        <input
-                            type="checkbox"
-                            checked={resolved.audio}
-                            onChange={() => toggleLayer("audio")}
-                        />
-                        Layer Audio — Pause / silence / RMS cues (DSP)
-                        <span className="muted" style={{ fontSize: "var(--fs-2)" }}>
-                            {overrideLabel(settings.layer_audio_enabled)}
-                        </span>
-                    </label>
-                    <p className="muted" style={{ marginTop: 10, fontSize: "var(--fs-2)" }}>
-                        Layers C and Audio run during analyze — toggle on the
-                        preset screen to apply on the first run, or re-analyze
-                        to pick them up later. Layer A runs at build-plan time,
-                        so changes here apply to the next plan you build.
+        <div className="sensory">
+            <div className="sensory-head">
+                <div>
+                    <h2 style={{ margin: 0 }}>Shot-aware editing</h2>
+                    <p className="muted sensory-status">
+                        {master
+                            ? activeNames.length > 0
+                                ? <>Currently active: <strong>{activeNames.join(" + ")}</strong></>
+                                : <>On — but every layer is forced off.</>
+                            : <>Off — transcript-only cuts. Matches v3 behaviour.</>}
                     </p>
                 </div>
-            </details>
+                <button
+                    type="button"
+                    role="switch"
+                    aria-checked={master}
+                    className={`switch ${master ? "is-on" : ""}`}
+                    onClick={() => toggleMaster(!master)}
+                >
+                    <span className="switch-track">
+                        <span className="switch-thumb" />
+                    </span>
+                    <span className="switch-label">{master ? "ON" : "OFF"}</span>
+                </button>
+            </div>
+
+            <p className="muted sensory-defaultmix">
+                Default mix for <strong>{presetCombo(preset, timelineMode)}</strong>
+                {defaultMixNames.length > 0
+                    ? <> — {defaultMixNames.join(" + ")}.</>
+                    : <> — none.</>}
+            </p>
+
+            <div className={`sensory-layers ${!master ? "is-disabled" : ""}`}>
+                {LAYER_META.map((l) => {
+                    const isOn = resolved[l.key];
+                    const override = overrideOf(l.key);
+                    const def = matrixDefault(l.key);
+                    const segState: "default" | "on" | "off" =
+                        override === true ? "on" : override === false ? "off" : "default";
+                    return (
+                        <div
+                            key={l.key}
+                            className={`sensory-layer sensory-layer--${segState} ${isOn ? "is-on" : "is-off"}`}
+                        >
+                            <div className="sensory-layer-head">
+                                <span className="sensory-layer-glyph" aria-hidden>
+                                    {isOn ? "✦" : "○"}
+                                </span>
+                                <span
+                                    className="sensory-layer-name"
+                                    title={`${l.tag} — engineer codename`}
+                                >
+                                    {l.name}
+                                </span>
+                                <span
+                                    className={`sensory-when sensory-when--${l.when}`}
+                                    title={
+                                        l.when === "analyze"
+                                            ? "Runs during analyze — re-analyze on the Preset screen to apply changes."
+                                            : "Runs at build time — your next Regenerate will pick up changes."
+                                    }
+                                >
+                                    {l.when === "analyze" ? "analyze" : "build"}
+                                </span>
+                            </div>
+                            <p className="sensory-layer-desc">{l.desc}</p>
+                            <p className="sensory-layer-cost muted">{l.cost}</p>
+                            <div className="sensory-layer-control">
+                                <span className="sensory-layer-default-label muted">
+                                    Default for this combo: <strong>{def ? "ON" : "OFF"}</strong>
+                                </span>
+                                <div
+                                    className="seg-control"
+                                    role="radiogroup"
+                                    aria-label={`${l.name} — override`}
+                                >
+                                    <button
+                                        type="button"
+                                        role="radio"
+                                        aria-checked={segState === "default"}
+                                        className={`seg-btn ${segState === "default" ? "on" : ""}`}
+                                        onClick={() => setOverride(l.key, null)}
+                                        title="Use the default for this preset / mode combination"
+                                    >
+                                        default <span className="muted">({def ? "on" : "off"})</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        role="radio"
+                                        aria-checked={segState === "on"}
+                                        className={`seg-btn seg-btn--on ${segState === "on" ? "on" : ""}`}
+                                        onClick={() => setOverride(l.key, true)}
+                                    >
+                                        force on
+                                    </button>
+                                    <button
+                                        type="button"
+                                        role="radio"
+                                        aria-checked={segState === "off"}
+                                        className={`seg-btn seg-btn--off ${segState === "off" ? "on" : ""}`}
+                                        onClick={() => setOverride(l.key, false)}
+                                    >
+                                        force off
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+
+            <p className="muted sensory-foot">
+                ⓘ Layers tagged <em>analyze</em> need a re-analyze on the Preset
+                screen to apply changes. Layers tagged <em>build</em> apply on
+                your next Regenerate.
+            </p>
         </div>
     );
 }

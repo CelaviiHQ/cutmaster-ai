@@ -1628,6 +1628,209 @@ code {
 }
 .speaker-accept:hover { color: var(--accent-blue); }
 
+/* ── Configure: Shot-aware editing — switch + layer cards ───────── */
+.sensory {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-3);
+}
+.sensory-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--s-3);
+    flex-wrap: wrap;
+}
+.sensory-status {
+    margin: 4px 0 0;
+    font-size: var(--fs-2);
+}
+.sensory-status strong { color: var(--text-primary); font-weight: 500; }
+.sensory-defaultmix {
+    margin: 0;
+    padding: 6px 10px;
+    background: var(--surface-3);
+    border-radius: var(--radius-sm);
+    font-size: var(--fs-1);
+}
+.sensory-defaultmix strong {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+.sensory-foot {
+    margin: 0;
+    font-size: var(--fs-1);
+    line-height: 1.5;
+}
+.sensory-foot em {
+    font-style: normal;
+    font-family: var(--font-mono);
+    font-size: 0.95em;
+    color: var(--text-secondary);
+}
+
+/* Real master switch — not a checkbox */
+.switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: var(--fs-1);
+    letter-spacing: 0.06em;
+    height: 28px;
+}
+.switch-track {
+    position: relative;
+    width: 36px;
+    height: 20px;
+    background: var(--surface-3);
+    border: var(--border-thin);
+    border-radius: 999px;
+    transition: background 120ms, border-color 120ms;
+}
+.switch-thumb {
+    position: absolute;
+    top: 1px;
+    left: 1px;
+    width: 16px;
+    height: 16px;
+    background: var(--text-tertiary);
+    border-radius: 50%;
+    transition: transform 160ms ease, background 160ms;
+}
+.switch.is-on .switch-track {
+    background: var(--accent-blue);
+    border-color: var(--accent-blue);
+}
+.switch.is-on .switch-thumb {
+    background: white;
+    transform: translateX(16px);
+}
+.switch.is-on .switch-label { color: var(--accent-blue); }
+
+/* Layer cards */
+.sensory-layers {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-2);
+    transition: opacity 160ms;
+}
+.sensory-layers.is-disabled { opacity: 0.55; }
+.sensory-layer {
+    background: var(--surface-2);
+    border: var(--border-thin);
+    border-left: 3px solid var(--text-tertiary);
+    border-radius: var(--radius-md);
+    padding: var(--s-3);
+}
+.sensory-layer.is-on { border-left-color: var(--accent-blue); }
+.sensory-layer--on { border-left-color: #67d97a; }   /* force-on highlight */
+.sensory-layer--off { border-left-color: #ff9f0a; }  /* force-off highlight */
+
+.sensory-layer-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.sensory-layer-glyph {
+    color: var(--accent-blue);
+    font-size: 14px;
+    line-height: 1;
+}
+.sensory-layer.is-off .sensory-layer-glyph { color: var(--text-tertiary); }
+.sensory-layer-name {
+    font-weight: 600;
+    font-size: var(--fs-3);
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.sensory-when {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: var(--fs-1);
+    letter-spacing: 0.04em;
+    text-transform: lowercase;
+    border: 1px solid;
+    cursor: help;
+}
+.sensory-when--analyze {
+    color: #5ac8fa;
+    border-color: rgba(90, 200, 250, 0.4);
+    background: rgba(90, 200, 250, 0.08);
+}
+.sensory-when--build {
+    color: #bf5af2;
+    border-color: rgba(191, 90, 242, 0.4);
+    background: rgba(191, 90, 242, 0.08);
+}
+.sensory-layer-desc {
+    margin: 6px 0 4px;
+    font-size: var(--fs-2);
+    line-height: 1.45;
+    color: var(--text-secondary);
+}
+.sensory-layer-cost {
+    margin: 0 0 var(--s-3);
+    font-size: var(--fs-1);
+    font-family: var(--font-mono);
+}
+.sensory-layer-control {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-3);
+    flex-wrap: wrap;
+}
+.sensory-layer-default-label {
+    font-size: var(--fs-1);
+}
+
+/* Segmented tri-state control: default | force on | force off */
+.seg-control {
+    display: inline-flex;
+    background: var(--surface-3);
+    border: var(--border-thin);
+    border-radius: var(--radius-md);
+    padding: 2px;
+    gap: 2px;
+}
+.seg-btn {
+    background: transparent;
+    border: 0;
+    color: var(--text-secondary);
+    padding: 4px 12px;
+    height: 26px;
+    border-radius: var(--radius-sm);
+    font-size: var(--fs-1);
+    cursor: pointer;
+    font-family: var(--font-body);
+    letter-spacing: 0.02em;
+}
+.seg-btn:hover { background: var(--surface-2); color: var(--text-primary); }
+.seg-btn.on {
+    background: var(--accent-blue);
+    color: white;
+    font-weight: 500;
+}
+.seg-btn.on .muted { color: rgba(255, 255, 255, 0.7); }
+.seg-btn--on.on {
+    background: #1e7d36;
+    color: #d6ffd9;
+}
+.seg-btn--off.on {
+    background: #8a4a00;
+    color: #ffe1b8;
+}
+
 /* v3-5.5 — Responsive breakpoint for docked / narrow panels */
 @media (max-width: 480px) {
     .app {
