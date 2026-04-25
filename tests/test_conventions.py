@@ -42,6 +42,7 @@ TOOL_MODULES = [
     "cutmaster_ai.intelligence.vision",
     "cutmaster_ai.intelligence.color_assist",
     "cutmaster_ai.intelligence.timeline_critique",
+    "cutmaster_ai.intelligence.story_critic",
     "cutmaster_ai.intelligence.llm",
     "cutmaster_ai.cutmaster.media.frame_math",
     "cutmaster_ai.cutmaster.resolve_ops.source_mapper",

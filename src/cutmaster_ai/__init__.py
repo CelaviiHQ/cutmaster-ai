@@ -37,6 +37,7 @@ from .workflows import chroma_key  # noqa: F401, E402
 from .intelligence import vision  # noqa: F401, E402
 from .intelligence import color_assist  # noqa: F401, E402
 from .intelligence import timeline_critique  # noqa: F401, E402
+from .intelligence import story_critic  # noqa: F401, E402
 from .cutmaster.media import frame_math  # noqa: F401, E402
 from .cutmaster.media import ffmpeg_audio  # noqa: F401, E402
 from .cutmaster.media import vfr  # noqa: F401, E402
