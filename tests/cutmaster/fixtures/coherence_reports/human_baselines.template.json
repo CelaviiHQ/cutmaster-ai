@@ -1,0 +1,24 @@
+{
+  "_comment": "Copy to human_baselines.json and fill in. One entry per fixture under inputs/. See README.md for the rubric.",
+  "_version": 1,
+  "_rater": "elioth",
+  "_captured_at": null,
+  "fixtures": [
+    {
+      "run_id": "EXAMPLE_replace_me",
+      "fixture_path": "inputs/EXAMPLE_replace_me.fixture.json",
+      "score": 75,
+      "hook": 80,
+      "arc": 70,
+      "transitions": 75,
+      "resolution": 65,
+      "top_issues": [
+        "Opening segment buries the lede — the AI prediction doesn't surface until ~30s in",
+        "Segment 3 → 4 transition is whiplash; new topic with no bridge",
+        "Closing segment meanders, doesn't pay off the setup"
+      ],
+      "verdict": "review",
+      "notes": "Overall coherent but the hook needs to be moved up. Consider regenerating with a hook-first prompt."
+    }
+  ]
+}
