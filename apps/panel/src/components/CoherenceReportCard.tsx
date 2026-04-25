@@ -125,6 +125,16 @@ interface Props {
      * 2 of 5". Renders next to the verdict badge.
      */
     contextLabel?: string;
+    /**
+     * Optional re-critique handler. When provided, renders a "Re-critique"
+     * button that fires the retroactive endpoint. Host owns the debounce
+     * + busy state so multiple cards can share it.
+     */
+    onRecritique?: () => void;
+    /** Disables the Re-critique button while a request is in flight. */
+    recritiqueBusy?: boolean;
+    /** Surfaced under the issue list when the last re-critique failed. */
+    recritiqueError?: string | null;
 }
 
 /**
@@ -140,6 +150,9 @@ export default function CoherenceReportCard({
     report,
     onIssueClick,
     contextLabel,
+    onRecritique,
+    recritiqueBusy = false,
+    recritiqueError = null,
 }: Props) {
     return (
         <div className="card coherence-card">
@@ -164,6 +177,17 @@ export default function CoherenceReportCard({
                         </span>
                     )}
                 </div>
+                {onRecritique && (
+                    <button
+                        type="button"
+                        className="link-button coherence-recritique"
+                        onClick={onRecritique}
+                        disabled={recritiqueBusy}
+                        title="Re-run the story-critic against this plan"
+                    >
+                        {recritiqueBusy ? "Re-critiquing…" : "Re-critique"}
+                    </button>
+                )}
             </div>
 
             <div className="coherence-subscores">
@@ -188,6 +212,12 @@ export default function CoherenceReportCard({
             ) : (
                 <p className="coherence-issue-list-empty muted">
                     No issues flagged.
+                </p>
+            )}
+
+            {recritiqueError && (
+                <p className="coherence-recritique-err">
+                    Re-critique failed: {recritiqueError}
                 </p>
             )}
         </div>

@@ -239,6 +239,30 @@ async def _director_or_validated(
     return result.plan, result
 
 
+def _plan_warnings(*plans) -> list[str]:
+    """Extract ``_validation_errors`` from any ``llm.call_structured`` result.
+
+    When the Director (or any agent invoked with ``accept_best_effort=True``)
+    exhausts its retry budget while still failing validation, ``llm.py``
+    stamps the offending plan object with a ``_validation_errors`` list and
+    returns it anyway. Without this helper those silent failures would only
+    surface in server logs — the panel would render the best-of-bad plan as
+    if everything succeeded. Walks every supplied plan, dedupes errors,
+    returns ``[]`` when no plan carries warnings.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+    for p in plans:
+        if p is None:
+            continue
+        errors = getattr(p, "_validation_errors", None) or []
+        for e in errors:
+            if e not in seen:
+                seen.add(e)
+                out.append(e)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Phase 2 of story-critic — flag-gated coherence pass
 # ---------------------------------------------------------------------------
@@ -264,6 +288,86 @@ def _wrap_coherence(report) -> dict:
     return {"kind": kind, "report": report.model_dump()}
 
 
+def _emit_skipped(run_id: str, reason: str, *, level: int = logging.INFO, **extra) -> None:
+    """Structured ``story_critic.skipped`` log.
+
+    ``reason`` is one of: ``flag_off`` / ``no_axes`` / ``llm_error`` /
+    ``unsupported_plan_shape``. Extra kwargs are stamped on the LogRecord
+    so downstream telemetry consumers can filter without parsing the
+    message string. Mirrors the ``axis_resolution.decided`` log shape
+    from Phase 6.3 of the three-axis model.
+    """
+    payload = {"event": "story_critic.skipped", "run_id": run_id, "reason": reason, **extra}
+    log.log(
+        level,
+        "story_critic.skipped reason=%s run_id=%s",
+        reason,
+        run_id,
+        extra=payload,
+    )
+
+
+def _emit_completed(run_id: str, report, axes, model: str, latency_ms: int) -> None:
+    """Structured ``story_critic.completed`` log carrying the full payload.
+
+    Phase 4.1 widens the shape so a quality dashboard can be built without
+    re-instrumenting the call site. Per-candidate reports log aggregates
+    (n_candidates / best_index / mean_score) — per-candidate score
+    histograms can live downstream.
+    """
+    from ....intelligence.story_critic import CoherenceReport
+
+    base = {
+        "event": "story_critic.completed",
+        "run_id": run_id,
+        "content_type": axes.content_type if axes else None,
+        "cut_intent": axes.cut_intent if axes else None,
+        "model": model,
+        "latency_ms": latency_ms,
+    }
+    if isinstance(report, CoherenceReport):
+        payload = {
+            **base,
+            "kind": "single",
+            "score": report.score,
+            "hook_strength": report.hook_strength,
+            "arc_clarity": report.arc_clarity,
+            "transitions": report.transitions,
+            "resolution": report.resolution,
+            "n_issues": len(report.issues),
+            "verdict": report.verdict,
+        }
+        log.info(
+            "story_critic.completed run_id=%s score=%d verdict=%s n_issues=%d latency_ms=%d",
+            run_id,
+            report.score,
+            report.verdict,
+            len(report.issues),
+            latency_ms,
+            extra=payload,
+        )
+    else:
+        scores = [c.score for c in report.candidates] or [0]
+        payload = {
+            **base,
+            "kind": "per_candidate",
+            "n_candidates": len(report.candidates),
+            "best_candidate_index": report.best_candidate_index,
+            "mean_score": sum(scores) // len(scores),
+            "max_score": max(scores),
+            "min_score": min(scores),
+        }
+        log.info(
+            "story_critic.completed run_id=%s n_candidates=%d best=%d max=%d latency_ms=%d",
+            run_id,
+            len(report.candidates),
+            report.best_candidate_index,
+            max(scores),
+            latency_ms,
+            extra=payload,
+        )
+
+
 def _run_critic_or_skip(
     plan,
     *,
@@ -276,18 +380,23 @@ def _run_critic_or_skip(
 
     Returns the report or ``None``. LLM failures never propagate — the
     structural plan is already valid; coherence is advisory. Logs:
-      * ``story_critic.skipped`` on flag-off / missing-axes / llm-error
-      * ``story_critic.completed`` on success (Phase 4.1 enriches fields)
+      * ``story_critic.skipped`` on flag-off / no-axes / llm-error
+      * ``story_critic.completed`` on success (Phase 4.1 widens shape).
     """
     if not _story_critic_enabled():
-        log.info("story_critic.skipped reason=flag_off run_id=%s", run_id)
+        _emit_skipped(run_id, "flag_off")
         return None
     if axes is None:
-        log.info("story_critic.skipped reason=no_axes run_id=%s", run_id)
+        _emit_skipped(run_id, "no_axes")
         return None
 
-    from ....intelligence import story_critic
+    import time
 
+    from ....intelligence import story_critic
+    from ....intelligence.llm import model_for
+
+    model = model_for("story_critic")
+    started = time.monotonic()
     try:
         report = story_critic.critique(
             plan,
@@ -296,30 +405,18 @@ def _run_critic_or_skip(
             axes=axes,
         )
     except Exception as exc:
-        log.warning(
-            "story_critic.skipped reason=llm_error run_id=%s err=%s",
+        _emit_skipped(
             run_id,
-            exc,
+            "llm_error",
+            level=logging.WARNING,
+            error=str(exc),
+            error_type=type(exc).__name__,
+            model=model,
         )
         return None
 
-    # Phase 4.1 will widen this log shape; Phase 2 just emits enough to
-    # confirm the call ran and what it returned.
-    if isinstance(report, story_critic.CoherenceReport):
-        log.info(
-            "story_critic.completed run_id=%s score=%d verdict=%s n_issues=%d",
-            run_id,
-            report.score,
-            report.verdict,
-            len(report.issues),
-        )
-    else:
-        log.info(
-            "story_critic.completed run_id=%s n_candidates=%d best_index=%d",
-            run_id,
-            len(report.candidates),
-            report.best_candidate_index,
-        )
+    latency_ms = int((time.monotonic() - started) * 1000)
+    _emit_completed(run_id, report, axes, model, latency_ms)
     return report
 
 
@@ -1218,6 +1315,14 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         "markers": markers.model_dump(),
         "resolved_segments": [r.model_dump() for r in resolved],
     }
+    # Surface llm best-effort validation residue so the panel can warn the
+    # user when the Director failed a constraint (e.g. selected_hook_s drift
+    # > HOOK_TOLERANCE_S) but llm.call_structured returned the best-of-bad
+    # plan anyway. Without this the failure is server-log-only and the
+    # editor sees a "successful" plan that quietly violates their pick.
+    warnings = _plan_warnings(plan, _critic_native_plan)
+    if warnings:
+        run["plan"]["plan_warnings"] = warnings
     # Phase 4.6: surface the three-axis recipe so the Review UI can show
     # the resolved chip ("Interview · Peak Highlight · 60 s → 3/7/17 s")
     # without re-deriving from preset + settings.

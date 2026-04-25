@@ -723,6 +723,38 @@ code {
     flex-wrap: wrap;
 }
 
+/* Best-effort residue from llm.call_structured — surfaced as a chip so
+   the user knows the Director couldn't fully honour their settings. */
+.plan-warning {
+    margin: var(--s-3) 0;
+    padding: 10px 12px;
+    background: rgba(255, 159, 10, 0.08);
+    border: 1px solid rgba(255, 159, 10, 0.45);
+    border-radius: var(--radius-md);
+}
+.plan-warning-head {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: wrap;
+    color: var(--warn, #ff9f0a);
+    font-size: var(--fs-2);
+    margin-bottom: 6px;
+}
+.plan-warning-head strong { color: var(--warn, #ff9f0a); font-weight: 600; }
+.plan-warning-list {
+    margin: 0;
+    padding-left: 20px;
+    color: var(--text-primary);
+    font-size: var(--fs-2);
+    line-height: 1.5;
+}
+.plan-warning-list li { margin-bottom: 2px; }
+.plan-warning-foot {
+    margin: 8px 0 0;
+    font-size: var(--fs-1);
+}
+
 /* ── Plan bar — proportional segment strip + scrubber + marker pins ── */
 .plan-bar-wrap {
     position: relative;
@@ -2093,4 +2125,22 @@ code {
     .coherence-issue-message {
         flex-basis: 100%;
     }
+}
+
+.coherence-recritique {
+    margin-left: auto;
+    font-size: var(--fs-2);
+}
+.coherence-recritique:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+.coherence-recritique-err {
+    margin: 0;
+    padding: var(--s-2) var(--s-3);
+    border-radius: 6px;
+    background: rgba(255, 69, 58, 0.10);
+    color: #ff453a;
+    font-size: var(--fs-2);
 }

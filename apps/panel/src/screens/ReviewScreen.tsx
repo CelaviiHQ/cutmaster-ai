@@ -172,6 +172,39 @@ export default function ReviewScreen({
     // when the user hasn't engaged yet.
     const [playheadPct, setPlayheadPct] = useState<number | null>(null);
     const [hoverPct, setHoverPct] = useState<number | null>(null);
+    // Story-critic re-critique state. Phase 4.4 — debounced to 1s so
+    // impatient clicks don't spam the LLM.
+    const [recritiqueBusy, setRecritiqueBusy] = useState(false);
+    const [recritiqueErr, setRecritiqueErr] = useState<string | null>(null);
+    const [recritiqueLastFiredAt, setRecritiqueLastFiredAt] = useState(0);
+
+    const recritique = async () => {
+        if (recritiqueBusy) return;
+        const now = Date.now();
+        if (now - recritiqueLastFiredAt < 1000) return; // debounce
+        setRecritiqueLastFiredAt(now);
+        setRecritiqueBusy(true);
+        setRecritiqueErr(null);
+        try {
+            const res = await fetch(`/cutmaster/critique/${runId}`, {
+                method: "POST",
+            });
+            if (!res.ok) {
+                const body = await res.text();
+                setRecritiqueErr(`${res.status} — ${body || "no detail"}`);
+                return;
+            }
+            // Refresh the persisted plan so the card re-renders with the
+            // new envelope.
+            const fresh = await api.getState(runId);
+            const nextPlan = fresh.plan as BuildPlanResult | undefined;
+            if (nextPlan) setPlan(nextPlan);
+        } catch (e) {
+            setRecritiqueErr(String(e));
+        } finally {
+            setRecritiqueBusy(false);
+        }
+    };
 
     const openPrompt = async () => {
         setPromptOpen(true);
@@ -627,6 +660,26 @@ export default function ReviewScreen({
                         {plan.director.reasoning && (
                             <p className="muted cut-reasoning">{plan.director.reasoning}</p>
                         )}
+                        {plan.plan_warnings && plan.plan_warnings.length > 0 && (
+                            <div className="plan-warning" role="alert">
+                                <div className="plan-warning-head">
+                                    <span aria-hidden>⚠</span>
+                                    <strong>The Director couldn't fully honour your plan</strong>
+                                    <span className="muted">
+                                        · best-effort fallback after retry exhaustion
+                                    </span>
+                                </div>
+                                <ul className="plan-warning-list">
+                                    {plan.plan_warnings.map((w, i) => (
+                                        <li key={i}>{w}</li>
+                                    ))}
+                                </ul>
+                                <p className="muted plan-warning-foot">
+                                    Try Regenerate (the model is non-deterministic), pick a longer
+                                    or clearer hook quote, or relax the target length.
+                                </p>
+                            </div>
+                        )}
 
                         <div className="plan-bar-wrap">
                             {/* Always-visible marker labels above the bar.
@@ -827,6 +880,9 @@ export default function ReviewScreen({
                         report={report}
                         onIssueClick={handleIssueClick}
                         contextLabel={contextLabel}
+                        onRecritique={recritique}
+                        recritiqueBusy={recritiqueBusy}
+                        recritiqueError={recritiqueErr}
                     />
                 );
             })()}
@@ -1061,7 +1117,7 @@ export default function ReviewScreen({
                         {/* Hook candidates — radio + strength bar + context */}
                         <h3 style={{ margin: "18px 0 6px" }}>Hook candidates</h3>
                         <p className="muted" style={{ marginTop: 0, marginBottom: 8, fontSize: "var(--fs-2)" }}>
-                            Pick the opening beat — or leave it on the current one to let the Director keep it.
+                            Locks the first ~2 seconds of the cut and anchors its topic. The body is built around it; later segments may bridge to other themes.
                         </p>
                         <div className="hook-cards">
                             {analysis.hook_candidates.map((h, i) => {
