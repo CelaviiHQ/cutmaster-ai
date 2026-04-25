@@ -338,6 +338,50 @@ def test_build_plan_flag_on_clip_hunter_attaches_per_candidate_report(
 
 
 # ---------------------------------------------------------------------------
+# Per-build opt-in via UserSettings.story_critic_enabled
+# ---------------------------------------------------------------------------
+
+
+def test_build_plan_user_opt_in_runs_critic_when_env_flag_off(client, monkeypatch, scrubbed_run):
+    """`UserSettings.story_critic_enabled=true` runs the critic even when
+    the server-wide env var is unset. Mirrors the Configure-screen toggle."""
+    _flag_off(monkeypatch)
+    calls = _mock_critic(monkeypatch)
+
+    plan = DirectorPlan(
+        hook_index=0,
+        selected_clips=[CutSegment(start_s=0.0, end_s=0.95, reason="hook")],
+        reasoning="ok",
+    )
+    monkeypatch.setattr(routes.build, "build_cut_plan", lambda *_a, **_k: plan)
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    _stub_resolver_and_resolve(monkeypatch)
+
+    r = client.post(
+        "/cutmaster/build-plan",
+        json={
+            "run_id": scrubbed_run["run_id"],
+            "preset": "vlog",
+            "content_type": "vlog",
+            "cut_intent": "narrative",
+            "user_settings": {
+                "target_length_s": 60,
+                "themes": [],
+                "cut_intent": "narrative",
+                "story_critic_enabled": True,
+            },
+        },
+    )
+    assert r.status_code == 200, r.text
+
+    persisted = state.load(scrubbed_run["run_id"])
+    coherence = persisted["plan"].get("coherence_report")
+    assert coherence is not None
+    assert coherence["kind"] == "single"
+    assert len(calls) == 1
+
+
+# ---------------------------------------------------------------------------
 # Flag-on — assembled (grades native AssembledDirectorPlan, NOT flat)
 # ---------------------------------------------------------------------------
 

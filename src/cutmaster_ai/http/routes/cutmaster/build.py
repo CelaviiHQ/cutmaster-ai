@@ -375,15 +375,21 @@ def _run_critic_or_skip(
     takes=None,
     axes,
     run_id: str,
+    user_opt_in: bool | None = None,
 ):
-    """Grade the plan if the flag is on AND axes are present; else skip.
+    """Grade the plan if the critic is enabled AND axes are present; else skip.
 
-    Returns the report or ``None``. LLM failures never propagate — the
-    structural plan is already valid; coherence is advisory. Logs:
+    Enable precedence:
+      1. ``CUTMASTER_ENABLE_STORY_CRITIC=1`` (server-wide forced-on / kill-switch)
+      2. ``user_opt_in == True`` (per-build setting from the Configure screen)
+      3. Otherwise skip with reason ``flag_off``.
+
+    LLM failures never propagate — the structural plan is already valid;
+    coherence is advisory. Logs:
       * ``story_critic.skipped`` on flag-off / no-axes / llm-error
       * ``story_critic.completed`` on success (Phase 4.1 widens shape).
     """
-    if not _story_critic_enabled():
+    if not (_story_critic_enabled() or user_opt_in is True):
         _emit_skipped(run_id, "flag_off")
         return None
     if axes is None:
@@ -717,6 +723,7 @@ async def build_plan(body: BuildPlanRequest) -> dict:
             transcript=scrubbed,
             axes=resolved_axes,
             run_id=body.run_id,
+            user_opt_in=settings_dict.get("story_critic_enabled"),
         )
         if coherence is not None:
             run["plan"]["coherence_report"] = _wrap_coherence(coherence)
@@ -892,6 +899,7 @@ async def build_plan(body: BuildPlanRequest) -> dict:
             transcript=scrubbed,
             axes=resolved_axes,
             run_id=body.run_id,
+            user_opt_in=settings_dict.get("story_critic_enabled"),
         )
         if coherence is not None:
             run["plan"]["coherence_report"] = _wrap_coherence(coherence)
@@ -989,6 +997,7 @@ async def build_plan(body: BuildPlanRequest) -> dict:
             transcript=scrubbed,
             axes=resolved_axes,
             run_id=body.run_id,
+            user_opt_in=settings_dict.get("story_critic_enabled"),
         )
         if coherence is not None:
             run["plan"]["coherence_report"] = _wrap_coherence(coherence)
@@ -1348,6 +1357,7 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         takes=_critic_native_takes,
         axes=resolved_axes,
         run_id=body.run_id,
+        user_opt_in=settings_dict.get("story_critic_enabled"),
     )
     if coherence is not None:
         run["plan"]["coherence_report"] = _wrap_coherence(coherence)

@@ -321,6 +321,12 @@ export interface BuildPlanResult {
   /** Story-critic verdict on the built cut. ``null`` / absent when the
    *  flag is off, the LLM failed, or no resolved_axes were available. */
   coherence_report?: CoherenceReportEnvelope | null;
+  /** Validation residue from a best-effort Director call (the model failed
+   *  a hard constraint but llm.call_structured returned the best-of-bad
+   *  plan after exhausting retries). Empty / absent when the plan
+   *  satisfies every constraint. Surfaced so the editor learns when
+   *  their hook / target / pacing pick wasn't fully honoured. */
+  plan_warnings?: string[];
 }
 
 export type FormatKey = "horizontal" | "vertical_short" | "square";
@@ -368,6 +374,9 @@ export interface UserSettings {
   layer_c_enabled?: boolean | null;
   layer_a_enabled?: boolean | null;
   layer_audio_enabled?: boolean | null;
+  // Story-critic per-build opt-in. null/false = skip, true = run.
+  // Server env var CUTMASTER_ENABLE_STORY_CRITIC=1 always wins when set.
+  story_critic_enabled?: boolean | null;
 }
 
 export interface SpeakerRosterEntry {

@@ -459,6 +459,20 @@ class UserSettings(BaseModel):
             "+ master toggle; True/False force the ffmpeg audio-cue pass."
         ),
     )
+    # Story-critic per-build opt-in. Tri-state so the build helper can
+    # tell "user explicitly off" from "user didn't pick" — the env var
+    # ``CUTMASTER_ENABLE_STORY_CRITIC`` always wins when truthy. See
+    # Implementation/optimizaiton/story-critic.md (Phase 5.6 flips the
+    # default-on semantics; until then this stays opt-in).
+    story_critic_enabled: bool | None = Field(
+        default=None,
+        description=(
+            "Per-build story-critic toggle. None / False = skip; True = "
+            "run the critic if the env var hasn't already forced it on. "
+            "The env var CUTMASTER_ENABLE_STORY_CRITIC=1 overrides this "
+            "for every build (server-wide kill-switch / forced-on)."
+        ),
+    )
 
 
 class BuildPlanRequest(BaseModel):

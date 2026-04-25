@@ -1177,6 +1177,46 @@ export default function ConfigureScreen({
                 </div>
             )}
 
+            {/* ── Advanced — story-critic verdict (single disclosure) ── */}
+            <details className="card card--advanced">
+                <summary>
+                    <span>Story-critic</span>
+                    <span className="muted" style={{ marginLeft: 8, fontSize: "var(--fs-2)" }}>
+                        — coherence verdict on Review · {settings.story_critic_enabled ? "ON" : "off"}
+                    </span>
+                </summary>
+                <div className="card-body">
+                    <label className="wym-check">
+                        <input
+                            type="checkbox"
+                            checked={!!settings.story_critic_enabled}
+                            onChange={(e) =>
+                                onSettingsChange({
+                                    ...settings,
+                                    story_critic_enabled: e.target.checked,
+                                })
+                            }
+                        />
+                        Run the story-critic
+                    </label>
+                    <p className="muted" style={{ margin: "var(--s-2) 0 0", fontSize: "var(--fs-2)" }}>
+                        Second-pass AI judge. After the Director picks segments, the
+                        critic reads the picked words and scores them on hook · arc ·
+                        transitions · resolution (0–100), then flags specific issues
+                        you can click to jump to. Advisory — never blocks the build.
+                    </p>
+                    <ul className="muted" style={{ margin: "var(--s-2) 0 0 var(--s-3)", padding: 0, fontSize: "var(--fs-2)", listStyle: "disc" }}>
+                        <li>Cost: one extra Gemini call per build (~$0.001–0.005).</li>
+                        <li>Latency: ~2 s on cuts ≤10 min.</li>
+                        <li>The verdict card lives on the Review screen above Segments.</li>
+                    </ul>
+                    <p className="muted" style={{ margin: "var(--s-2) 0 0", fontSize: "var(--fs-1)" }}>
+                        Server override: <code>CUTMASTER_ENABLE_STORY_CRITIC=1</code> forces
+                        on for every build regardless of this toggle.
+                    </p>
+                </div>
+            </details>
+
             {/* ── Advanced — shot-aware editing (single disclosure) ── */}
             {!isTightener && (
                 <details className="card card--advanced">
