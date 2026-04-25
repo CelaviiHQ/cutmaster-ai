@@ -436,3 +436,257 @@ def test_build_plan_flag_on_assembled_grades_native_plan_shape(client, monkeypat
     assert plan_type == "AssembledDirectorPlan"
     assert ctx["takes_len"] == 1
     assert ctx["transcript_len"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Phase 6 — auto-rework loop on raw_dump
+# ---------------------------------------------------------------------------
+
+
+def _seq_critic(monkeypatch, reports: list[story_critic.CoherenceReport]):
+    """Patch ``story_critic.critique`` to return a sequence of reports, one
+    per call. Captures ``_critic_feedback`` from the Director's settings on
+    each Director invocation so tests can assert the rework prompt was wired.
+    """
+    calls: list[story_critic.CoherenceReport] = []
+    counter = {"i": 0}
+
+    def _fake(plan, *, transcript=None, takes=None, axes=None, _llm=None):
+        i = counter["i"]
+        counter["i"] += 1
+        rpt = reports[min(i, len(reports) - 1)]
+        calls.append(rpt)
+        return rpt
+
+    monkeypatch.setattr(story_critic, "critique", _fake)
+    return calls
+
+
+def _rework_report() -> story_critic.CoherenceReport:
+    return story_critic.CoherenceReport(
+        score=58,
+        hook_strength=55,
+        arc_clarity=60,
+        transitions=55,
+        resolution=50,
+        issues=[
+            story_critic.CoherenceIssue(
+                segment_index=0,
+                severity="error",
+                category="weak_hook",
+                message="opener doesn't pull",
+            )
+        ],
+        summary="Hook is weak.",
+        verdict="rework",
+    )
+
+
+def _capture_director_calls(monkeypatch):
+    """Capture every build_cut_plan call site so tests can assert the
+    rework pass received ``_critic_feedback`` in its settings dict."""
+    captured: list[dict] = []
+    plan = DirectorPlan(
+        hook_index=0,
+        selected_clips=[CutSegment(start_s=0.0, end_s=0.95, reason="hook")],
+        reasoning="ok",
+    )
+
+    def _fake_build(transcript, preset, settings, resolved=None):
+        captured.append(dict(settings))
+        return plan
+
+    monkeypatch.setattr(routes.build, "build_cut_plan", _fake_build)
+    return captured
+
+
+def test_build_plan_critic_ship_skips_rework(client, monkeypatch, scrubbed_run):
+    """First-pass verdict=ship → no rework, history has 1 envelope."""
+    _flag_on(monkeypatch)
+    director_calls = _capture_director_calls(monkeypatch)
+    critic_calls = _seq_critic(monkeypatch, [_good_report()])  # verdict=ship
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    _stub_resolver_and_resolve(monkeypatch)
+
+    r = client.post(
+        "/cutmaster/build-plan",
+        json={
+            "run_id": scrubbed_run["run_id"],
+            "preset": "vlog",
+            "content_type": "vlog",
+            "cut_intent": "narrative",
+            "user_settings": {
+                "target_length_s": 60,
+                "themes": [],
+                "cut_intent": "narrative",
+            },
+        },
+    )
+    assert r.status_code == 200, r.text
+
+    # Director called once (no rework), critic called once
+    assert len(director_calls) == 1
+    assert "_critic_feedback" not in director_calls[0]
+    assert len(critic_calls) == 1
+
+    persisted = state.load(scrubbed_run["run_id"])
+    history = persisted["plan"]["coherence_history"]
+    assert len(history) == 1
+    assert history[0]["report"]["verdict"] == "ship"
+    assert persisted["plan"]["coherence_report"]["report"]["verdict"] == "ship"
+
+
+def test_build_plan_critic_rework_triggers_director_repick(
+    client, monkeypatch, scrubbed_run, caplog
+):
+    """First-pass verdict=rework → Director re-called with feedback,
+    second critic grades the new plan, history has 2 envelopes."""
+    _flag_on(monkeypatch)
+    director_calls = _capture_director_calls(monkeypatch)
+    # First report triggers rework; second report ships
+    critic_calls = _seq_critic(monkeypatch, [_rework_report(), _good_report()])
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    _stub_resolver_and_resolve(monkeypatch)
+
+    with caplog.at_level("INFO", logger="cutmaster-ai.http.cutmaster"):
+        r = client.post(
+            "/cutmaster/build-plan",
+            json={
+                "run_id": scrubbed_run["run_id"],
+                "preset": "vlog",
+                "content_type": "vlog",
+                "cut_intent": "narrative",
+                "user_settings": {
+                    "target_length_s": 60,
+                    "themes": [],
+                    "cut_intent": "narrative",
+                },
+            },
+        )
+    assert r.status_code == 200, r.text
+
+    # Director ran twice; second invocation MUST carry _critic_feedback
+    assert len(director_calls) == 2
+    assert "_critic_feedback" not in director_calls[0]
+    fb = director_calls[1].get("_critic_feedback")
+    assert fb is not None
+    assert fb["verdict"] == "rework"
+    assert fb["score"] == 58
+    assert fb["issues"][0]["category"] == "weak_hook"
+
+    # Critic graded both passes
+    assert len(critic_calls) == 2
+
+    # Persisted state carries both envelopes; final report is the second
+    persisted = state.load(scrubbed_run["run_id"])
+    history = persisted["plan"]["coherence_history"]
+    assert len(history) == 2
+    assert history[0]["report"]["verdict"] == "rework"
+    assert history[1]["report"]["verdict"] == "ship"
+    assert persisted["plan"]["coherence_report"]["report"]["verdict"] == "ship"
+
+    # Telemetry: rework_triggered + rework_completed both fired
+    triggered = [
+        rec
+        for rec in caplog.records
+        if getattr(rec, "event", None) == "story_critic.rework_triggered"
+    ]
+    completed = [
+        rec
+        for rec in caplog.records
+        if getattr(rec, "event", None) == "story_critic.rework_completed"
+    ]
+    assert len(triggered) == 1
+    assert len(completed) == 1
+    assert completed[0].score_delta == 24  # 82 - 58
+    assert completed[0].crossed_to_ship is True
+
+
+def test_build_plan_critic_rework_max_zero_disables_loop(client, monkeypatch, scrubbed_run):
+    """CUTMASTER_STORY_CRITIC_REWORK_MAX=0 → no rework even on verdict=rework."""
+    _flag_on(monkeypatch)
+    monkeypatch.setenv("CUTMASTER_STORY_CRITIC_REWORK_MAX", "0")
+    director_calls = _capture_director_calls(monkeypatch)
+    _seq_critic(monkeypatch, [_rework_report()])
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    _stub_resolver_and_resolve(monkeypatch)
+
+    r = client.post(
+        "/cutmaster/build-plan",
+        json={
+            "run_id": scrubbed_run["run_id"],
+            "preset": "vlog",
+            "content_type": "vlog",
+            "cut_intent": "narrative",
+            "user_settings": {
+                "target_length_s": 60,
+                "themes": [],
+                "cut_intent": "narrative",
+            },
+        },
+    )
+    assert r.status_code == 200, r.text
+
+    # Director called once even though critic flagged rework
+    assert len(director_calls) == 1
+
+    persisted = state.load(scrubbed_run["run_id"])
+    history = persisted["plan"]["coherence_history"]
+    assert len(history) == 1
+    assert history[0]["report"]["verdict"] == "rework"
+
+
+def test_build_plan_critic_rework_director_failure_ships_original(
+    client, monkeypatch, scrubbed_run, caplog
+):
+    """When the Director's rework call raises, ship the original plan with
+    v1 history attached. Coherence is advisory; the structural plan is
+    valid."""
+    _flag_on(monkeypatch)
+
+    # Patch build_cut_plan: succeed on first call, raise on second
+    plan = DirectorPlan(
+        hook_index=0,
+        selected_clips=[CutSegment(start_s=0.0, end_s=0.95, reason="hook")],
+        reasoning="ok",
+    )
+    counter = {"i": 0}
+
+    def _fake_build(transcript, preset, settings, resolved=None):
+        i = counter["i"]
+        counter["i"] += 1
+        if i >= 1:
+            raise RuntimeError("director timeout on rework")
+        return plan
+
+    monkeypatch.setattr(routes.build, "build_cut_plan", _fake_build)
+    _seq_critic(monkeypatch, [_rework_report()])  # only first pass grades
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    _stub_resolver_and_resolve(monkeypatch)
+
+    with caplog.at_level("WARNING", logger="cutmaster-ai.http.cutmaster"):
+        r = client.post(
+            "/cutmaster/build-plan",
+            json={
+                "run_id": scrubbed_run["run_id"],
+                "preset": "vlog",
+                "content_type": "vlog",
+                "cut_intent": "narrative",
+                "user_settings": {
+                    "target_length_s": 60,
+                    "themes": [],
+                    "cut_intent": "narrative",
+                },
+            },
+        )
+    assert r.status_code == 200, r.text  # build did NOT fail
+
+    persisted = state.load(scrubbed_run["run_id"])
+    history = persisted["plan"]["coherence_history"]
+    assert len(history) == 1
+    assert history[0]["report"]["verdict"] == "rework"
+    # rework_director_failed log fired
+    assert any(
+        getattr(rec, "event", None) == "story_critic.rework_director_failed"
+        for rec in caplog.records
+    )

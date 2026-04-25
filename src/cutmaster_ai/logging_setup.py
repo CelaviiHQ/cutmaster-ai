@@ -102,6 +102,30 @@ ALLOWED_EXTRA_KEYS = frozenset(
         "cache_hits",
         "frame_count",
         "retry_count",
+        # Story-critic (Implementation/optimizaiton/story-critic.md Phase 4).
+        # `event` discriminates story_critic.{completed,skipped} from other
+        # logs in JSON mode; `reason` carries the skip cause; `error` carries
+        # the exception message on llm_error so HumanFormatter can surface it
+        # without forcing CUTMASTER_LOG_FORMAT=json.
+        "event",
+        "reason",
+        "error",
+        "score",
+        "verdict",
+        "n_issues",
+        "hook_strength",
+        "arc_clarity",
+        "transitions",
+        "resolution",
+        "cut_intent",
+        "content_type",
+        "latency_ms",
+        "kind",
+        "n_candidates",
+        "best_candidate_index",
+        "mean_score",
+        "max_score",
+        "min_score",
     }
 )
 
@@ -178,7 +202,13 @@ class JsonFormatter(logging.Formatter):
 
 
 class HumanFormatter(logging.Formatter):
-    """Human-readable fallback. Adds [run_id] when present."""
+    """Human-readable fallback. Surfaces allowlisted ``extra={}`` fields
+    inline so dev stdout shows structured payloads without forcing
+    ``CUTMASTER_LOG_FORMAT=json`` — otherwise every ``extra=`` we add
+    is invisible to anyone tailing the panel and we lose the ability
+    to diagnose calls like ``story_critic.skipped reason=llm_error``
+    without re-running under JSON mode.
+    """
 
     def __init__(self) -> None:
         super().__init__("%(asctime)s  %(levelname)-7s %(message)s")
@@ -186,9 +216,25 @@ class HumanFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         base = super().format(record)
         run_id = getattr(record, "run_id", None)
+
+        # Walk allowlisted extras (skip run_id — it gets its own bracketed
+        # suffix). Strings are repr'd so multi-word values don't smear into
+        # the next key=value pair; everything else is stringified plainly.
+        extras: list[str] = []
+        for key in ALLOWED_EXTRA_KEYS:
+            if key == "run_id":
+                continue
+            value = getattr(record, key, None)
+            if value is None:
+                continue
+            extras.append(f"{key}={value!r}" if isinstance(value, str) else f"{key}={value}")
+
+        suffix = ""
         if run_id:
-            return f"{base}  [run_id={run_id}]"
-        return base
+            suffix += f"  [run_id={run_id}]"
+        if extras:
+            suffix += "  " + " ".join(extras)
+        return base + suffix
 
 
 # ---------------------------------------------------------------------------

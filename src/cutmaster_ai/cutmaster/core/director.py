@@ -210,8 +210,17 @@ def _bounded_director_plan(min_n: int, max_n: int | None) -> type[BaseModel]:
     if max_n is not None:
         field_kwargs["max_length"] = max(max_n, field_kwargs["min_length"])
     suffix = f"{field_kwargs['min_length']}_{field_kwargs.get('max_length', 'N')}"
+    # __base__=DirectorPlan keeps the bounded variant in DirectorPlan's MRO
+    # so downstream isinstance() dispatch (story_critic.critique, panel
+    # adapters, etc.) treats it as a DirectorPlan. Without this the
+    # dynamic class is a sibling and isinstance() fails — caught by the
+    # story-critic's structured logs ('Unsupported plan type for
+    # critique: DirectorPlan_2_N'). Pydantic v2 lets a subclass redefine
+    # an inherited field, so the new bounded `selected_clips` overrides
+    # the base's unbounded one cleanly.
     return create_model(
         f"DirectorPlan_{suffix}",
+        __base__=DirectorPlan,
         hook_index=(
             int,
             Field(description="Index into selected_clips of the opening beat (0-based)."),
@@ -1081,6 +1090,85 @@ def _boundary_rejections_block(user_settings: dict | None) -> str:
     return "\n".join(lines)
 
 
+def _critic_feedback_block(user_settings: dict | None) -> str:
+    """Render PREVIOUS ATTEMPT — REWORK NEEDED when the story-critic
+    flagged the prior pass and the build path is re-invoking the Director
+    for an auto-rework pass (Phase 6 of story-critic.md).
+
+    Wire contract: same idiom as ``_boundary_rejections_block`` — the
+    build helper writes ``user_settings["_critic_feedback"]`` between
+    passes; the prompt builder reads it; ``_user_settings_block`` ignores
+    underscore-prefixed keys so it never leaks into the USER SETTINGS
+    summary.
+
+    Payload shape (dict, all fields optional):
+        {
+            "score": int (0–100),
+            "verdict": "rework" | "review",
+            "summary": str,
+            "issues": [
+                {
+                    "segment_index": int,        # -1 = whole-cut
+                    "severity": "info" | "warning" | "error",
+                    "category": str,             # e.g. "weak_hook"
+                    "message": str,
+                    "suggestion": str | None,
+                },
+                ...
+            ],
+        }
+
+    Empty / missing → empty block (first pass + critic-disabled runs).
+    """
+    if not user_settings:
+        return ""
+    feedback = user_settings.get("_critic_feedback") or {}
+    if not feedback:
+        return ""
+    issues = feedback.get("issues") or []
+    if not issues:
+        return ""
+
+    score = feedback.get("score")
+    verdict = feedback.get("verdict")
+    summary = (feedback.get("summary") or "").strip()
+
+    header_bits: list[str] = ["PREVIOUS ATTEMPT — REWORK NEEDED:"]
+    score_line: list[str] = []
+    if score is not None:
+        score_line.append(f"Story-critic scored your previous picks at {score}/100")
+    if verdict:
+        score_line.append(f"(verdict: {verdict})")
+    if score_line:
+        header_bits.append(" ".join(score_line) + ".")
+    if summary:
+        header_bits.append(f"Critic summary: {summary}")
+    header_bits.append("")
+    header_bits.append("Issues to address — fix each one in your re-pick:")
+
+    lines = list(header_bits)
+    for iss in issues:
+        seg_ix = iss.get("segment_index", -1)
+        target = "whole cut" if seg_ix is None or seg_ix < 0 else f"segment[{seg_ix}]"
+        sev = iss.get("severity", "info")
+        cat = iss.get("category", "issue")
+        msg = (iss.get("message") or "").strip()
+        suggestion = (iss.get("suggestion") or "").strip()
+        line = f"- [{sev}] {target}: {cat} — {msg}"
+        if suggestion:
+            line += f" SUGGESTION: {suggestion}"
+        lines.append(line)
+
+    lines.append("")
+    lines.append(
+        "Re-pick a NEW set of segments that resolves the issues above. Same "
+        "constraints (target length, hook rule, pacing, sentence-edge "
+        "boundaries, coverage) apply. Don't return the same plan — the "
+        "critic will flag it again."
+    )
+    return "\n".join(lines)
+
+
 def _shape_takes_for_prompt(
     takes: list[dict],
     user_settings: dict | None,
@@ -1135,9 +1223,16 @@ def _selected_hook_block(user_settings: dict | None) -> str:
 The editor chose the quote that begins at **{hook_at_s:.2f}s** as the hook \
 of this cut. Your first `selected_clip` MUST start within 2.0 seconds of \
 {hook_at_s:.2f}s (window: [{max(0, hook_at_s - 2):.2f}s, \
-{hook_at_s + 2:.2f}s]). Build the rest of the narrative outward from that \
-opening beat. Do not substitute a different hook, even if you think \
-another line would be stronger."""
+{hook_at_s + 2:.2f}s]). Do not substitute a different hook, even if you \
+think another line would be stronger.
+
+The hook ALSO sets the cut's topic. The next 2-3 segments MUST reinforce \
+or develop the topic the hook introduced — do not pivot to unrelated \
+material immediately after the hook. Only branch to other themes in the \
+back half of the cut, and only via a thematic bridge (a sentence that \
+plausibly connects the prior topic to the new one). If the hook is about \
+hardware, the body opens with hardware. If the hook is about an emotion, \
+the body opens by developing that emotion."""
 
 
 def _target_length_recipe_block(
@@ -1372,8 +1467,20 @@ def _prompt(
     shot_tags = _shot_tag_block(transcript)
     audio_cues = _audio_cue_block(transcript, mode="raw_dump")
     boundary_rej = _boundary_rejections_block(user_settings)
+    critic_fb = _critic_feedback_block(user_settings)
     optional_blocks = "\n\n".join(
-        b for b in (exclude, focus, speakers, clip_meta, shot_tags, audio_cues, boundary_rej) if b
+        b
+        for b in (
+            exclude,
+            focus,
+            speakers,
+            clip_meta,
+            shot_tags,
+            audio_cues,
+            boundary_rej,
+            critic_fb,
+        )
+        if b
     )
     optional_section = f"\n\n{optional_blocks}" if optional_blocks else ""
     recipe = _target_length_recipe_block(user_settings, preset_view)
@@ -1577,6 +1684,7 @@ def _assembled_prompt(
     shot_tags = _shot_tag_block(flat_words)
     audio_cues = _audio_cue_block(flat_words, mode="assembled")
     boundary_rej = _boundary_rejections_block(user_settings)
+    critic_fb = _critic_feedback_block(user_settings)
     optional_blocks = "\n\n".join(
         b
         for b in (
@@ -1587,6 +1695,7 @@ def _assembled_prompt(
             shot_tags,
             audio_cues,
             boundary_rej,
+            critic_fb,
             strategy_footer,
         )
         if b
@@ -1821,6 +1930,7 @@ def _clip_hunter_prompt(
     shot_tags = _shot_tag_block(transcript)
     audio_cues = _audio_cue_block(transcript, mode="clip_hunter")
     boundary_rej = _boundary_rejections_block(user_settings)
+    critic_fb = _critic_feedback_block(user_settings)
     optional_blocks = "\n\n".join(
         b
         for b in (
@@ -1832,6 +1942,7 @@ def _clip_hunter_prompt(
             shot_tags,
             audio_cues,
             boundary_rej,
+            critic_fb,
             strategy_footer,
         )
         if b
@@ -2092,6 +2203,7 @@ def _short_generator_prompt(
     shot_tags = _shot_tag_block(transcript)
     audio_cues = _audio_cue_block(transcript, mode="short_generator")
     boundary_rej = _boundary_rejections_block(user_settings)
+    critic_fb = _critic_feedback_block(user_settings)
     optional_blocks = "\n\n".join(
         b
         for b in (
@@ -2103,6 +2215,7 @@ def _short_generator_prompt(
             shot_tags,
             audio_cues,
             boundary_rej,
+            critic_fb,
             strategy_footer,
         )
         if b
@@ -2400,6 +2513,7 @@ def _curated_prompt(
     shot_tags = _shot_tag_block(flat_words)
     audio_cues = _audio_cue_block(flat_words, mode="curated")
     boundary_rej = _boundary_rejections_block(user_settings)
+    critic_fb = _critic_feedback_block(user_settings)
     optional_blocks = "\n\n".join(
         b
         for b in (
@@ -2410,6 +2524,7 @@ def _curated_prompt(
             shot_tags,
             audio_cues,
             boundary_rej,
+            critic_fb,
             strategy_footer,
         )
         if b
@@ -2553,6 +2668,7 @@ def _rough_cut_prompt(
     shot_tags = _shot_tag_block(flat_words)
     audio_cues = _audio_cue_block(flat_words, mode="rough_cut")
     boundary_rej = _boundary_rejections_block(user_settings)
+    critic_fb = _critic_feedback_block(user_settings)
     optional_blocks = "\n\n".join(
         b
         for b in (
@@ -2563,6 +2679,7 @@ def _rough_cut_prompt(
             shot_tags,
             audio_cues,
             boundary_rej,
+            critic_fb,
             strategy_footer,
         )
         if b

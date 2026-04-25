@@ -420,6 +420,203 @@ def _run_critic_or_skip(
     return report
 
 
+# ---------------------------------------------------------------------------
+# Phase 6 of story-critic — auto-rework loop
+# ---------------------------------------------------------------------------
+#
+# When the first-pass critic verdict is `rework` or `review` (or any issue
+# is severity=error), feed the critic's findings back into the Director
+# prompt and re-pick. Bounded to one rework pass max so a flapping critic
+# can't burn the LLM budget. Per-candidate plans (ClipHunterPlan /
+# ShortGeneratorPlan) are out of scope — they're N standalone outputs, not
+# one coherent narrative the rework loop knows how to redo.
+#
+# Engineered defaults (no calibration required):
+#   - Trigger when verdict in {"rework", "review"} OR any error-severity
+#   - Skip rework when verdict == "ship" (don't pay 2× to fix what's good)
+#   - Hard cap 1 retry; CUTMASTER_STORY_CRITIC_REWORK_MAX overrides
+
+
+def _rework_max_attempts() -> int:
+    """Read ``CUTMASTER_STORY_CRITIC_REWORK_MAX`` (default 1, clamped ≥0)."""
+    raw = os.environ.get("CUTMASTER_STORY_CRITIC_REWORK_MAX", "").strip()
+    if not raw:
+        return 1
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        log.warning("CUTMASTER_STORY_CRITIC_REWORK_MAX not an int (%r), using 1", raw)
+        return 1
+
+
+def _should_rework(report) -> bool:
+    """Decide whether the critic's verdict warrants a re-pick.
+
+    Trigger:
+      * verdict in {"rework", "review"} (anything not yet "ship")
+      * OR any issue carries ``severity == "error"``
+
+    Per-candidate reports (PerCandidateCoherenceReport) never trigger —
+    the loop doesn't know which candidate to redo or what to swap with.
+    """
+    from ....intelligence.story_critic import CoherenceReport
+
+    if not isinstance(report, CoherenceReport):
+        return False
+    if report.verdict in ("rework", "review"):
+        return True
+    return any(iss.severity == "error" for iss in report.issues)
+
+
+def _critic_feedback_payload(report) -> dict:
+    """Serialise a CoherenceReport into the dict the Director's
+    ``_critic_feedback_block`` consumes between passes."""
+    return {
+        "score": report.score,
+        "verdict": report.verdict,
+        "summary": report.summary,
+        "issues": [iss.model_dump() for iss in report.issues],
+    }
+
+
+def _emit_rework_triggered(run_id: str, report, axes) -> None:
+    payload = {
+        "event": "story_critic.rework_triggered",
+        "run_id": run_id,
+        "score": report.score,
+        "verdict": report.verdict,
+        "n_issues": len(report.issues),
+        "cut_intent": axes.cut_intent if axes else None,
+        "content_type": axes.content_type if axes else None,
+    }
+    log.info(
+        "story_critic.rework_triggered run_id=%s first_score=%d first_verdict=%s n_issues=%d",
+        run_id,
+        report.score,
+        report.verdict,
+        len(report.issues),
+        extra=payload,
+    )
+
+
+async def _critic_with_rework(
+    initial_plan,
+    *,
+    transcript=None,
+    takes=None,
+    axes,
+    run_id: str,
+    settings_dict: dict,
+    rebuild_fn,
+):
+    """Run the critic; if it flags a rework, re-call the Director with the
+    critic's findings and re-grade. Returns ``(final_plan, history)``.
+
+    ``history`` is a list of wrapped envelopes (``{kind, report}``) — one
+    entry on a single-pass build, two entries when rework fired. ``None``
+    when the critic was skipped (flag off, no axes, etc.) so callers can
+    fall back to today's behaviour.
+
+    ``rebuild_fn`` is an async callable that takes the critic's feedback
+    payload and returns a NEW native plan. Each Director branch wires its
+    own (raw_dump → build_cut_plan, etc.) so the helper stays builder-
+    agnostic. Failures inside ``rebuild_fn`` are swallowed: the build
+    ships the original plan with v1 history attached, since coherence is
+    advisory and the structural plan is already valid.
+    """
+    user_opt_in = settings_dict.get("story_critic_enabled")
+    first = _run_critic_or_skip(
+        initial_plan,
+        transcript=transcript,
+        takes=takes,
+        axes=axes,
+        run_id=run_id,
+        user_opt_in=user_opt_in,
+    )
+    if first is None:
+        return initial_plan, None  # critic skipped — preserve legacy behaviour
+
+    history: list[dict] = [_wrap_coherence(first)]
+    if not _should_rework(first):
+        return initial_plan, history
+    if _rework_max_attempts() < 1:
+        return initial_plan, history
+
+    _emit_rework_triggered(run_id, first, axes)
+    try:
+        feedback = _critic_feedback_payload(first)
+        new_plan = await rebuild_fn(feedback)
+    except Exception as exc:
+        log.warning(
+            "story_critic.rework_director_failed run_id=%s err=%s",
+            run_id,
+            exc,
+            extra={
+                "event": "story_critic.rework_director_failed",
+                "run_id": run_id,
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+            },
+        )
+        return initial_plan, history
+
+    second = _run_critic_or_skip(
+        new_plan,
+        transcript=transcript,
+        takes=takes,
+        axes=axes,
+        run_id=run_id,
+        user_opt_in=user_opt_in,
+    )
+    if second is None:
+        # Second critic call failed; still ship the rework plan since the
+        # Director did honour the feedback. History records v1 only.
+        return new_plan, history
+    history.append(_wrap_coherence(second))
+
+    crossed = first.verdict != "ship" and second.verdict == "ship"
+    _emit_rework_completed(
+        run_id,
+        first=first,
+        second=second,
+        axes=axes,
+        crossed_to_ship=crossed,
+    )
+    return new_plan, history
+
+
+def _emit_rework_completed(
+    run_id: str,
+    *,
+    first,
+    second,
+    axes,
+    crossed_to_ship: bool,
+) -> None:
+    score_delta = (second.score - first.score) if (first and second) else 0
+    payload = {
+        "event": "story_critic.rework_completed",
+        "run_id": run_id,
+        "first_score": first.score if first else None,
+        "second_score": second.score if second else None,
+        "score_delta": score_delta,
+        "first_verdict": first.verdict if first else None,
+        "second_verdict": second.verdict if second else None,
+        "crossed_to_ship": crossed_to_ship,
+        "cut_intent": axes.cut_intent if axes else None,
+        "content_type": axes.content_type if axes else None,
+    }
+    log.info(
+        "story_critic.rework_completed run_id=%s delta=%+d first=%d→second=%d crossed_to_ship=%s",
+        run_id,
+        score_delta,
+        first.score if first else 0,
+        second.score if second else 0,
+        crossed_to_ship,
+        extra=payload,
+    )
+
+
 async def _persist_plan(run_id: str, plan: dict) -> None:
     """Atomically write ``run['plan']`` and mirror user_settings up one level.
 
@@ -1004,6 +1201,13 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         await _persist_plan(body.run_id, run["plan"])
         return run["plan"]
 
+    # Story-critic Phase 6 — coherence history. Populated by branches that
+    # run the rework loop (currently raw_dump only); ``None`` means the
+    # catch-all critic call at the bottom should single-pass-grade as in
+    # Phase 2. Stays alongside ``_critic_native_plan`` / ``_critic_native_takes``
+    # which the catch-all marker + persist sites consume.
+    coherence_history: list[dict] | None = None
+
     # v2-11: Curated + Rough cut share most of assembled's plumbing (reading
     # V1 items, splitting transcript per take, reusing the per-take Director
     # output shape). The differences are the Director function called and
@@ -1187,6 +1391,44 @@ async def build_plan(body: BuildPlanRequest) -> dict:
             _v2_11_meta["groups"] = [dict(g) for g in groups]
             _v2_11_meta["all_singletons"] = singletons
 
+        # Phase 6 of story-critic: rework loop for curated / rough_cut.
+        # Re-call the matching builder with critic feedback in settings.
+        # On rework, re-expand to a flat DirectorPlan so marker + resolve
+        # downstream consume the corrected segments.
+        async def _rebuild_curated_or_rough(feedback: dict):
+            eff = {**settings_dict, "_critic_feedback": feedback}
+            if mode == "rough_cut":
+                builder = build_rough_cut_plan
+                args: tuple = (takes, groups, preset, eff)
+            else:
+                builder = build_curated_cut_plan
+                args = (takes, preset, eff)
+            return await with_timeout(
+                asyncio.to_thread(builder, *args, resolved=resolved_axes),
+                DIRECTOR_TIMEOUT_S,
+                f"{mode} Director (rework)",
+            )
+
+        curated_plan, coherence_history = await _critic_with_rework(
+            curated_plan,
+            transcript=None,
+            takes=takes,
+            axes=resolved_axes,
+            run_id=body.run_id,
+            settings_dict=settings_dict,
+            rebuild_fn=_rebuild_curated_or_rough,
+        )
+        # Re-expand whichever plan we ended up with; expander is deterministic
+        # so this is cheap even when no rework happened.
+        selected_clips, hook_cut_index = expand_curated_plan(curated_plan, takes)
+        plan = DirectorPlan(
+            hook_index=hook_cut_index,
+            selected_clips=selected_clips,
+            reasoning=curated_plan.reasoning,
+        )
+        _critic_native_plan = curated_plan
+        _v2_11_meta["takes_used"] = sorted({s.item_index for s in curated_plan.selections})
+
     # v2-2: assembled mode uses a different Director. Both paths converge on
     # the same CutSegment + resolver pipeline from step 2 onward.
     elif mode == "assembled":
@@ -1245,6 +1487,33 @@ async def build_plan(body: BuildPlanRequest) -> dict:
             log.exception("Assembled Director failed for run %s", body.run_id)
             raise HTTPException(status_code=500, detail=f"Assembled Director failed: {exc}")
 
+        # Phase 6 of story-critic: rework loop for assembled mode. The
+        # AssembledDirectorPlan adapter knows about ordered selections +
+        # word-index spans so the critic grades the native shape, not the
+        # synthesised flat DirectorPlan.
+        async def _rebuild_assembled(feedback: dict):
+            eff = {**settings_dict, "_critic_feedback": feedback}
+            return await with_timeout(
+                asyncio.to_thread(
+                    build_assembled_cut_plan,
+                    takes,
+                    preset,
+                    eff,
+                    resolved=resolved_axes,
+                ),
+                DIRECTOR_TIMEOUT_S,
+                "Assembled Director (rework)",
+            )
+
+        assembled_plan, coherence_history = await _critic_with_rework(
+            assembled_plan,
+            transcript=None,
+            takes=takes,
+            axes=resolved_axes,
+            run_id=body.run_id,
+            settings_dict=settings_dict,
+            rebuild_fn=_rebuild_assembled,
+        )
         selected_clips, hook_cut_index = expand_assembled_plan(assembled_plan, takes)
         plan = DirectorPlan(
             hook_index=hook_cut_index,
@@ -1307,6 +1576,47 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         _critic_native_plan = plan
         _critic_native_takes = None
 
+        # Phase 6 of story-critic: rework loop (raw_dump path only in v0).
+        # Run critic NOW (before marker + resolve) so a rework re-pick
+        # doesn't waste a marker LLM call + resolver round-trip on a plan
+        # we're about to discard. assembled / curated / tightener still
+        # use the catch-all single-pass critic at the bottom of this
+        # handler — wired in a follow-up bite.
+        async def _rebuild_raw_dump(feedback: dict):
+            eff = {**settings_dict, "_critic_feedback": feedback}
+            new_plan, _ = await _director_or_validated(
+                mode=mode,
+                cut_intent=_cut_intent_for(body, resolved_axes),
+                settings=eff,
+                base_call=lambda settings: with_timeout(
+                    asyncio.to_thread(
+                        build_cut_plan,
+                        scrubbed,
+                        preset,
+                        settings,
+                        resolved=resolved_axes,
+                    ),
+                    DIRECTOR_TIMEOUT_S,
+                    "Director (rework)",
+                ),
+                get_selected_clips=lambda p: p.selected_clips,
+                tl=tl,
+                project=project,
+                video_track=video_track_idx,
+            )
+            return new_plan
+
+        plan, coherence_history = await _critic_with_rework(
+            plan,
+            transcript=scrubbed,
+            takes=None,
+            axes=resolved_axes,
+            run_id=body.run_id,
+            settings_dict=settings_dict,
+            rebuild_fn=_rebuild_raw_dump,
+        )
+        _critic_native_plan = plan
+
     # Marker agent runs against the flat CutSegment list in both modes.
     try:
         markers: MarkerPlan = await with_timeout(
@@ -1356,20 +1666,28 @@ async def build_plan(body: BuildPlanRequest) -> dict:
     if boundary_result is not None:
         run["plan"]["boundary_validation"] = boundary_result.to_summary()
 
-    # Story-critic — Phase 2. Grades the *native* plan shape so curated /
-    # assembled adapters see ordered selections + word-index spans rather
-    # than the synthesised flat DirectorPlan. Raw-dump grades `plan`
-    # directly (it IS the native shape).
-    coherence = _run_critic_or_skip(
-        _critic_native_plan,
-        transcript=scrubbed if _critic_native_takes is None else None,
-        takes=_critic_native_takes,
-        axes=resolved_axes,
-        run_id=body.run_id,
-        user_opt_in=settings_dict.get("story_critic_enabled"),
-    )
-    if coherence is not None:
-        run["plan"]["coherence_report"] = _wrap_coherence(coherence)
+    # Story-critic. Phase 2 single-pass grading for paths the rework loop
+    # doesn't cover yet (assembled / curated / rough_cut / tightener);
+    # raw_dump pre-populates ``coherence_history`` via Phase 6's
+    # ``_critic_with_rework`` so we just persist what it built.
+    if coherence_history is None:
+        coherence = _run_critic_or_skip(
+            _critic_native_plan,
+            transcript=scrubbed if _critic_native_takes is None else None,
+            takes=_critic_native_takes,
+            axes=resolved_axes,
+            run_id=body.run_id,
+            user_opt_in=settings_dict.get("story_critic_enabled"),
+        )
+        if coherence is not None:
+            envelope = _wrap_coherence(coherence)
+            run["plan"]["coherence_report"] = envelope
+            run["plan"]["coherence_history"] = [envelope]
+    else:
+        # Rework-aware path: history carries 1 (no rework) or 2 (rework
+        # fired) envelopes; the final report is the last one.
+        run["plan"]["coherence_history"] = coherence_history
+        run["plan"]["coherence_report"] = coherence_history[-1]
 
     await _persist_plan(body.run_id, run["plan"])
 

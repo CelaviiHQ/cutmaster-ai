@@ -337,7 +337,15 @@ def _adapt_short_generator_plan(
 _RUBRIC_BY_INTENT: dict[str, str] = {
     "narrative": (
         "Grade against a 3-act / setup-payoff shape. The hook must earn position 0, "
-        "the body must escalate or develop, the closer must land the through-line."
+        "the body must escalate or develop, the closer must land the through-line. "
+        "MANDATORY for narrative cuts: a recognisable INTRO segment (sets up the "
+        "topic in ≤10 s; if the cut starts mid-thought or assumes context the "
+        "viewer doesn't have, flag `missing_setup` on segment 0) AND a "
+        "recognisable OUTRO segment (closes the through-line and lands; if the "
+        "final segment dangles, cuts mid-sentence, or is unrelated to the setup, "
+        "flag `weak_resolution` on the last segment). These two segments are "
+        "non-negotiable — a cut without them is `verdict=rework` regardless of "
+        "what the body does."
     ),
     "peak_highlight": (
         "Single-beat content — grade hook strength and emotional payoff. A "
