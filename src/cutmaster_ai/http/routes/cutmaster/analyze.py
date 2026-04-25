@@ -11,9 +11,9 @@ from sse_starlette.sse import EventSourceResponse
 
 from ....cutmaster.core import state
 from ....cutmaster.core.pipeline import run_analyze
-from ....cutmaster.data.presets import resolve_sensory_layers
 from ....logging_setup import with_run_id
 from ._models import AnalyzeRequest, AnalyzeResponse
+from ._sensory_gates import layer_audio_enabled, layer_c_enabled, preset_to_cut_intent
 
 log = logging.getLogger("cutmaster-ai.http.cutmaster")
 
@@ -37,13 +37,22 @@ async def analyze(body: AnalyzeRequest) -> AnalyzeResponse:
     # row). Panel callers already send pre-resolved booleans so this is
     # a no-op for them; pure-API callers (scripts, tests) get sane
     # defaults from just toggling master.
-    layer_c_resolved, _layer_a_unused, layer_audio_resolved = resolve_sensory_layers(
-        master_enabled=body.sensory_master_enabled,
-        c_override=body.layer_c_enabled if body.layer_c_enabled else None,
-        a_override=None,
-        audio_override=body.layer_audio_enabled if body.layer_audio_enabled else None,
-        preset=body.preset,
-        timeline_mode="raw_dump",
+    # Resolve sensory layers via the same axis-keyed gate helpers
+    # ``build.py`` uses, so analyze + build share one mental model for
+    # activation. Tri-state semantics: explicit ``True`` / ``False``
+    # always wins; ``None`` (default) follows the matrix row for the
+    # preset's collapsed cut intent + ``raw_dump`` placeholder mode (the
+    # actual timeline mode isn't known until build).
+    cut_intent = preset_to_cut_intent(body.preset)
+    gate_inputs: dict = {
+        "sensory_master_enabled": body.sensory_master_enabled,
+        "layer_c_enabled": body.layer_c_enabled,
+        "layer_a_enabled": None,
+        "layer_audio_enabled": body.layer_audio_enabled,
+    }
+    layer_c_resolved = layer_c_enabled(gate_inputs, cut_intent=cut_intent, timeline_mode="raw_dump")
+    layer_audio_resolved = layer_audio_enabled(
+        gate_inputs, cut_intent=cut_intent, timeline_mode="raw_dump"
     )
 
     log.info(

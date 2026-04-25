@@ -62,7 +62,6 @@ from ....cutmaster.data.presets import (
     get_preset,
     preset_mode_compatible,
     preset_mode_incompatibility_reason,
-    resolve_sensory_layers,
 )
 from ....cutmaster.resolve_ops.assembled import (
     build_take_entries,
@@ -79,6 +78,7 @@ from ....cutmaster.resolve_ops.groups import (
 from ....cutmaster.resolve_ops.segments import resolve_segments
 from ._helpers import _dump_director_prompt, _require_scrubbed
 from ._models import BuildPlanRequest
+from ._sensory_gates import layer_a_enabled as _gate_layer_a_enabled
 
 log = logging.getLogger("cutmaster-ai.http.cutmaster")
 
@@ -138,8 +138,8 @@ def _effective_content_type(body: BuildPlanRequest) -> str | None:
     return None
 
 
-# v4 Phase 4.4: per-layer activation flows through
-# :func:`resolve_sensory_layers` so the matrix in ``data/presets.py`` stays
+# Per-layer activation flows through :func:`resolve_sensory_layers_by_axes`
+# (via :mod:`_sensory_gates`) so the matrix in ``data/presets.py`` stays
 # the single source of truth. Clip Hunter's Layer-A entry is "off" in the
 # matrix — each candidate is one span with no internal transitions to
 # validate — so the resolver returns False there regardless of master.
@@ -148,50 +148,40 @@ def _effective_content_type(body: BuildPlanRequest) -> str | None:
 # resolver path.
 
 
-def _layer_a_enabled_for_preset(settings: dict, preset_name: str) -> bool:
-    """Preset-scoped Layer A gate (Short Generator / Clip Hunter path).
-
-    Short Generator isn't a ``timeline_mode`` — it's a preset with its own
-    multi-candidate structure. The resolver recognises the preset key
-    directly via :func:`sensory_mode_key`; timeline_mode is unused here
-    (passed as empty string for a deterministic lookup).
-    """
-    _, layer_a, _ = resolve_sensory_layers(
-        master_enabled=bool(settings.get("sensory_master_enabled")),
-        c_override=settings.get("layer_c_enabled"),
-        a_override=settings.get("layer_a_enabled"),
-        audio_override=settings.get("layer_audio_enabled"),
-        preset=preset_name,
-        timeline_mode="",
-    )
-    return layer_a
-
-
-def _layer_a_enabled(settings: dict, mode: str) -> bool:
+def _layer_a_enabled(settings: dict, *, cut_intent: str, timeline_mode: str) -> bool:
     """Whether the outer boundary-validator loop should wrap this run.
 
     Explicit ``layer_a_enabled`` override wins (tri-state: True / False /
     None-means-defer). Otherwise the matrix × master toggle resolves the
     effective flag. When neither is set, the Director runs unwrapped and
-    the build path is byte-identical to v3.
+    the build path is byte-identical to v3. One helper covers every path
+    (linear modes + multi-candidate presets) — the axis-keyed resolver
+    handles the row collapse uniformly via ``axes_to_sensory_key``.
     """
-    _, layer_a, _ = resolve_sensory_layers(
-        master_enabled=bool(settings.get("sensory_master_enabled")),
-        c_override=settings.get("layer_c_enabled"),
-        a_override=settings.get("layer_a_enabled"),
-        audio_override=settings.get("layer_audio_enabled"),
-        # ``preset`` field isn't on the settings dict (it's on the request
-        # envelope). For mode-scoped resolution we feed only the
-        # timeline_mode key so the matrix hits its linear-mode rows.
-        preset="",
-        timeline_mode=mode,
-    )
-    return layer_a
+    return _gate_layer_a_enabled(settings, cut_intent=cut_intent, timeline_mode=timeline_mode)
+
+
+def _cut_intent_for(
+    body: BuildPlanRequest,
+    resolved_axes: ResolvedAxes | None,
+) -> str:
+    """Best-available cut intent for sensory-gate lookups.
+
+    ``resolved_axes`` is the canonical source once axis resolution has
+    run. Before that (or if it was skipped), ``_effective_cut_intent``
+    handles the legacy preset → intent collapse. Final fallback is
+    ``"narrative"`` — same default the matrix uses for unknown intents.
+    """
+    if resolved_axes is not None:
+        return resolved_axes.cut_intent
+    explicit = _effective_cut_intent(body)
+    return explicit if explicit is not None else "narrative"
 
 
 async def _director_or_validated(
     *,
     mode: str,
+    cut_intent: str,
     settings: dict,
     base_call,
     get_selected_clips,
@@ -207,10 +197,14 @@ async def _director_or_validated(
     (``plan.selected_clips``) vs. curated/rough-cut plans (which need
     ``expand_curated_plan`` first; the caller handles that in the closure).
 
+    ``cut_intent`` and ``mode`` together key into the sensory matrix so
+    Layer A activation is symmetric with the resolver's ``(cut_intent,
+    timeline_mode)`` contract.
+
     Returns ``(plan, BoundaryValidationResult | None)``. Result is ``None``
     when Layer A is off so callers can skip the warnings surface.
     """
-    if not _layer_a_enabled(settings, mode):
+    if not _layer_a_enabled(settings, cut_intent=cut_intent, timeline_mode=mode):
         plan = await base_call(settings)
         return plan, None
 
@@ -799,7 +793,13 @@ async def build_plan(body: BuildPlanRequest) -> dict:
             )
 
         try:
-            if _layer_a_enabled_for_preset(settings_dict, body.preset):
+            # Short Generator → assembled_short cut intent. ``timeline_mode``
+            # is unused by the matrix for multi-candidate presets but the
+            # axis-keyed resolver still wants a value, so pass the safe
+            # ``"raw_dump"`` placeholder (matches the row collapse).
+            if _layer_a_enabled(
+                settings_dict, cut_intent="assembled_short", timeline_mode="raw_dump"
+            ):
 
                 async def _sg_director(rejections, roster):
                     eff = dict(settings_dict)
@@ -1094,7 +1094,11 @@ async def build_plan(body: BuildPlanRequest) -> dict:
                 )
 
             try:
-                if _layer_a_enabled(settings_dict, mode):
+                if _layer_a_enabled(
+                    settings_dict,
+                    cut_intent=_cut_intent_for(body, resolved_axes),
+                    timeline_mode=mode,
+                ):
 
                     async def _rc_director(rejections, roster):
                         eff = dict(settings_dict)
@@ -1136,7 +1140,11 @@ async def build_plan(body: BuildPlanRequest) -> dict:
                 )
 
             try:
-                if _layer_a_enabled(settings_dict, mode):
+                if _layer_a_enabled(
+                    settings_dict,
+                    cut_intent=_cut_intent_for(body, resolved_axes),
+                    timeline_mode=mode,
+                ):
 
                     async def _cur_director(rejections, roster):
                         eff = dict(settings_dict)
@@ -1278,6 +1286,7 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         try:
             plan, boundary_result = await _director_or_validated(
                 mode=mode,
+                cut_intent=_cut_intent_for(body, resolved_axes),
                 settings=settings_dict,
                 base_call=lambda settings: with_timeout(
                     asyncio.to_thread(

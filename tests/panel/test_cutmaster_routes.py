@@ -82,6 +82,100 @@ def test_state_endpoint_returns_full_run(client: TestClient):
     assert "done" in stages
 
 
+def test_analyze_respects_explicit_false_layer_c(monkeypatch):
+    """Explicit ``layer_c_enabled: false`` must reach ``run_analyze`` as False.
+
+    Regression: a falsy ternary (``if x else None``) used to collapse
+    ``False`` to ``None`` at the resolver, which then matrix-defaulted the
+    layer back to ``True`` for ``raw_dump``. The pipeline gate at
+    ``pipeline.py:957`` only honours ``layer_c_enabled=False`` when the
+    resolver passes that value through. This test asserts the value
+    reaches the kwargs the gate consults.
+    """
+    captured: dict = {}
+
+    async def capture_pipeline(*, run_id: str, timeline_name: str, **kwargs) -> None:
+        captured.update(kwargs)
+        run = state.load(run_id)
+        if run is None:
+            return
+        await state.emit(run, stage="done", status="complete", message="captured")
+        run["status"] = "done"
+        state.save(run)
+
+    monkeypatch.setattr(routes.analyze, "run_analyze", capture_pipeline)
+    client = TestClient(create_app())
+
+    r = client.post(
+        "/cutmaster/analyze",
+        json={
+            "timeline_name": "T1",
+            "preset": "raw_dump",
+            "sensory_master_enabled": True,
+            "layer_c_enabled": False,
+            "layer_audio_enabled": False,
+        },
+    )
+    assert r.status_code == 200
+
+    async def _wait():
+        for _ in range(50):
+            if captured:
+                return
+            await asyncio.sleep(0.02)
+
+    asyncio.run(_wait())
+
+    # The pipeline gate ``if layer_c_enabled:`` must see False, not the
+    # matrix default for raw_dump (which would otherwise resolve True).
+    assert captured.get("layer_c_enabled") is False
+    assert captured.get("layer_audio_enabled") is False
+
+
+def test_analyze_master_on_no_overrides_uses_matrix_defaults(monkeypatch):
+    """Master on, no per-layer override → resolver follows the matrix.
+
+    Sanity counterpart to the regression test above: when overrides are
+    omitted (``None``), the matrix's ``raw_dump`` row (c=default,
+    audio=opt_in) drives the resolved booleans.
+    """
+    captured: dict = {}
+
+    async def capture_pipeline(*, run_id: str, timeline_name: str, **kwargs) -> None:
+        captured.update(kwargs)
+        run = state.load(run_id)
+        if run is None:
+            return
+        await state.emit(run, stage="done", status="complete", message="captured")
+        run["status"] = "done"
+        state.save(run)
+
+    monkeypatch.setattr(routes.analyze, "run_analyze", capture_pipeline)
+    client = TestClient(create_app())
+
+    r = client.post(
+        "/cutmaster/analyze",
+        json={
+            "timeline_name": "T1",
+            "preset": "raw_dump",
+            "sensory_master_enabled": True,
+        },
+    )
+    assert r.status_code == 200
+
+    async def _wait():
+        for _ in range(50):
+            if captured:
+                return
+            await asyncio.sleep(0.02)
+
+    asyncio.run(_wait())
+
+    # raw_dump row: c=default → True; audio=opt_in → False (no override).
+    assert captured.get("layer_c_enabled") is True
+    assert captured.get("layer_audio_enabled") is False
+
+
 def test_state_endpoint_404_for_unknown_run(client: TestClient):
     assert client.get("/cutmaster/state/does_not_exist").status_code == 404
 

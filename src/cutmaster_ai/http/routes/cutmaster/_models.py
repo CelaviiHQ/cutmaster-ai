@@ -200,28 +200,31 @@ class AnalyzeRequest(BaseModel):
             "layer_audio_enabled directly."
         ),
     )
-    # v4 Layer C — shot tagging during analyze. Off by default to preserve
-    # v3 byte-identical behaviour when the editor hasn't opted in. The
-    # panel's Configure-screen master toggle (Phase 4.4) triggers a
-    # re-analyze with this flag flipped; first analyze of new footage
-    # stays fast by default.
-    layer_c_enabled: bool = Field(
-        default=False,
+    # v4 Layer C — shot tagging during analyze. Tri-state to match the
+    # build envelope: True = force on, False = force off, None = follow
+    # the SENSORY_MATRIX row for the resolved (cut_intent, timeline_mode)
+    # cell. Default is None so pure-API callers that flip just
+    # ``sensory_master_enabled`` get matrix-driven defaults without
+    # having to know each row. Panel callers already send a concrete
+    # bool, so the widening is backwards-compatible.
+    layer_c_enabled: bool | None = Field(
+        default=None,
         description=(
             "v4 Layer C: when true, sample frames from each V1 video "
             "item post-scrub and tag them via Gemini vision. Tags cache "
             "under ~/.cutmaster/cutmaster/shot-tags/v1/<sha1(source_path)>/ "
             "so re-analyze after edits reuses prior work. No-op without "
             "GEMINI_API_KEY (stage emits 'failed' and the pipeline "
-            "continues with un-annotated transcript)."
+            "continues with un-annotated transcript). None = follow "
+            "the matrix default for the preset's row."
         ),
     )
     # v4 Layer Audio — deterministic DSP cues. No Gemini dependency;
-    # runs on the ffmpeg binary the pipeline already requires. Default
-    # off so v3 analyze stays byte-identical; panel flips it on for
-    # Assembled / Short Generator where pause-aware cuts are the signal.
-    layer_audio_enabled: bool = Field(
-        default=False,
+    # runs on the ffmpeg binary the pipeline already requires. Tri-state
+    # for the same reason as Layer C: omission means "follow the matrix"
+    # so script callers don't have to pre-resolve.
+    layer_audio_enabled: bool | None = Field(
+        default=None,
         description=(
             "v4 Layer Audio: when true, run ffmpeg silencedetect + astats "
             "over timeline audio and attach per-word cues "
@@ -230,7 +233,8 @@ class AnalyzeRequest(BaseModel):
             "key needed. Cues cache under "
             "~/.cutmaster/cutmaster/audio-cues/v1/<sha1(wav_signature)>/. "
             "Stage is best-effort: ffmpeg failures surface as a failed "
-            "event but the pipeline continues with unannotated words."
+            "event but the pipeline continues with unannotated words. "
+            "None = follow the matrix default for the preset's row."
         ),
     )
 
