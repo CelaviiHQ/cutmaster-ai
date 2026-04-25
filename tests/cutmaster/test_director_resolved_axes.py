@@ -666,3 +666,52 @@ def test_stash_resolved_axes_returns_none_on_incompatible(monkeypatch) -> None:
     )
     assert resolved is None
     assert "resolved_axes" not in run
+
+
+# ----------------------------------------------------------- arc_role
+#
+# Story-arc labels on CutSegment. Optional at the schema level (legacy
+# fallback callers don't have a model in the loop), required at the
+# prompt level on the resolved-axes path so editors can scan the cut's
+# shape on the Review screen.
+
+
+def test_cut_segment_arc_role_round_trips() -> None:
+    """``arc_role`` accepts the catalogue values and rejects everything else."""
+    seg = director.CutSegment(start_s=0.0, end_s=1.0, reason="open", arc_role="hook")
+    assert seg.arc_role == "hook"
+    # Legacy callers (tightener, build.py fallbacks) must still construct
+    # a CutSegment without a label — None is the documented default.
+    legacy = director.CutSegment(start_s=0.0, end_s=1.0, reason="x")
+    assert legacy.arc_role is None
+    # Unknown labels fail validation — the catalogue is closed.
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        director.CutSegment(start_s=0.0, end_s=1.0, reason="x", arc_role="bridge")  # type: ignore[arg-type]
+
+
+def test_flag_on_prompt_emits_arc_role_instruction(monkeypatch) -> None:
+    """The flag-on path tells the model to label every segment.
+
+    Catalogue values are spelled out so the model picks from the closed
+    set. Required for the Review-screen story-arc badges; without this
+    the field stays ``None`` on every response.
+    """
+    monkeypatch.setenv("CUTMASTER_USE_RESOLVED_AXES", "1")
+    preset = get_preset("vlog")
+    axes = _narrative_axes("vlog")
+    prompt = director._prompt(preset, TRANSCRIPT, user_settings={}, resolved=axes)
+    assert "ARC ROLES" in prompt
+    # All six labels surface so the model treats them as a closed catalogue.
+    for role in ("hook", "setup", "reinforce", "escalate", "resolve", "cta"):
+        assert f"`{role}`" in prompt
+
+
+def test_flag_off_prompt_omits_arc_role_instruction(monkeypatch) -> None:
+    """Legacy preset path stays byte-identical — no new instruction leaks
+    into the flag-off rollout. The Phase 3 rollback plan depends on this."""
+    monkeypatch.delenv("CUTMASTER_USE_RESOLVED_AXES", raising=False)
+    preset = get_preset("vlog")
+    prompt = director._prompt(preset, TRANSCRIPT, user_settings={}, resolved=None)
+    assert "ARC ROLES" not in prompt

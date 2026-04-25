@@ -170,10 +170,24 @@ export interface StoryAnalysis {
   theme_candidates: string[];
 }
 
+/**
+ * Story-arc function a segment plays in the final cut. ``null`` when
+ * the producer (legacy fallback path, tightener) didn't ask the model
+ * to label — the panel renders no badge in that case.
+ */
+export type ArcRole =
+  | "hook"
+  | "setup"
+  | "reinforce"
+  | "escalate"
+  | "resolve"
+  | "cta";
+
 export interface CutSegment {
   start_s: number;
   end_s: number;
   reason: string;
+  arc_role?: ArcRole | null;
 }
 
 export interface DirectorPlan {

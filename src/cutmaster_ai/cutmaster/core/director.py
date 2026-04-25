@@ -14,7 +14,7 @@ import json
 import logging
 import os
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field
 
@@ -162,12 +162,30 @@ def _selection_strategy_footer(resolved: ResolvedAxes | None) -> str:
 # ---------------------------------------------------------------------------
 
 
+ArcRole = Literal["hook", "setup", "reinforce", "escalate", "resolve", "cta"]
+"""Story-arc function each segment plays in the final cut.
+
+Surfaces on the Review screen so editors can scan the narrative shape
+without re-reading every segment. ``None`` means the model wasn't asked
+to label (legacy callers in ``tightener.py`` / ``build.py`` fallbacks)
+or skipped the field — the panel renders no badge in that case.
+"""
+
+
 class CutSegment(BaseModel):
     start_s: float
     end_s: float
     reason: str = Field(
         default="",
         description="One short sentence — why this block made the cut.",
+    )
+    arc_role: ArcRole | None = Field(
+        default=None,
+        description=(
+            "Function in the cut's arc: hook / setup / reinforce / escalate / resolve / cta. "
+            "The Director is instructed to fill this; ``None`` is the schema-level "
+            "fallback for callers that build segments without a model in the loop."
+        ),
     )
 
 
@@ -1186,6 +1204,25 @@ def _pacing_block(view: SimpleNamespace | None) -> str:
     )
 
 
+def _arc_role_instruction() -> str:
+    """Tell the Director to label each segment with its story-arc role.
+
+    Six values, mapped to the cut's narrative shape: hook (open), setup
+    (context), reinforce (deepen), escalate (raise stakes), resolve
+    (land the point), cta (close / call to action). Editors scan these
+    on the Review screen to judge story coherence at a glance — keep
+    the catalogue tight so the model doesn't proliferate fuzzy labels.
+    """
+    return (
+        "ARC ROLES — for every CutSegment, set `arc_role` to one of: "
+        "`hook` (opening beat), `setup` (context / premise), "
+        "`reinforce` (deepen the point), `escalate` (raise stakes / pivot), "
+        "`resolve` (land the through-line), `cta` (close / next-step). "
+        "Each role should appear at most once except `setup` and `reinforce`, "
+        'which may repeat. The hook segment (`hook_index`) MUST carry `arc_role="hook"`.'
+    )
+
+
 def _reorder_mode_block(
     view: SimpleNamespace | None,
     chapters: list[dict] | None = None,
@@ -1346,8 +1383,11 @@ def _prompt(
     take_groups = _take_groups_block(transcript)
     chapters = (user_settings or {}).get("chapters") if user_settings else None
     reorder = _reorder_mode_block(preset_view, chapters)
+    arc_roles = _arc_role_instruction() if preset_view is not preset else ""
     recipe_section = "\n\n".join(
-        b for b in (hook, recipe, pacing, coverage, take_groups, reorder, strategy_footer) if b
+        b
+        for b in (hook, recipe, pacing, coverage, take_groups, reorder, strategy_footer, arc_roles)
+        if b
     )
     recipe_section = f"\n\n{recipe_section}" if recipe_section else ""
     relabelled = _maybe_relabel_transcript(transcript, user_settings)
