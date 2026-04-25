@@ -12,6 +12,57 @@ import type {
     UserSettings,
 } from "../types";
 
+// Format seconds as HH:MM:SS — designers think in timecode, not floats.
+const tc = (s: number): string => {
+    const total = Math.max(0, Math.round(s));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const sec = total % 60;
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
+};
+
+// Visual band per arc role on the proportional plan bar.
+const ROLE_BAND: Record<string, string> = {
+    hook: "#4a9eff",
+    setup: "#5ac8fa",
+    reinforce: "#64d2c4",
+    escalate: "#ffb454",
+    resolve: "#67d97a",
+    cta: "#bf5af2",
+};
+const roleColor = (role: string | null | undefined, isHook: boolean) =>
+    isHook ? ROLE_BAND.hook : (role && ROLE_BAND[role]) || "#7a7a85";
+
+// Resolve marker palette → CSS color for the on-bar pin + list dot.
+const MARKER_HEX: Record<string, string> = {
+    blue: "#4a9eff",
+    cyan: "#5ac8fa",
+    green: "#67d97a",
+    yellow: "#ffd60a",
+    red: "#ff453a",
+    pink: "#ff6b9d",
+    purple: "#bf5af2",
+    fuchsia: "#ff2d92",
+    rose: "#ff6482",
+    lavender: "#a78bfa",
+    sky: "#7dd3fc",
+    mint: "#5eead4",
+    lemon: "#fde047",
+    sand: "#d4b483",
+    cocoa: "#8b6f47",
+    cream: "#f5e6c5",
+};
+const markerColor = (name: string): string =>
+    MARKER_HEX[name.trim().toLowerCase()] || "#4a9eff";
+
+// Short-form label so always-visible marker pins don't overflow the bar.
+const shortMarkerLabel = (name: string): string => {
+    // Strip leading "B-Roll to cover cut:" / "Archive insert:" prefixes.
+    const cleaned = name.replace(/^(b-roll[^:]*:|archive[^:]*:)\s*/i, "");
+    return cleaned.length > 22 ? cleaned.slice(0, 21) + "…" : cleaned;
+};
+
 // Phase 5.8 — content-type preset whitelist for the build-plan request
 // remapper. Mirrors ``axes.ts::CONTENT_TYPE_PRESETS`` but scoped to this
 // screen so the Review refactor stays local.
@@ -76,11 +127,63 @@ export default function ReviewScreen({
     const [replaceExisting, setReplaceExisting] = useState(false);
     const [existingNames, setExistingNames] = useState<Set<string>>(new Set());
     const [executeHistory, setExecuteHistory] = useState<ExecuteHistoryEntry[]>([]);
+    // Feature: inline transcript expansion per segment. Fetched once on
+    // mount from the run's scrubbed transcript; one row at a time can be
+    // expanded to surface the words that fall inside its [start_s, end_s].
+    const [transcript, setTranscript] = useState<
+        Array<{ word: string; start_time: number; end_time: number }>
+    >([]);
+    const [expandedSegment, setExpandedSegment] = useState<number | null>(null);
+    // Director-prompt viewer. Loaded lazily on first open via
+    // GET /cutmaster/debug/prompt/{run_id}.
+    const [promptText, setPromptText] = useState<string | null>(null);
+    const [promptErr, setPromptErr] = useState<string | null>(null);
+    const [promptOpen, setPromptOpen] = useState(false);
+    const [promptLoading, setPromptLoading] = useState(false);
+    // Plan-bar scrubber state. `playheadPct` is 0..1 along the assembled cut;
+    // `hoverPct` is the live mouse-track for the hover tooltip. Both are null
+    // when the user hasn't engaged yet.
+    const [playheadPct, setPlayheadPct] = useState<number | null>(null);
+    const [hoverPct, setHoverPct] = useState<number | null>(null);
+
+    const openPrompt = async () => {
+        setPromptOpen(true);
+        if (promptText !== null) return;
+        setPromptLoading(true);
+        setPromptErr(null);
+        try {
+            const res = await fetch(`/cutmaster/debug/prompt/${runId}`);
+            if (!res.ok) {
+                const body = await res.text();
+                setPromptErr(`${res.status} — ${body || "no prompt cached"}`);
+                return;
+            }
+            setPromptText(await res.text());
+        } catch (e) {
+            setPromptErr(String(e));
+        } finally {
+            setPromptLoading(false);
+        }
+    };
 
     const refreshHistory = async () => {
         try {
             const state = await api.getState(runId);
             setExecuteHistory(state.execute_history ?? []);
+            // Cache the scrubbed transcript so segment rows can expand
+            // inline to show their words. Falls back to the raw
+            // transcript when scrubbed is empty (analyze not run yet).
+            const words =
+                state.scrubbed && state.scrubbed.length > 0
+                    ? state.scrubbed
+                    : (state.transcript ?? []);
+            setTranscript(
+                words.map((w) => ({
+                    word: w.word,
+                    start_time: w.start_time,
+                    end_time: w.end_time,
+                })),
+            );
         } catch {
             // /state unreachable — hide the history panel rather than error out.
             setExecuteHistory([]);
@@ -235,12 +338,23 @@ export default function ReviewScreen({
                 <h2>Plan summary</h2>
                 <p>
                     <strong>{plan.director.selected_clips.length}</strong> segments
-                    &nbsp;·&nbsp; total <strong>{totalS.toFixed(1)}s</strong>
+                    &nbsp;·&nbsp; total <strong>{tc(totalS)}</strong>
+                    <span className="muted"> ({totalS.toFixed(1)}s)</span>
                     &nbsp;·&nbsp; {plan.markers.markers.length} markers
                 </p>
                 {plan.director.reasoning && (
                     <p className="muted">{plan.director.reasoning}</p>
                 )}
+                <p className="muted">
+                    <button
+                        type="button"
+                        className="link-button"
+                        onClick={openPrompt}
+                        title="Show the prompt that was sent to the Director model for this run"
+                    >
+                        View Director prompt
+                    </button>
+                </p>
                 {clipHunter && (
                     <p className="muted">
                         {clipHunter.candidates.length} clip candidate(s) @ target{" "}
@@ -500,9 +614,85 @@ export default function ReviewScreen({
                 </div>
             )}
 
+            {(() => {
+                const segs = clipHunter
+                    ? (clipHunter.candidates[selectedCandidate]
+                          ?.resolved_segments ?? []
+                      ).map((s) => ({
+                          start_s: s.start_s,
+                          end_s: s.end_s,
+                          reason: s.reason,
+                          arc_role: null as string | null,
+                      }))
+                    : plan.director.selected_clips;
+                const total = segs.reduce((a, c) => a + (c.end_s - c.start_s), 0);
+                const markers = plan.markers.markers;
+                // Map a marker (in source seconds) onto its position along the
+                // assembled cut by walking the segment list.
+                const markerCutOffset = (atS: number): number | null => {
+                    let acc = 0;
+                    for (const seg of segs) {
+                        const dur = seg.end_s - seg.start_s;
+                        if (atS >= seg.start_s && atS <= seg.end_s) {
+                            return acc + (atS - seg.start_s);
+                        }
+                        acc += dur;
+                    }
+                    return null;
+                };
+                return (
+                    <div className="card">
+                        <h2>The cut</h2>
+                        <div className="plan-bar" role="img" aria-label={`Proportional view of ${segs.length} segments`}>
+                            {segs.map((c, i) => {
+                                const isHook = !clipHunter && i === plan.director.hook_index;
+                                const role = "arc_role" in c ? (c as { arc_role?: string | null }).arc_role : null;
+                                const dur = c.end_s - c.start_s;
+                                const label = isHook ? "HOOK" : (role || "");
+                                return (
+                                    <div
+                                        key={i}
+                                        className="plan-bar-seg"
+                                        style={{
+                                            flexGrow: dur,
+                                            background: roleColor(role, isHook),
+                                        }}
+                                        title={`${label || `Segment ${i + 1}`} · ${dur.toFixed(1)}s\n${c.reason}`}
+                                        onClick={() => setExpandedSegment(expandedSegment === i ? null : i)}
+                                    >
+                                        <span className="plan-bar-label">{label}</span>
+                                        <span className="plan-bar-dur">{dur.toFixed(0)}s</span>
+                                    </div>
+                                );
+                            })}
+                            {markers.map((m, i) => {
+                                const off = markerCutOffset(m.at_s);
+                                if (off === null || total === 0) return null;
+                                const pct = (off / total) * 100;
+                                return (
+                                    <div
+                                        key={i}
+                                        className="plan-bar-pin"
+                                        style={{ left: `${pct}%` }}
+                                        title={`📌 ${m.name} — ${m.note}`}
+                                    >
+                                        <span className="plan-bar-pin-dot" />
+                                        <span className="plan-bar-pin-label">📌 {m.name}</span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        <p className="muted" style={{ marginTop: 8, fontSize: "var(--fs-2)" }}>
+                            {segs.length} segments · {tc(total)} total
+                            {markers.length > 0 && <> · {markers.length} marker{markers.length === 1 ? "" : "s"} pinned</>}
+                        </p>
+                    </div>
+                );
+            })()}
+
             <div className="card">
-                <h2>Selected segments</h2>
-                <div className="seg-list">
+                <h2>Segments</h2>
+                <div className="seg-cards">
                     {(clipHunter
                         ? (clipHunter.candidates[selectedCandidate]
                               ?.resolved_segments ?? []
@@ -510,86 +700,145 @@ export default function ReviewScreen({
                               start_s: s.start_s,
                               end_s: s.end_s,
                               reason: s.reason,
+                              arc_role: null,
                           }))
                         : plan.director.selected_clips
                     ).map((c, i) => {
                         const isHook = !clipHunter && i === plan.director.hook_index;
+                        const role =
+                            !isHook && "arc_role" in c ? c.arc_role : null;
+                        const isExpanded = expandedSegment === i;
+                        const canExpand = transcript.length > 0;
+                        const words = canExpand && isExpanded
+                            ? transcript.filter(
+                                  (w) =>
+                                      w.start_time >= c.start_s - 0.001 &&
+                                      w.end_time <= c.end_s + 0.001,
+                              )
+                            : [];
+                        const badge = isHook ? "HOOK" : role;
                         return (
-                            <div key={i} className={`seg ${isHook ? "hook" : ""}`}>
-                                <span className="seg-time">
-                                    {c.start_s.toFixed(2)}s
-                                </span>
-                                <span className={isHook ? "seg-hook" : "seg-time"}>
-                                    {isHook
-                                        ? "HOOK"
-                                        : `${(c.end_s - c.start_s).toFixed(1)}s`}
-                                </span>
-                                <span className="seg-reason" title={c.reason}>
-                                    {c.reason}
-                                </span>
+                            <div
+                                key={i}
+                                className={`seg-card ${isHook ? "seg-card--hook" : ""}`}
+                            >
+                                <div
+                                    className="seg-card-stripe"
+                                    style={{ background: roleColor(role, isHook) }}
+                                />
+                                <div className="seg-card-body">
+                                    <div className="seg-card-head">
+                                        {badge && (
+                                            <span
+                                                className={`seg-badge ${isHook ? "seg-badge--hook" : ""}`}
+                                                style={{
+                                                    borderColor: roleColor(role, isHook),
+                                                    color: roleColor(role, isHook),
+                                                }}
+                                            >
+                                                {badge}
+                                            </span>
+                                        )}
+                                        <span className="seg-card-tc">
+                                            {tc(c.start_s)} → {tc(c.end_s)}
+                                        </span>
+                                        <span className="seg-card-dur">
+                                            {(c.end_s - c.start_s).toFixed(1)}s
+                                        </span>
+                                        {canExpand && (
+                                            <button
+                                                className="btn-ghost seg-card-toggle"
+                                                onClick={() =>
+                                                    setExpandedSegment(isExpanded ? null : i)
+                                                }
+                                            >
+                                                {isExpanded ? "Hide transcript ▾" : "Show transcript ▸"}
+                                            </button>
+                                        )}
+                                    </div>
+                                    <p className="seg-card-text">{c.reason}</p>
+                                    {isExpanded && (
+                                        <div className="seg-transcript">
+                                            {words.length > 0
+                                                ? words.map((w) => w.word).join(" ")
+                                                : "(no words in this range)"}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         );
                     })}
                 </div>
             </div>
 
-            <div className="card">
-                <h2>Markers</h2>
-                {plan.markers.markers.length === 0 && (
-                    <p className="muted">No B-Roll markers suggested for this cut.</p>
-                )}
-                {plan.markers.markers.map((m, i) => (
-                    <div key={i} className="seg">
-                        <span className="seg-time">@{m.at_s.toFixed(2)}s</span>
-                        <span className="seg-time">{m.color}</span>
-                        <span className="seg-reason" title={m.note}>
-                            {m.name}
-                        </span>
-                    </div>
-                ))}
-            </div>
+            {plan.markers.markers.length > 0 && (
+                <div className="card">
+                    <h2>Markers</h2>
+                    <ul className="marker-list">
+                        {plan.markers.markers.map((m, i) => (
+                            <li key={i} className="marker-row">
+                                <span
+                                    className="marker-dot"
+                                    style={{ background: m.color.toLowerCase() }}
+                                    aria-hidden
+                                />
+                                <span className="seg-card-tc">{tc(m.at_s)}</span>
+                                <span className="marker-name">{m.name}</span>
+                                <span className="marker-note muted">{m.note}</span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
 
-            <div className="card">
-                <h2>Resolved source frames</h2>
-                <div className="seg-list">
-                    {(clipHunter
-                        ? clipHunter.candidates[selectedCandidate]
-                              ?.resolved_segments ?? []
-                        : plan.resolved_segments
-                    )
-                        .slice(0, 10)
-                        .map((r, i) => (
-                        <div key={i} className="seg">
-                            <span className="seg-time">
-                                tl {r.timeline_start_frame}
-                            </span>
-                            <span className="seg-time">
-                                src [{r.source_in_frame}..{r.source_out_frame}]
-                            </span>
-                            <span className="seg-reason">
-                                {r.source_item_name}
-                                {r.speed_ramped && (
-                                    <span style={{ color: "var(--warn)" }}>
-                                        {" "}
-                                        ({r.speed}× speed)
-                                    </span>
-                                )}
-                            </span>
-                        </div>
-                    ))}
-                    {(() => {
-                        const list = clipHunter
+            <details className="card card--advanced">
+                <summary>
+                    <span>Dev details</span>
+                    <span className="muted" style={{ marginLeft: 8, fontSize: "var(--fs-2)" }}>
+                        — resolved source frames, for round-trip debugging
+                    </span>
+                </summary>
+                <div className="card-body">
+                    <div className="seg-list">
+                        {(clipHunter
                             ? clipHunter.candidates[selectedCandidate]
                                   ?.resolved_segments ?? []
-                            : plan.resolved_segments;
-                        return list.length > 10 ? (
-                            <div className="muted" style={{ padding: 8 }}>
-                                …and {list.length - 10} more
+                            : plan.resolved_segments
+                        )
+                            .slice(0, 10)
+                            .map((r, i) => (
+                            <div key={i} className="seg">
+                                <span className="seg-time">
+                                    tl {r.timeline_start_frame}
+                                </span>
+                                <span className="seg-time">
+                                    src [{r.source_in_frame}..{r.source_out_frame}]
+                                </span>
+                                <span className="seg-reason">
+                                    {r.source_item_name}
+                                    {r.speed_ramped && (
+                                        <span style={{ color: "var(--warn)" }}>
+                                            {" "}
+                                            ({r.speed}× speed)
+                                        </span>
+                                    )}
+                                </span>
                             </div>
-                        ) : null;
-                    })()}
+                        ))}
+                        {(() => {
+                            const list = clipHunter
+                                ? clipHunter.candidates[selectedCandidate]
+                                      ?.resolved_segments ?? []
+                                : plan.resolved_segments;
+                            return list.length > 10 ? (
+                                <div className="muted" style={{ padding: 8 }}>
+                                    …and {list.length - 10} more
+                                </div>
+                            ) : null;
+                        })()}
+                    </div>
                 </div>
-            </div>
+            </details>
 
             {buildResult && (
                 <div
@@ -984,6 +1233,39 @@ export default function ReviewScreen({
                 </>
                 );
             })()}
+            {promptOpen && (
+                <div
+                    className="prompt-overlay"
+                    role="dialog"
+                    aria-label="Director prompt viewer"
+                    onClick={() => setPromptOpen(false)}
+                >
+                    <div
+                        className="prompt-modal"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="prompt-modal-head">
+                            <strong>Director prompt</strong>
+                            <button
+                                type="button"
+                                className="link-button"
+                                onClick={() => setPromptOpen(false)}
+                            >
+                                Close
+                            </button>
+                        </div>
+                        {promptLoading && (
+                            <p className="muted">Loading…</p>
+                        )}
+                        {promptErr && (
+                            <p className="error-box">{promptErr}</p>
+                        )}
+                        {!promptLoading && !promptErr && promptText !== null && (
+                            <pre className="prompt-pre">{promptText}</pre>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

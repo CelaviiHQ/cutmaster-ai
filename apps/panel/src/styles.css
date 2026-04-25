@@ -551,7 +551,85 @@ label {
 .chapter-row--contains-hook span:last-child { color: var(--accent-blue); font-weight: 600; }
 .seg-time { color: var(--text-tertiary); }
 .seg-hook { color: var(--accent-blue); font-weight: 600; }
+.seg-role {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: var(--surface-3);
+    color: var(--text-tertiary);
+    font-size: var(--fs-1);
+    text-transform: lowercase;
+    letter-spacing: 0.02em;
+}
 .seg-reason { color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.seg-caret { color: var(--text-tertiary); margin-left: auto; padding-left: var(--s-2); font-size: var(--fs-1); }
+.seg-expandable { cursor: pointer; }
+.seg-expandable:hover { background: var(--surface-3); }
+.seg-expandable:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: -2px; }
+.seg-transcript {
+    padding: var(--s-2) var(--s-3);
+    margin: 0 0 var(--s-2) var(--s-3);
+    background: var(--surface-3);
+    border-left: 2px solid var(--accent-blue);
+    color: var(--text-secondary);
+    font-size: var(--fs-2);
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.link-button {
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: var(--accent-blue);
+    cursor: pointer;
+    font: inherit;
+    text-decoration: underline;
+}
+.link-button:hover { color: var(--accent-blue); opacity: 0.8; }
+.link-button:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+
+.prompt-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: var(--s-4);
+}
+.prompt-modal {
+    background: var(--surface-1);
+    border: var(--border-thin);
+    border-radius: var(--radius-2);
+    padding: var(--s-4);
+    max-width: 900px;
+    width: 100%;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-3);
+}
+.prompt-modal-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.prompt-pre {
+    flex: 1;
+    overflow: auto;
+    background: var(--surface-3);
+    padding: var(--s-3);
+    border-radius: var(--radius-1);
+    font-size: var(--fs-1);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text-secondary);
+    margin: 0;
+}
 
 .row { display: flex; gap: var(--s-2); align-items: center; margin-top: var(--s-3); }
 .row.between { justify-content: space-between; }
@@ -615,6 +693,178 @@ code {
     font-family: var(--font-mono);
     font-size: var(--fs-2);
 }
+
+/* ── Plan bar — proportional segment strip with marker pins ───────── */
+.plan-bar {
+    position: relative;
+    display: flex;
+    width: 100%;
+    height: 56px;
+    border-radius: var(--radius-md);
+    overflow: visible;
+    background: var(--surface-3);
+    margin-top: var(--s-2);
+}
+.plan-bar-seg {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 6px 8px;
+    min-width: 28px;
+    color: rgba(0, 0, 0, 0.78);
+    font-size: var(--fs-1);
+    font-weight: 600;
+    border-right: 1px solid rgba(0, 0, 0, 0.18);
+    cursor: pointer;
+    overflow: hidden;
+    transition: filter 120ms;
+}
+.plan-bar-seg:first-child { border-radius: var(--radius-md) 0 0 var(--radius-md); }
+.plan-bar-seg:last-child  { border-right: 0; border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+.plan-bar-seg:hover { filter: brightness(1.08); }
+.plan-bar-label {
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.plan-bar-dur {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    align-self: flex-end;
+    opacity: 0.78;
+}
+.plan-bar-pin {
+    position: absolute;
+    top: -10px;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    pointer-events: auto;
+    z-index: 2;
+}
+.plan-bar-pin-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent-blue);
+    box-shadow: 0 0 0 2px var(--surface-1), 0 0 8px rgba(74, 158, 255, 0.6);
+}
+.plan-bar-pin::after {
+    content: "";
+    width: 1px;
+    height: 56px;
+    background: rgba(255, 255, 255, 0.35);
+    margin-top: 2px;
+}
+.plan-bar-pin-label {
+    position: absolute;
+    top: -22px;
+    background: var(--surface-2);
+    border: var(--border-thin);
+    border-radius: var(--radius-sm);
+    padding: 1px 6px;
+    font-size: var(--fs-1);
+    color: var(--text-secondary);
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 120ms;
+    pointer-events: none;
+}
+.plan-bar-pin:hover .plan-bar-pin-label { opacity: 1; }
+
+/* ── Segment cards — full-quote, no truncation, role-coded stripe ──── */
+.seg-cards {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-2);
+}
+.seg-card {
+    display: flex;
+    background: var(--surface-2);
+    border: var(--border-thin);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+.seg-card--hook { background: var(--accent-blue-tint); }
+.seg-card-stripe {
+    width: 4px;
+    flex-shrink: 0;
+}
+.seg-card-body {
+    padding: var(--s-2) var(--s-3);
+    flex: 1;
+    min-width: 0;
+}
+.seg-card-head {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+}
+.seg-badge {
+    display: inline-block;
+    padding: 1px 8px;
+    border: 1px solid;
+    border-radius: 999px;
+    font-size: var(--fs-1);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.seg-card-tc {
+    font-family: var(--font-mono);
+    font-size: var(--fs-2);
+    color: var(--text-secondary);
+}
+.seg-card-dur {
+    font-family: var(--font-mono);
+    font-size: var(--fs-1);
+    color: var(--text-tertiary);
+}
+.seg-card-toggle {
+    margin-left: auto;
+    height: auto;
+    font-size: var(--fs-1);
+}
+.seg-card-text {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: var(--fs-2);
+    line-height: 1.5;
+    /* No nowrap / no ellipsis — designers want to read the full quote. */
+    white-space: normal;
+    word-break: break-word;
+}
+
+/* ── Marker list — colored dot + timecode + name + note ───────────── */
+.marker-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.marker-row {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    padding: 4px 0;
+}
+.marker-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 2px var(--surface-1);
+}
+.marker-name { color: var(--text-primary); font-size: var(--fs-2); }
+.marker-note { font-size: var(--fs-2); }
 
 /* v3-5.5 — Responsive breakpoint for docked / narrow panels */
 @media (max-width: 480px) {
