@@ -2144,3 +2144,34 @@ code {
     color: #ff453a;
     font-size: var(--fs-2);
 }
+
+/* Story-critic Phase 6 — auto-rework lift chip on the verdict header.
+   Up = green (rework helped), down = amber (rework regressed; rare). */
+.coherence-lift {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: var(--fs-1);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: help;
+}
+.coherence-lift--up {
+    background: rgba(103, 217, 122, 0.15);
+    color: #67d97a;
+}
+.coherence-lift--down {
+    background: rgba(255, 180, 84, 0.15);
+    color: #ffb454;
+}
+.coherence-lift-delta {
+    opacity: 0.85;
+}
+
+.coherence-rework-prompt {
+    margin-left: var(--s-2);
+    font-size: var(--fs-2);
+}

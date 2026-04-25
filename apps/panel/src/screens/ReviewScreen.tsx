@@ -206,13 +206,20 @@ export default function ReviewScreen({
         }
     };
 
-    const openPrompt = async () => {
+    const openPrompt = async (opts?: { pass?: "rework" }) => {
+        const pass = opts?.pass;
+        // Reset modal state for whichever pass we're loading. Both v1
+        // and rework dumps share the modal — switching back loads from
+        // disk again, simpler than two caches.
         setPromptOpen(true);
-        if (promptText !== null) return;
         setPromptLoading(true);
         setPromptErr(null);
+        setPromptText(null);
+        const url = pass
+            ? `/cutmaster/debug/prompt/${runId}?pass=${pass}`
+            : `/cutmaster/debug/prompt/${runId}`;
         try {
-            const res = await fetch(`/cutmaster/debug/prompt/${runId}`);
+            const res = await fetch(url);
             if (!res.ok) {
                 const body = await res.text();
                 setPromptErr(`${res.status} — ${body || "no prompt cached"}`);
@@ -811,7 +818,7 @@ export default function ReviewScreen({
                             <button
                                 type="button"
                                 className="link-button"
-                                onClick={openPrompt}
+                                onClick={() => openPrompt()}
                                 title="Show the prompt that was sent to the Director model"
                             >
                                 View Director prompt
@@ -864,6 +871,16 @@ export default function ReviewScreen({
                 } else {
                     report = env.report;
                 }
+
+                // Phase 6 lift chip: when coherence_history has 2 entries
+                // the auto-rework loop fired. The first single-cut entry
+                // is v1; we render its score + verdict next to v2's badge.
+                const history = plan.coherence_history ?? [];
+                let previousReport: CoherenceReport | null = null;
+                if (history.length >= 2 && env.kind === "single") {
+                    const v1 = history[0];
+                    if (v1.kind === "single") previousReport = v1.report;
+                }
                 const handleIssueClick = (segIdx: number) => {
                     if (segIdx < 0) return;
                     setExpandedSegment(segIdx);
@@ -875,6 +892,9 @@ export default function ReviewScreen({
                             ?.scrollIntoView({ behavior: "smooth", block: "center" });
                     });
                 };
+                const handleViewReworkPrompt = previousReport
+                    ? () => openPrompt({ pass: "rework" })
+                    : undefined;
                 return (
                     <CoherenceReportCard
                         report={report}
@@ -883,6 +903,8 @@ export default function ReviewScreen({
                         onRecritique={recritique}
                         recritiqueBusy={recritiqueBusy}
                         recritiqueError={recritiqueErr}
+                        previousReport={previousReport}
+                        onViewReworkPrompt={handleViewReworkPrompt}
                     />
                 );
             })()}

@@ -1417,9 +1417,16 @@ async def build_plan(body: BuildPlanRequest) -> dict:
             if mode == "rough_cut":
                 builder = build_rough_cut_plan
                 args: tuple = (takes, groups, preset, eff)
+                prompt_text = director_mod._rough_cut_prompt(
+                    preset, takes, groups, eff, resolved=resolved_axes
+                )
             else:
                 builder = build_curated_cut_plan
                 args = (takes, preset, eff)
+                prompt_text = director_mod._curated_prompt(
+                    preset, takes, eff, resolved=resolved_axes
+                )
+            _dump_director_prompt(body.run_id, prompt_text, suffix="rework")
             return await with_timeout(
                 asyncio.to_thread(builder, *args, resolved=resolved_axes),
                 DIRECTOR_TIMEOUT_S,

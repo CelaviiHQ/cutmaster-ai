@@ -135,6 +135,19 @@ interface Props {
     recritiqueBusy?: boolean;
     /** Surfaced under the issue list when the last re-critique failed. */
     recritiqueError?: string | null;
+    /**
+     * Story-critic Phase 6 — when the auto-rework loop fired, this is the
+     * v1 (pre-rework) report. Renders a small chip in the header showing
+     * "Pass 1: 58 → 82" so editors see the lift at a glance.
+     */
+    previousReport?: CoherenceReport | null;
+    /**
+     * Optional handler to open the rework-pass Director prompt
+     * (``GET /cutmaster/debug/prompt/{run_id}?pass=rework``). Renders a
+     * small "View rework prompt" link next to the Re-critique button when
+     * present (i.e. only when ``previousReport`` is set).
+     */
+    onViewReworkPrompt?: () => void;
 }
 
 /**
@@ -153,7 +166,11 @@ export default function CoherenceReportCard({
     onRecritique,
     recritiqueBusy = false,
     recritiqueError = null,
+    previousReport = null,
+    onViewReworkPrompt,
 }: Props) {
+    const lift =
+        previousReport !== null ? report.score - previousReport.score : null;
     return (
         <div className="card coherence-card">
             <div className="coherence-head">
@@ -171,6 +188,21 @@ export default function CoherenceReportCard({
                     >
                         {VERDICT_LABEL[report.verdict]}
                     </span>
+                    {previousReport !== null && lift !== null && (
+                        <span
+                            className={`coherence-lift coherence-lift--${
+                                lift >= 0 ? "up" : "down"
+                            }`}
+                            title={`Auto-rework: pass 1 scored ${previousReport.score} (${VERDICT_LABEL[previousReport.verdict]}); pass 2 scored ${report.score}`}
+                        >
+                            Pass 1: {previousReport.score} → {report.score}
+                            <span className="coherence-lift-delta">
+                                {" "}
+                                ({lift >= 0 ? "+" : ""}
+                                {lift})
+                            </span>
+                        </span>
+                    )}
                     {contextLabel && (
                         <span className="coherence-context muted">
                             {contextLabel}
@@ -186,6 +218,16 @@ export default function CoherenceReportCard({
                         title="Re-run the story-critic against this plan"
                     >
                         {recritiqueBusy ? "Re-critiquing…" : "Re-critique"}
+                    </button>
+                )}
+                {onViewReworkPrompt && previousReport !== null && (
+                    <button
+                        type="button"
+                        className="link-button coherence-rework-prompt"
+                        onClick={onViewReworkPrompt}
+                        title="Open the prompt the Director was given on the rework pass"
+                    >
+                        View rework prompt
                     </button>
                 )}
             </div>

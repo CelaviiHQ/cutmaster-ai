@@ -321,6 +321,11 @@ export interface BuildPlanResult {
   /** Story-critic verdict on the built cut. ``null`` / absent when the
    *  flag is off, the LLM failed, or no resolved_axes were available. */
   coherence_report?: CoherenceReportEnvelope | null;
+  /** Story-critic Phase 6 history. Carries 1 envelope (no rework / single
+   *  pass) or 2 envelopes (rework fired) — the final one mirrors
+   *  ``coherence_report``. Lets the Review screen show "Pass 1: 58 →
+   *  Pass 2: 82" when the auto-rework loop lifted the verdict. */
+  coherence_history?: CoherenceReportEnvelope[];
   /** Validation residue from a best-effort Director call (the model failed
    *  a hard constraint but llm.call_structured returned the best-of-bad
    *  plan after exhausting retries). Empty / absent when the plan

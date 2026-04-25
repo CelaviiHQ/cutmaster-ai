@@ -53,3 +53,39 @@ def test_director_prompt_returns_404_when_missing(client: TestClient) -> None:
     detail = response.json()["detail"]
     assert "never-built" in detail
     assert "build" in detail.lower()
+
+
+def test_director_prompt_rework_pass_returns_rework_dump(client: TestClient) -> None:
+    """``?pass=rework`` serves the rework-pass dump (Phase 6 of story-critic)."""
+    state.RUN_ROOT.mkdir(parents=True, exist_ok=True)
+    run_id = "run-with-rework"
+    first = "You are a podcast editor.\n\nSENTENCES: [...]"
+    rework = first + "\n\nPREVIOUS ATTEMPT — REWORK NEEDED: ..."
+    (state.RUN_ROOT / f"{run_id}.director_prompt.txt").write_text(first, encoding="utf-8")
+    (state.RUN_ROOT / f"{run_id}.director_prompt.rework.txt").write_text(rework, encoding="utf-8")
+
+    # Default still serves the v1 dump.
+    r1 = client.get(f"/cutmaster/debug/prompt/{run_id}")
+    assert r1.status_code == 200
+    assert r1.text == first
+
+    # ?pass=rework serves the rework dump.
+    r2 = client.get(f"/cutmaster/debug/prompt/{run_id}?pass=rework")
+    assert r2.status_code == 200
+    assert r2.text == rework
+
+
+def test_director_prompt_rework_pass_404_when_no_rework_run(client: TestClient) -> None:
+    """When the build didn't trigger rework, ``?pass=rework`` returns 404."""
+    state.RUN_ROOT.mkdir(parents=True, exist_ok=True)
+    run_id = "ship-on-first"
+    (state.RUN_ROOT / f"{run_id}.director_prompt.txt").write_text("first", encoding="utf-8")
+
+    r = client.get(f"/cutmaster/debug/prompt/{run_id}?pass=rework")
+    assert r.status_code == 404
+
+
+def test_director_prompt_unknown_pass_rejected_with_400(client: TestClient) -> None:
+    r = client.get("/cutmaster/debug/prompt/anything?pass=garbage")
+    assert r.status_code == 400
+    assert "garbage" in r.json()["detail"]
