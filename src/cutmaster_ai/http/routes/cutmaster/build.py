@@ -78,7 +78,12 @@ from ....cutmaster.resolve_ops.groups import (
 from ....cutmaster.resolve_ops.segments import resolve_segments
 from ._helpers import _dump_director_prompt, _require_scrubbed
 from ._models import BuildPlanRequest
-from ._sensory_gates import layer_a_enabled as _gate_layer_a_enabled
+from ._sensory_gates import (
+    layer_a_enabled as _gate_layer_a_enabled,
+)
+from ._sensory_gates import (
+    log_sensory_resolution,
+)
 
 log = logging.getLogger("cutmaster-ai.http.cutmaster")
 
@@ -755,6 +760,18 @@ async def build_plan(body: BuildPlanRequest) -> dict:
                 "unusual": resolved_axes.unusual,
             },
         )
+
+    # Sibling of ``axis_resolution.decided`` — one ``sensory_resolution``
+    # line per build, capturing master + per-layer overrides + the
+    # resolved triple. Fires before any Layer-A gate decision so the
+    # log line is consistent regardless of which build path runs
+    # (raw_dump / SG / clip_hunter / curated / rough_cut / assembled).
+    log_sensory_resolution(
+        body.run_id,
+        settings_dict,
+        cut_intent=_cut_intent_for(body, resolved_axes),
+        timeline_mode=mode,
+    )
 
     # v4 Layer A: populated by the wrapping loop in modes that enable it.
     # Stays None for modes where Layer A is skipped (assembled, tightener,
@@ -1493,6 +1510,11 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         # synthesised flat DirectorPlan.
         async def _rebuild_assembled(feedback: dict):
             eff = {**settings_dict, "_critic_feedback": feedback}
+            _dump_director_prompt(
+                body.run_id,
+                director_mod._assembled_prompt(preset, takes, eff, resolved=resolved_axes),
+                suffix="rework",
+            )
             return await with_timeout(
                 asyncio.to_thread(
                     build_assembled_cut_plan,
@@ -1584,6 +1606,14 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         # handler — wired in a follow-up bite.
         async def _rebuild_raw_dump(feedback: dict):
             eff = {**settings_dict, "_critic_feedback": feedback}
+            # Dump the augmented prompt so editors can review what the
+            # model was told to fix on the rework pass. Lands at
+            # ``<run_id>.director_prompt.rework.txt`` next to the v1 dump.
+            _dump_director_prompt(
+                body.run_id,
+                director_mod._prompt(preset, scrubbed, eff),
+                suffix="rework",
+            )
             new_plan, _ = await _director_or_validated(
                 mode=mode,
                 cut_intent=_cut_intent_for(body, resolved_axes),
