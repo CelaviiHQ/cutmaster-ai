@@ -81,6 +81,11 @@ DEFAULTS: dict[str, str] = {
     # overrides via CUTMASTER_SHOT_TAGGER_MODEL / CUTMASTER_BOUNDARY_VALIDATOR_MODEL.
     "shot_tagger": "gemini-3.1-flash-lite-preview",
     "boundary_validator": "gemini-3.1-flash-lite-preview",
+    # Story-coherence critic (Implementation/optimizaiton/story-critic.md).
+    # Defaults to non-lite flash because the critic does editorial reasoning,
+    # not classification — the lite tier has shown flakiness on nuanced calls
+    # in autodetect. Override with CUTMASTER_STORY_CRITIC_MODEL.
+    "story_critic": "gemini-3.1-flash",
 }
 
 
