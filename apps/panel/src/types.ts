@@ -77,10 +77,15 @@ export interface SegmentPacing {
   max: number;
 }
 
+/** Provenance tag on `ResolvedAxes.cut_intent_source` — populated by the
+ *  backend axis resolver (Phase 6.3). `"user"` / `"auto"` / `"forced"`. */
+export type CutIntentSource = "user" | "auto" | "forced";
+
 /** Fully resolved cut recipe — Axis 1 × Axis 2 × duration × timeline_mode. */
 export interface ResolvedAxes {
   content_type: ContentType;
   cut_intent: CutIntent;
+  cut_intent_source?: CutIntentSource;
   reorder_mode: ReorderMode;
   segment_pacing: SegmentPacing;
   selection_strategy: SelectionStrategy;

@@ -1523,6 +1523,79 @@ def test_build_plan_stashes_resolved_axes_via_pipeline_helper(client, monkeypatc
     assert captured["resolved"].content_type == "interview"
 
 
+def test_build_plan_emits_axis_resolution_decided_log(client, monkeypatch, scrubbed_run, caplog):
+    """Phase 6.3 — every build with resolved axes emits a structured
+    ``axis_resolution.decided`` entry that downstream telemetry trends."""
+    import logging
+
+    _three_axis_test_env(monkeypatch, scrubbed_run)
+
+    with caplog.at_level(logging.INFO, logger="cutmaster-ai.http.cutmaster"):
+        r = client.post(
+            "/cutmaster/build-plan",
+            json={
+                "run_id": scrubbed_run["run_id"],
+                "preset": "interview",
+                "content_type": "interview",
+                "user_settings": {
+                    "target_length_s": 60,
+                    "themes": [],
+                    "cut_intent": "peak_highlight",
+                },
+            },
+        )
+    assert r.status_code == 200, r.text
+
+    decided = [
+        rec for rec in caplog.records if getattr(rec, "event", None) == "axis_resolution.decided"
+    ]
+    assert len(decided) == 1, "expected exactly one axis_resolution.decided log entry"
+    rec = decided[0]
+    # Required fields per Phase 6.3 spec.
+    assert rec.run_id == scrubbed_run["run_id"]
+    assert rec.content_type == "interview"
+    assert rec.cut_intent == "peak_highlight"
+    assert rec.cut_intent_source == "user"
+    assert rec.timeline_mode == "raw_dump"
+    assert rec.reorder_mode == "free"  # peak_highlight × any
+    assert rec.prompt_builder == "_prompt"
+    assert rec.selection_strategy == "peak-hunt"
+    assert isinstance(rec.pacing_target_s, float) and rec.pacing_target_s > 0
+    assert isinstance(rec.rationale, list) and rec.rationale  # non-empty
+    assert rec.unusual is False
+
+
+def test_build_plan_log_marks_auto_resolved_intent_source(
+    client, monkeypatch, scrubbed_run, caplog
+):
+    """When the caller leaves cut_intent unset, the duration heuristic
+    fires and the structured log marks the source as ``"auto"``."""
+    import logging
+
+    _three_axis_test_env(monkeypatch, scrubbed_run)
+
+    with caplog.at_level(logging.INFO, logger="cutmaster-ai.http.cutmaster"):
+        r = client.post(
+            "/cutmaster/build-plan",
+            json={
+                "run_id": scrubbed_run["run_id"],
+                "preset": "interview",
+                "content_type": "interview",
+                # no cut_intent supplied — auto path. num_clips=1 keeps the
+                # duration heuristic in charge (num_clips>1 would force
+                # multi_clip and tag source="forced").
+                "user_settings": {"target_length_s": 60, "themes": [], "num_clips": 1},
+            },
+        )
+    assert r.status_code == 200, r.text
+
+    decided = [
+        rec for rec in caplog.records if getattr(rec, "event", None) == "axis_resolution.decided"
+    ]
+    assert len(decided) == 1
+    assert decided[0].cut_intent_source == "auto"
+
+
 def test_remap_legacy_preset_table():
     """Unit-level coverage of the remapper — every migration-table row."""
     from cutmaster_ai.http.routes.cutmaster._models import _remap_legacy_preset

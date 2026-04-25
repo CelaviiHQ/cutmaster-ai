@@ -76,7 +76,7 @@ def test_every_matrix_cell_resolves_for_compatible_timeline_mode() -> None:
 )
 def test_auto_resolution_duration_bands(duration_s: int, expected: str) -> None:
     """Vlog content at each duration threshold — walks the standard bands."""
-    intent, _ = resolve_cut_intent(
+    intent, _, _ = resolve_cut_intent(
         "vlog", duration_s=duration_s, num_clips=1, timeline_mode="raw_dump"
     )
     # Vlog under 2min defaults to assembled_short (Product Demo / Vlog
@@ -90,7 +90,7 @@ def test_auto_resolution_duration_bands(duration_s: int, expected: str) -> None:
 def test_auto_resolution_interview_45s_picks_peak() -> None:
     """Interview content under 45s → peak_highlight (no vlog/product_demo
     exception applies)."""
-    intent, _ = resolve_cut_intent(
+    intent, _, _ = resolve_cut_intent(
         "interview", duration_s=44, num_clips=1, timeline_mode="raw_dump"
     )
     assert intent == "peak_highlight"
@@ -98,14 +98,14 @@ def test_auto_resolution_interview_45s_picks_peak() -> None:
 
 def test_auto_resolution_reaction_under_10min_picks_peak() -> None:
     """Reaction content's mid-band exception — always peak-hunts under 10min."""
-    intent, _ = resolve_cut_intent(
+    intent, _, _ = resolve_cut_intent(
         "reaction", duration_s=300, num_clips=1, timeline_mode="raw_dump"
     )
     assert intent == "peak_highlight"
 
 
 def test_auto_resolution_product_demo_under_45s_picks_assembled_short() -> None:
-    intent, _ = resolve_cut_intent(
+    intent, _, _ = resolve_cut_intent(
         "product_demo", duration_s=30, num_clips=1, timeline_mode="raw_dump"
     )
     assert intent == "assembled_short"
@@ -115,7 +115,7 @@ def test_num_clips_gt_one_always_wins() -> None:
     """num_clips > 1 is an explicit user signal — beats every heuristic."""
     for content in CONTENT_TYPES:
         for duration in (10, 90, 300, 1200):
-            intent, _ = resolve_cut_intent(
+            intent, _, _ = resolve_cut_intent(
                 content, duration_s=duration, num_clips=3, timeline_mode="raw_dump"
             )
             assert intent == "multi_clip", f"{content} @ {duration}s"
@@ -126,7 +126,7 @@ def test_num_clips_gt_one_beats_surgical_shortcut() -> None:
 
     Confirmed in Phase 1 design review: user-set num_clips is a stronger
     signal than the surgical-tighten autodetect."""
-    intent, reason = resolve_cut_intent(
+    intent, reason, _ = resolve_cut_intent(
         "interview",
         duration_s=600,
         num_clips=3,
@@ -138,7 +138,7 @@ def test_num_clips_gt_one_beats_surgical_shortcut() -> None:
 
 
 def test_surgical_shortcut_fires_when_num_clips_is_one() -> None:
-    intent, reason = resolve_cut_intent(
+    intent, reason, _ = resolve_cut_intent(
         "interview",
         duration_s=600,
         num_clips=1,
@@ -334,3 +334,39 @@ def test_auto_detect_content_type_rejected() -> None:
 def test_rationale_is_always_populated() -> None:
     axes = resolve_axes("vlog", "narrative", duration_s=300, timeline_mode="raw_dump")
     assert len(axes.rationale) >= 2  # matrix cell + pacing, at minimum
+
+
+# ---------------------------------------------------------- cut_intent_source
+
+
+def test_user_supplied_intent_marked_user_source() -> None:
+    """An explicit ``cut_intent`` argument tags the result with ``"user"``."""
+    axes = resolve_axes("vlog", "narrative", duration_s=300, timeline_mode="raw_dump")
+    assert axes.cut_intent_source == "user"
+
+
+def test_auto_resolution_marks_auto_source() -> None:
+    """Duration-band auto resolution tags the result with ``"auto"``."""
+    axes = resolve_axes("interview", None, duration_s=300, timeline_mode="raw_dump")
+    assert axes.cut_intent == "narrative"
+    assert axes.cut_intent_source == "auto"
+
+
+def test_num_clips_override_marks_forced_source() -> None:
+    """``num_clips > 1`` forces the result regardless of duration — tagged ``"forced"``."""
+    axes = resolve_axes("interview", None, duration_s=600, timeline_mode="raw_dump", num_clips=4)
+    assert axes.cut_intent == "multi_clip"
+    assert axes.cut_intent_source == "forced"
+
+
+def test_takes_already_scrubbed_marks_forced_source() -> None:
+    """Surgical-tighten shortcut on assembled+scrubbed source is a forced override."""
+    axes = resolve_axes(
+        "vlog",
+        None,
+        duration_s=600,
+        timeline_mode="assembled",
+        takes_already_scrubbed=True,
+    )
+    assert axes.cut_intent == "surgical_tighten"
+    assert axes.cut_intent_source == "forced"

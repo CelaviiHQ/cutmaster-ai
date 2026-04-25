@@ -349,12 +349,32 @@ async def build_plan(body: BuildPlanRequest) -> dict:
             takes_already_scrubbed=body.user_settings.takes_already_scrubbed,
         )
     if resolved_axes is not None:
+        # Phase 6.3 — structured ``axis_resolution.decided`` telemetry.
+        # One line per build, with the full resolved recipe as ``extra``
+        # fields so log aggregators can trend (a) cut-intent provenance
+        # (user / auto / forced), (b) pacing curve outliers, and
+        # (c) Phase 7's 30-day legacy-alias gate (cross-checked against
+        # ``legacy_preset_alias_used`` from Phase 4.3).
         log.info(
-            "cutmaster.build: resolved_axes content_type=%s cut_intent=%s reorder=%s builder=%s",
-            resolved_axes.content_type,
-            resolved_axes.cut_intent,
-            resolved_axes.reorder_mode,
-            resolved_axes.prompt_builder,
+            "axis_resolution.decided",
+            extra={
+                "event": "axis_resolution.decided",
+                "run_id": body.run_id,
+                "content_type": resolved_axes.content_type,
+                "cut_intent": resolved_axes.cut_intent,
+                "cut_intent_source": resolved_axes.cut_intent_source,
+                "duration_s": round(duration_s, 2),
+                "num_clips": body.user_settings.num_clips,
+                "timeline_mode": mode,
+                "reorder_mode": resolved_axes.reorder_mode,
+                "pacing_target_s": round(resolved_axes.segment_pacing.target, 2),
+                "pacing_min_s": round(resolved_axes.segment_pacing.min, 2),
+                "pacing_max_s": round(resolved_axes.segment_pacing.max, 2),
+                "selection_strategy": resolved_axes.selection_strategy,
+                "prompt_builder": resolved_axes.prompt_builder,
+                "rationale": resolved_axes.rationale,
+                "unusual": resolved_axes.unusual,
+            },
         )
 
     # v4 Layer A: populated by the wrapping loop in modes that enable it.

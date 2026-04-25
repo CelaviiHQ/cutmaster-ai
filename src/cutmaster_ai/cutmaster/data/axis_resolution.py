@@ -41,6 +41,15 @@ PromptBuilder = Literal[
     "_rough_cut_prompt",
 ]
 
+CutIntentSource = Literal["user", "auto", "forced"]
+"""Provenance tag on :attr:`ResolvedAxes.cut_intent_source`.
+
+- ``"user"``    — caller passed an explicit ``cut_intent`` value.
+- ``"auto"``    — :func:`resolve_cut_intent` picked it from duration / content.
+- ``"forced"``  — a hard rule (``num_clips > 1``, takes-already-scrubbed
+                  shortcut) overrode the duration heuristic.
+"""
+
 
 class IncompatibleAxesError(ValueError):
     """Raised when a ``(cut_intent, timeline_mode)`` pair is not supported."""
@@ -59,6 +68,7 @@ class ResolvedAxes(BaseModel):
 
     content_type: ContentType
     cut_intent: CutIntent
+    cut_intent_source: CutIntentSource = "user"
     reorder_mode: ReorderMode
     segment_pacing: SegmentPacing
     selection_strategy: SelectionStrategy
@@ -277,28 +287,37 @@ def resolve_cut_intent(
     timeline_mode: TimelineMode,
     *,
     takes_already_scrubbed: bool = False,
-) -> tuple[CutIntent, str]:
+) -> tuple[CutIntent, str, CutIntentSource]:
     """Pick a cut intent when the user left Axis 2 on Auto.
 
-    Returns ``(cut_intent, reason)`` — the reason is a short English
-    string captured in :attr:`ResolvedAxes.rationale` so the panel can
-    explain the decision.
+    Returns ``(cut_intent, reason, source)`` — the reason is a short
+    English string captured in :attr:`ResolvedAxes.rationale` so the
+    panel can explain the decision; ``source`` is ``"forced"`` when a
+    hard rule (num_clips > 1, takes-already-scrubbed shortcut)
+    overrode the duration heuristic, else ``"auto"``.
 
     Precedence (per design review):
-      1. Explicit ``num_clips > 1`` — user signal beats every heuristic.
+      1. Explicit ``num_clips > 1`` — user signal beats every heuristic
+         (source=``"forced"``).
       2. Surgical-tighten shortcut — only when the timeline is assembled
-         *and* the source flags takes as already scrubbed.
+         *and* the source flags takes as already scrubbed
+         (source=``"forced"``).
       3. Duration bands — §6 of the design doc, with content-type
          exceptions for Product Demo / Vlog (lean assembled_short under
-         2 minutes) and Reaction (always peak-hunts).
+         2 minutes) and Reaction (always peak-hunts) (source=``"auto"``).
     """
     if num_clips > 1:
-        return "multi_clip", f"num_clips={num_clips} > 1 → multi-clip harvesting"
+        return (
+            "multi_clip",
+            f"num_clips={num_clips} > 1 → multi-clip harvesting",
+            "forced",
+        )
 
     if timeline_mode == "assembled" and takes_already_scrubbed:
         return (
             "surgical_tighten",
             "timeline is assembled and takes are already scrubbed → surgical tighten",
+            "forced",
         )
 
     if duration_s < 45:
@@ -306,26 +325,45 @@ def resolve_cut_intent(
             return (
                 "assembled_short",
                 f"{duration_s:.0f}s under 45s; Product Demo prefers assembled shorts",
+                "auto",
             )
-        return "peak_highlight", f"{duration_s:.0f}s under 45s → peak highlight"
+        return (
+            "peak_highlight",
+            f"{duration_s:.0f}s under 45s → peak highlight",
+            "auto",
+        )
 
     if duration_s < 120:
         if content_type in ("product_demo", "vlog"):
             return (
                 "assembled_short",
                 f"{duration_s:.0f}s under 2min; {content_type} prefers assembled shorts",
+                "auto",
             )
-        return "peak_highlight", f"{duration_s:.0f}s under 2min → peak highlight"
+        return (
+            "peak_highlight",
+            f"{duration_s:.0f}s under 2min → peak highlight",
+            "auto",
+        )
 
     if duration_s < 600:
         if content_type == "reaction":
             return (
                 "peak_highlight",
                 f"{duration_s:.0f}s under 10min; reaction content peak-hunts",
+                "auto",
             )
-        return "narrative", f"{duration_s:.0f}s under 10min → narrative arc"
+        return (
+            "narrative",
+            f"{duration_s:.0f}s under 10min → narrative arc",
+            "auto",
+        )
 
-    return "narrative", f"{duration_s:.0f}s long-form → narrative arc"
+    return (
+        "narrative",
+        f"{duration_s:.0f}s long-form → narrative arc",
+        "auto",
+    )
 
 
 # ------------------------------------------------------------------- pacing
@@ -381,9 +419,10 @@ def resolve_axes(
     """
     profile = get_content_profile(content_type)
     rationale: list[str] = []
+    cut_intent_source: CutIntentSource
 
     if cut_intent is None:
-        cut_intent, reason = resolve_cut_intent(
+        cut_intent, reason, cut_intent_source = resolve_cut_intent(
             content_type,
             duration_s,
             num_clips,
@@ -395,6 +434,7 @@ def resolve_axes(
         # Validate the user-supplied value early — downstream code assumes
         # CUT_INTENTS[cut_intent] exists.
         get_cut_intent(cut_intent)
+        cut_intent_source = "user"
 
     cell = _MATRIX[(content_type, cut_intent)]
     rationale.append(
@@ -420,6 +460,7 @@ def resolve_axes(
     return ResolvedAxes(
         content_type=content_type,
         cut_intent=cut_intent,
+        cut_intent_source=cut_intent_source,
         reorder_mode=reorder_mode,
         segment_pacing=pacing,
         selection_strategy=cell.selection_strategy,
