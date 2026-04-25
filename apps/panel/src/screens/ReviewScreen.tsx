@@ -627,36 +627,56 @@ export default function ReviewScreen({
                         )}
 
                         <div className="plan-bar-wrap">
-                            {/* Always-visible marker labels above the bar */}
-                            <div className="plan-bar-labels">
-                                {markers.map((m, i) => {
+                            {/* Always-visible marker labels above the bar.
+                                Two-row layout: a label whose centre falls
+                                within ~14% of the previous one drops to the
+                                lower row so they don't overlap. */}
+                            {(() => {
+                                const placed: { idx: number; pct: number; row: 0 | 1 }[] = [];
+                                let lastRow0Pct = -100;
+                                let lastRow1Pct = -100;
+                                markers.forEach((m, i) => {
                                     const off = sourceToCutOffset(m.at_s);
-                                    if (off === null || total === 0) return null;
+                                    if (off === null || total === 0) return;
                                     const pct = (off / total) * 100;
-                                    return (
-                                        <button
-                                            key={i}
-                                            type="button"
-                                            className="plan-bar-marker-label"
-                                            style={{ left: `${pct}%`, color: markerColor(m.color) }}
-                                            title={`${m.name} — ${m.note}`}
-                                            onClick={() => {
-                                                const el = document.getElementById(`marker-${i}`);
-                                                el?.scrollIntoView({ behavior: "smooth", block: "center" });
-                                                el?.classList.add("marker-row--flash");
-                                                setTimeout(
-                                                    () => el?.classList.remove("marker-row--flash"),
-                                                    1200,
-                                                );
-                                            }}
-                                        >
-                                            <span className="plan-bar-marker-text">
-                                                {shortMarkerLabel(m.name)}
-                                            </span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
+                                    // Drop to row 1 when row 0 is too close.
+                                    let row: 0 | 1 = 0;
+                                    if (pct - lastRow0Pct < 14) row = 1;
+                                    if (row === 0) lastRow0Pct = pct;
+                                    else lastRow1Pct = pct;
+                                    placed.push({ idx: i, pct, row });
+                                });
+                                void lastRow1Pct;
+                                return (
+                                    <div className="plan-bar-labels">
+                                        {placed.map(({ idx, pct, row }) => {
+                                            const m = markers[idx];
+                                            return (
+                                                <button
+                                                    key={idx}
+                                                    type="button"
+                                                    className={`plan-bar-marker-label plan-bar-marker-label--row${row}`}
+                                                    style={{ left: `${pct}%`, color: markerColor(m.color) }}
+                                                    title={`${m.name} — ${m.note}`}
+                                                    onClick={() => {
+                                                        const el = document.getElementById(`marker-${idx}`);
+                                                        el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                                                        el?.classList.add("marker-row--flash");
+                                                        setTimeout(
+                                                            () => el?.classList.remove("marker-row--flash"),
+                                                            1200,
+                                                        );
+                                                    }}
+                                                >
+                                                    <span className="plan-bar-marker-text">
+                                                        {shortMarkerLabel(m.name)}
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                );
+                            })()}
 
                             <div
                                 className="plan-bar"

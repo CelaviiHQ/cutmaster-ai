@@ -47,6 +47,57 @@ const SPEAKER_AWARE_PRESETS: ReadonlySet<PresetKey> = new Set([
     "presentation",
 ]);
 
+// Length presets — mirror ReviewScreen's Tune-the-cut chips. Anchors the
+// brief in human-named durations instead of "180s".
+const LENGTH_PRESETS: { label: string; seconds: number }[] = [
+    { label: "TikTok", seconds: 30 },
+    { label: "Reel", seconds: 60 },
+    { label: "Default", seconds: 180 },
+    { label: "Long", seconds: 300 },
+];
+
+// Stepper chips for num_clips — direct manipulation beats a 1-px slider
+// thumb for small integers.
+const NUM_CLIP_STEPS = [1, 2, 3, 5, 8, 10];
+
+// Content-type icon + label for the resolved Recipe chip. Falls back to
+// a generic glyph if the preset isn't in the map.
+const CONTENT_TYPE_META: Record<string, { icon: string; label: string }> = {
+    vlog:            { icon: "🎬", label: "Vlog" },
+    product_demo:    { icon: "📦", label: "Product demo" },
+    wedding:         { icon: "💍", label: "Wedding" },
+    interview:       { icon: "🎙", label: "Interview" },
+    tutorial:        { icon: "🛠", label: "Tutorial" },
+    podcast:         { icon: "🎧", label: "Podcast" },
+    presentation:    { icon: "📽", label: "Presentation" },
+    reaction:        { icon: "🎭", label: "Reaction" },
+    tightener:       { icon: "✂",  label: "Tightener" },
+    clip_hunter:     { icon: "🔍", label: "Clip Hunter" },
+    short_generator: { icon: "⚡", label: "Short Generator" },
+};
+
+const fmtTc = (s: number): string => {
+    const total = Math.max(0, Math.round(s));
+    const m = Math.floor(total / 60);
+    const sec = total % 60;
+    return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+};
+
+// Smart speaker-label suggestion. Two-speaker shoots: highest word count
+// is the Guest (interviewer asks, guest answers). Three+ speakers: anonymous
+// "Speaker N" — the user knows the room.
+const suggestSpeakerLabel = (
+    speakerId: string,
+    roster: SpeakerRosterEntry[],
+): string => {
+    if (roster.length === 2) {
+        const sorted = [...roster].sort((a, b) => b.word_count - a.word_count);
+        return speakerId === sorted[0].speaker_id ? "Guest" : "Host";
+    }
+    const idx = roster.findIndex((s) => s.speaker_id === speakerId);
+    return idx >= 0 ? `Speaker ${idx + 1}` : speakerId;
+};
+
 interface Props {
     runId: string;
     preset: PresetKey;
@@ -356,362 +407,436 @@ export default function ConfigureScreen({
         });
     };
 
+    // -------- Recipe-card derivations (axes + downstream effects) --------
+    const contentMeta = CONTENT_TYPE_META[preset] ?? {
+        icon: "🎬",
+        label: preset,
+    };
+    const intentLabel = effectiveCutIntentInfo?.label ?? "—";
+    const intentProvenance: "auto" | "user" | "forced" =
+        explicitCutIntent !== null
+            ? "user"
+            : (resolvedCutIntentPreview?.source ?? "auto");
+    const provenanceIcon =
+        intentProvenance === "user" ? "✓" : intentProvenance === "forced" ? "!" : "✨";
+    const provenanceLabel =
+        intentProvenance === "user"
+            ? "you set this"
+            : intentProvenance === "forced"
+              ? "forced by num_clips / mode"
+              : "auto-resolved from duration band";
+
+    // Downstream-effects sentence — surfaces what the recipe will produce.
+    const recipeEffects: string[] = [];
+    if (isMultiCandidate) {
+        const n = settings.num_clips ?? 3;
+        const noun = isShortGenerator || isAssembledShortIntent ? "short" : "clip";
+        recipeEffects.push(`${n} ${noun}${n === 1 ? "" : "s"}`);
+    } else if (settings.target_length_s) {
+        recipeEffects.push(`~${fmtTc(settings.target_length_s)} cut`);
+    }
+    recipeEffects.push(
+        currentFormat === "horizontal"
+            ? "horizontal 16:9"
+            : currentFormat === "vertical_short"
+              ? "vertical 9:16"
+              : "square 1:1",
+    );
+    if (settings.captions_enabled) recipeEffects.push("with captions");
+    if (settings.sensory_master_enabled) recipeEffects.push("shot-aware");
+    else recipeEffects.push("transcript-only");
+
+    const isUnusual =
+        canResolveAxes &&
+        !!effectiveCutIntent &&
+        isUnusualCombination(preset as ContentType, effectiveCutIntent);
+
     return (
         <div>
-            {rec && (
-                <div className="card">
-                    <h2>Auto-detect result</h2>
-                    <p>
-                        Recommended preset:&nbsp;
-                        <strong>{rec.preset}</strong>
-                        &nbsp;(confidence {Math.round(rec.confidence * 100)}%)
+            {/* ── Recipe card — what the analyser decided + override path ── */}
+            <div className={`card recipe-card ${isUnusual ? "recipe-card--unusual" : ""}`}>
+                <div className="recipe-chips">
+                    <div className="recipe-chip" title="Detected content type">
+                        <span className="recipe-chip-icon">{contentMeta.icon}</span>
+                        <span className="recipe-chip-label">{contentMeta.label}</span>
+                        <span className="recipe-chip-prov muted">
+                            {rec ? `· ${Math.round(rec.confidence * 100)}% confidence` : "· detected"}
+                        </span>
+                    </div>
+                    <span className="recipe-arrow">→</span>
+                    <div className="recipe-chip" title={chipTooltip}>
+                        <span className="recipe-chip-icon">✂</span>
+                        <span className="recipe-chip-label">{intentLabel}</span>
+                        <span className="recipe-chip-prov muted" title={provenanceLabel}>
+                            · {provenanceIcon} {intentProvenance}
+                        </span>
+                    </div>
+                    <span className="recipe-arrow">→</span>
+                    <div className="recipe-chip">
+                        <span className="recipe-chip-icon">
+                            {isMultiCandidate ? "🎞" : "⏱"}
+                        </span>
+                        <span className="recipe-chip-label">
+                            {isMultiCandidate
+                                ? `${settings.num_clips ?? 3} ${isShortGenerator || isAssembledShortIntent ? "shorts" : "clips"}`
+                                : settings.target_length_s
+                                  ? fmtTc(settings.target_length_s)
+                                  : "no length"}
+                        </span>
+                        <span className="recipe-chip-prov muted">
+                            · {isMultiCandidate ? "set below" : "target"}
+                        </span>
+                    </div>
+                </div>
+                <p className="recipe-effects">
+                    Will produce <strong>{recipeEffects.join(" · ")}</strong>
+                </p>
+                {isUnusual && (
+                    <p className="recipe-warn">
+                        ⚠ {contentMeta.label} × {intentLabel} is unusual — confirm
+                        this is what you want for this content type.
                     </p>
-                    <p className="muted">{rec.reasoning}</p>
-                    {rec.confidence < 0.5 &&
-                    (rec.alternatives ?? []).length > 0 ? (
-                        <div style={{ marginTop: 8 }}>
-                            <p className="muted" style={{ marginBottom: 4 }}>
-                                Low confidence — consider:
+                )}
+                <details className="recipe-why">
+                    <summary>
+                        <span className="muted">Why these picks · how to override</span>
+                    </summary>
+                    <div className="recipe-why-body">
+                        {rec && (
+                            <p className="muted">
+                                <strong>Content type:</strong> {rec.reasoning}
                             </p>
-                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        )}
+                        {resolvedCutIntentPreview && explicitCutIntent === null && (
+                            <p className="muted">
+                                <strong>Cut intent:</strong>{" "}
+                                {resolvedCutIntentPreview.reason}
+                            </p>
+                        )}
+                        <div className="recipe-override">
+                            <label htmlFor="content-type-select">Override content type</label>
+                            <select
+                                id="content-type-select"
+                                value={preset}
+                                onChange={(e) =>
+                                    handlePresetChange(e.target.value as PresetKey)
+                                }
+                            >
+                                {[
+                                    "vlog",
+                                    "product_demo",
+                                    "wedding",
+                                    "interview",
+                                    "tutorial",
+                                    "podcast",
+                                    "presentation",
+                                    "reaction",
+                                ].map((p) => (
+                                    <option key={p} value={p}>
+                                        {(CONTENT_TYPE_META[p]?.icon ?? "") + " " + (CONTENT_TYPE_META[p]?.label ?? p)}
+                                    </option>
+                                ))}
+                                {["tightener", "clip_hunter", "short_generator"].includes(preset) && (
+                                    <option value={preset} disabled>
+                                        {preset} (legacy — pick a content type above)
+                                    </option>
+                                )}
+                            </select>
+                        </div>
+                        {rec && rec.confidence < 0.5 && (rec.alternatives ?? []).length > 0 && (
+                            <div className="recipe-alts">
+                                <span className="muted">Low confidence — try:</span>
                                 {(rec.alternatives ?? []).map((alt) => (
                                     <button
                                         key={alt}
+                                        type="button"
                                         className="secondary"
                                         onClick={() => handlePresetChange(alt)}
                                     >
-                                        Try {alt}
+                                        {CONTENT_TYPE_META[alt]?.icon ?? ""} {CONTENT_TYPE_META[alt]?.label ?? alt}
                                     </button>
                                 ))}
                             </div>
-                        </div>
-                    ) : (
-                        <p className="muted" style={{ marginTop: 8 }}>
-                            Override below if you disagree.
-                        </p>
-                    )}
-                </div>
-            )}
-
-            <div className="card">
-                <h2>Content type</h2>
-                <p className="muted" style={{ marginBottom: "var(--s-2)" }}>
-                    What's on the timeline? Override here if the analyzer
-                    picked the wrong content type.
-                </p>
-                <select
-                    value={preset}
-                    onChange={(e) => handlePresetChange(e.target.value as PresetKey)}
-                >
-                    {/* Phase 5.2 — content-type dropdown shrinks to 8 options
-                        (down from 11). Cut-intent presets moved to Axis 2. */}
-                    {[
-                        "vlog",
-                        "product_demo",
-                        "wedding",
-                        "interview",
-                        "tutorial",
-                        "podcast",
-                        "presentation",
-                        "reaction",
-                    ].map((p) => (
-                        <option key={p} value={p}>
-                            {p}
-                        </option>
-                    ))}
-                    {/* Legacy cut-intent presets remain selectable when the
-                        run was created before Phase 5 so the dropdown stays
-                        representative of the actual run state. */}
-                    {["tightener", "clip_hunter", "short_generator"].includes(preset) && (
-                        <option value={preset} disabled>
-                            {preset} (legacy — pick a content type above)
-                        </option>
-                    )}
-                </select>
+                        )}
+                        {canResolveAxes && !isTightener && (
+                            <div className="recipe-override">
+                                <label>Override cut intent</label>
+                                <div className="cut-intent-radios">
+                                    <label className="cut-intent-radio">
+                                        <input
+                                            type="radio"
+                                            name="cut-intent"
+                                            checked={explicitCutIntent === null}
+                                            onChange={() =>
+                                                onSettingsChange({ ...settings, cut_intent: null })
+                                            }
+                                        />
+                                        <span><strong>Auto</strong> {resolvedCutIntentPreview && (
+                                            <span className="muted">
+                                                — picks {getCutIntent(resolvedCutIntentPreview.intent)?.label}
+                                            </span>
+                                        )}</span>
+                                    </label>
+                                    {CUT_INTENTS.map((ci) => {
+                                        const blockedReason = cutIntentModeIncompatibilityReason(
+                                            ci.key, timelineModeNow,
+                                        );
+                                        const disabled = blockedReason !== null;
+                                        const unusual = isUnusualCombination(preset as ContentType, ci.key);
+                                        return (
+                                            <label
+                                                key={ci.key}
+                                                className="cut-intent-radio"
+                                                title={blockedReason ?? ci.description}
+                                                style={{
+                                                    opacity: disabled ? 0.4 : 1,
+                                                    cursor: disabled ? "not-allowed" : "pointer",
+                                                }}
+                                            >
+                                                <input
+                                                    type="radio"
+                                                    name="cut-intent"
+                                                    checked={explicitCutIntent === ci.key}
+                                                    disabled={disabled}
+                                                    onChange={() =>
+                                                        onSettingsChange({ ...settings, cut_intent: ci.key })
+                                                    }
+                                                />
+                                                <span>
+                                                    {ci.label}
+                                                    {unusual && (
+                                                        <span className="muted"> · unusual for {preset}</span>
+                                                    )}
+                                                </span>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </details>
             </div>
 
-            {/* Phase 5.4 — Resolved chip. Inline one-liner showing the
-                effective (content_type, cut_intent, target_length_s,
-                pacing) tuple. Clicking the details below expands Axis 2
-                for override. Stays quiet when the preset is legacy
-                (pre-Phase 5 run that hasn't been re-Configured). */}
-            {canResolveAxes && !isTightener && effectiveCutIntent && (
-                <div
-                    className="muted"
-                    title={chipTooltip}
-                    style={{
-                        padding: "var(--s-3) var(--s-4)",
-                        marginBottom: "var(--s-3)",
-                        background: "var(--surface-3)",
-                        borderRadius: "var(--radius-md)",
-                        fontSize: "var(--fs-2)",
-                        cursor: chipTooltip ? "help" : undefined,
-                    }}
-                >
-                    {explicitCutIntent === null ? "Auto → " : ""}
-                    <strong>
-                        {preset.charAt(0).toUpperCase() + preset.slice(1)}
-                    </strong>
-                    {" · "}
-                    <strong>{effectiveCutIntentInfo?.label ?? effectiveCutIntent}</strong>
-                    {settings.target_length_s
-                        ? ` · ${settings.target_length_s}s target`
-                        : ""}
-                    {resolvedCutIntentPreview && (
-                        <>
-                            {" — "}
-                            <span style={{ fontStyle: "italic" }}>
-                                {resolvedCutIntentPreview.reason}
-                            </span>
-                        </>
-                    )}
-                </div>
-            )}
+            {/* ── What you're making — length / count / format / captions ── */}
+            {!isTightener && (
+                <div className="card">
+                    <h2>What you're making</h2>
 
-            {/* Phase 5.3 + 5.5 + 5.7 — Axis 2 picker. Collapsed by
-                default; the summary surfaces Auto + the resolved preview
-                so casual users never have to think about cut intents.
-                Power users expand to override, and incompatible combos
-                grey out with a tooltip explaining why. */}
-            {canResolveAxes && !isTightener && (
-                <details
-                    className="card card--advanced"
-                    open={explicitCutIntent !== null}
-                    style={
-                        resolvedCutIntentPreview &&
-                        effectiveCutIntent &&
-                        isUnusualCombination(preset as ContentType, effectiveCutIntent)
-                            ? { borderColor: "var(--warn, #d97706)" }
-                            : undefined
-                    }
-                >
-                    <summary>
-                        <span>
-                            Output style
-                            <span
-                                className="muted"
-                                style={{ fontSize: "var(--fs-2)", marginLeft: "var(--s-2)" }}
-                            >
-                                {explicitCutIntent === null ? (
-                                    <>
-                                        · Auto
-                                        {resolvedCutIntentPreview && (
-                                            <> → {getCutIntent(resolvedCutIntentPreview.intent)?.label}</>
-                                        )}
-                                    </>
-                                ) : (
-                                    <>· {effectiveCutIntentInfo?.label ?? explicitCutIntent}</>
-                                )}
-                            </span>
-                        </span>
-                    </summary>
-                    <div className="card-body">
-                        <p className="muted" style={{ marginBottom: "var(--s-3)" }}>
-                            What are you making from this content? Auto picks
-                            based on your target length; override here when
-                            the default doesn't match your intent.
-                        </p>
-
-                        {/* Auto row — picks based on duration + num_clips. */}
-                        <label
-                            className="exclude-item"
-                            style={{ marginBottom: "var(--s-2)" }}
-                        >
-                            <input
-                                type="radio"
-                                name="cut-intent"
-                                checked={explicitCutIntent === null}
-                                onChange={() =>
-                                    onSettingsChange({ ...settings, cut_intent: null })
-                                }
-                            />
-                            <span className="exclude-body">
-                                <span className="exclude-label">Auto</span>
-                                <br />
-                                <span className="exclude-desc">
-                                    {resolvedCutIntentPreview ? (
-                                        <>
-                                            Picks <strong>{getCutIntent(
-                                                resolvedCutIntentPreview.intent,
-                                            )?.label}</strong>{" "}
-                                            — {resolvedCutIntentPreview.reason}.
-                                        </>
-                                    ) : (
-                                        <>Pick a target length first to see the Auto pick.</>
-                                    )}
-                                </span>
-                            </span>
-                        </label>
-
-                        {CUT_INTENTS.map((ci) => {
-                            const blockedReason = cutIntentModeIncompatibilityReason(
-                                ci.key,
-                                timelineModeNow,
-                            );
-                            const disabled = blockedReason !== null;
-                            const unusual = isUnusualCombination(
-                                preset as ContentType,
-                                ci.key,
-                            );
-                            return (
-                                <label
-                                    key={ci.key}
-                                    className="exclude-item"
-                                    title={blockedReason ?? undefined}
-                                    style={{
-                                        marginBottom: "var(--s-2)",
-                                        opacity: disabled ? 0.4 : 1,
-                                        cursor: disabled ? "not-allowed" : "pointer",
-                                    }}
-                                >
+                    {/* Length: chips + slider. Hidden for multi-candidate
+                        flows (Clip Hunter / Short Generator) where the
+                        Number-of-clips stepper drives the brief instead. */}
+                    {!isMultiCandidate && (
+                        <div className="wym-row">
+                            <div className="wym-label">Length</div>
+                            <div className="wym-control">
+                                <div className="tune-presets" style={{ marginBottom: 6 }}>
+                                    {LENGTH_PRESETS.map((p) => {
+                                        const cap = lengthCap;
+                                        const tooLong = cap != null && p.seconds > cap;
+                                        const active = settings.target_length_s === p.seconds;
+                                        return (
+                                            <button
+                                                key={p.label}
+                                                type="button"
+                                                className={`chip ${active ? "on" : ""}`}
+                                                disabled={tooLong}
+                                                onClick={() =>
+                                                    onSettingsChange({
+                                                        ...settings,
+                                                        target_length_s: p.seconds,
+                                                    })
+                                                }
+                                            >
+                                                {p.label}
+                                                <span className="muted"> · {fmtTc(p.seconds)}</span>
+                                            </button>
+                                        );
+                                    })}
+                                    <button
+                                        type="button"
+                                        className={`chip ${settings.target_length_s == null ? "on" : ""}`}
+                                        onClick={() =>
+                                            onSettingsChange({ ...settings, target_length_s: null })
+                                        }
+                                    >
+                                        None
+                                    </button>
+                                </div>
+                                <div className="wym-slider-row">
                                     <input
-                                        type="radio"
-                                        name="cut-intent"
-                                        checked={explicitCutIntent === ci.key}
-                                        disabled={disabled}
-                                        onChange={() =>
+                                        type="range"
+                                        min={15}
+                                        max={Math.min(600, lengthCap ?? 600)}
+                                        step={5}
+                                        value={settings.target_length_s ?? 180}
+                                        className="tune-slider"
+                                        onChange={(e) =>
                                             onSettingsChange({
                                                 ...settings,
-                                                cut_intent: ci.key,
+                                                target_length_s: Number(e.target.value),
                                             })
                                         }
                                     />
-                                    <span className="exclude-body">
-                                        <span className="exclude-label">
-                                            {ci.label}
-                                            {unusual && (
-                                                <span
-                                                    className="muted"
-                                                    style={{
-                                                        fontSize: "var(--fs-2)",
-                                                        marginLeft: "var(--s-2)",
-                                                    }}
-                                                >
-                                                    · unusual for {preset}
-                                                </span>
-                                            )}
-                                        </span>
-                                        <br />
-                                        <span className="exclude-desc">
-                                            {disabled ? blockedReason : ci.description}
-                                        </span>
+                                    <span className="tune-chip">
+                                        {settings.target_length_s != null
+                                            ? fmtTc(settings.target_length_s)
+                                            : "—"}
                                     </span>
-                                </label>
-                            );
-                        })}
+                                </div>
+                                {(() => {
+                                    const tgt = settings.target_length_s;
+                                    if (tgt == null || !currentBundle) return null;
+                                    if (tgt <= 90) {
+                                        return (
+                                            <p className="wym-hint warn">
+                                                ⚠ {currentBundle.label} is tuned for longer cuts;
+                                                Short Generator produces tighter results under 90 s.
+                                            </p>
+                                        );
+                                    }
+                                    const expected = tgt / currentBundle.target_segment_s;
+                                    if (expected < 2 || expected > 15) {
+                                        return (
+                                            <p className="wym-hint warn">
+                                                ⚠ {Math.round(tgt)} s ÷ {currentBundle.target_segment_s}s/beat
+                                                ≈ {expected.toFixed(1)} segments — outside this preset's
+                                                comfort zone (2–15).
+                                            </p>
+                                        );
+                                    }
+                                    return null;
+                                })()}
+                            </div>
+                        </div>
+                    )}
 
-                        {/* Phase 5.5 — unusual-combination hint, neutral tone,
-                            non-blocking. Only fires when the EFFECTIVE intent
-                            (explicit or auto-resolved) is flagged unusual. */}
-                        {effectiveCutIntent &&
-                            isUnusualCombination(
-                                preset as ContentType,
-                                effectiveCutIntent,
-                            ) && (
-                                <p
-                                    className="muted"
-                                    style={{
-                                        marginTop: "var(--s-3)",
-                                        padding: "var(--s-3)",
-                                        background: "var(--surface-3)",
-                                        borderRadius: "var(--radius-md)",
-                                        fontSize: "var(--fs-2)",
-                                    }}
-                                >
-                                    <strong>
-                                        {preset.charAt(0).toUpperCase() + preset.slice(1)}{" "}
-                                        × {effectiveCutIntentInfo?.label} is unusual
-                                    </strong>
-                                    {" — "}
-                                    tutorials usually play linearly. Continue if
-                                    that's what you want.
+                    {/* Stepper chips for num_clips when multi-candidate */}
+                    {isMultiCandidate && (
+                        <div className="wym-row">
+                            <div className="wym-label">
+                                {isClipHunter || isMultiClipIntent ? "Number of clips" : "Number of shorts"}
+                            </div>
+                            <div className="wym-control">
+                                <div className="stepper-chips">
+                                    {NUM_CLIP_STEPS.map((n) => {
+                                        const active = (settings.num_clips ?? 3) === n;
+                                        return (
+                                            <button
+                                                key={n}
+                                                type="button"
+                                                className={`stepper-chip ${active ? "on" : ""}`}
+                                                onClick={() =>
+                                                    onSettingsChange({ ...settings, num_clips: n })
+                                                }
+                                            >
+                                                {n}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                <p className="wym-hint muted">
+                                    {isClipHunter || isMultiClipIntent
+                                        ? "Each clip is a single contiguous span. Build one or all from Review."
+                                        : "Each short is 3–8 jump-cut spans stitched around one through-line."}
                                 </p>
-                            )}
-                    </div>
-                </details>
-            )}
+                            </div>
+                        </div>
+                    )}
 
-            {isMultiCandidate && (
-                <div className="card">
-                    <h2>
-                        {isClipHunter ? "Clip Hunter" : "Short Generator"}
-                    </h2>
-                    <p className="muted">
-                        {isClipHunter ? (
-                            <>
-                                Surfaces {settings.num_clips ?? 3} short,
-                                self-contained moments ranked by engagement.
-                                Each candidate is a single contiguous span —
-                                picked whole, no reassembly. Build one or all
-                                from the Review screen; multiple builds land
-                                on <code>_AI_Clip_1</code>,{" "}
-                                <code>_AI_Clip_2</code>, etc.
-                            </>
-                        ) : (
-                            <>
-                                Composes {settings.num_clips ?? 3} assembled
-                                shorts — each one is 3–8 jump-cut spans
-                                stitched around a single through-line. More
-                                editorial work than Clip Hunter, more
-                                TikTok-coded output. Builds land on{" "}
-                                <code>_AI_Short_1</code>,{" "}
-                                <code>_AI_Short_2</code>, etc.
-                            </>
+                    {/* Output format — quiet radio row, default doesn't shout */}
+                    {formats && formats.length > 0 && (
+                        <div className="wym-row">
+                            <div className="wym-label">Output format</div>
+                            <div className="wym-control">
+                                <div className="format-radios">
+                                    {formats.map((f) => {
+                                        const selected = currentFormat === f.key;
+                                        return (
+                                            <label
+                                                key={f.key}
+                                                className={`format-radio ${selected ? "is-on" : ""}`}
+                                            >
+                                                <input
+                                                    type="radio"
+                                                    name="format"
+                                                    checked={selected}
+                                                    onChange={() => {
+                                                        const cap = f.max_duration_s;
+                                                        const clampedLen =
+                                                            cap != null &&
+                                                            settings.target_length_s != null &&
+                                                            settings.target_length_s > cap
+                                                                ? Math.round(cap)
+                                                                : settings.target_length_s;
+                                                        onSettingsChange({
+                                                            ...settings,
+                                                            format: f.key,
+                                                            target_length_s: clampedLen,
+                                                        });
+                                                    }}
+                                                />
+                                                <span>{f.label}</span>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                                {source && (
+                                    <p className="wym-hint muted">
+                                        Source is <code>{source.width}×{source.height}</code>
+                                        {currentFormat !== "horizontal" && sourceMatchesTarget && (
+                                            <> — matches the selected format, no reframing needed.</>
+                                        )}
+                                        {currentFormat !== "horizontal" && !sourceMatchesTarget && (
+                                            <> — will reframe.</>
+                                        )}
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Captions + safe-zones — quiet checkboxes */}
+                    <div className="wym-row wym-row--inline">
+                        <label className="wym-check">
+                            <input
+                                type="checkbox"
+                                checked={settings.captions_enabled ?? false}
+                                onChange={(e) =>
+                                    onSettingsChange({
+                                        ...settings,
+                                        captions_enabled: e.target.checked,
+                                    })
+                                }
+                            />
+                            Generate captions <span className="muted">(SRT + subtitle track)</span>
+                        </label>
+                        {currentFormat !== "horizontal" && (
+                            <label className="wym-check">
+                                <input
+                                    type="checkbox"
+                                    checked={settings.safe_zones_enabled ?? false}
+                                    onChange={(e) =>
+                                        onSettingsChange({
+                                            ...settings,
+                                            safe_zones_enabled: e.target.checked,
+                                        })
+                                    }
+                                />
+                                Show safe-zone guides
+                            </label>
                         )}
-                    </p>
-                    <label style={{ display: "block", marginTop: 8 }}>
-                        {isClipHunter ? "Number of clips:" : "Number of shorts:"}{" "}
-                        <code>{settings.num_clips ?? 3}</code>
-                    </label>
-                    <input
-                        type="range"
-                        min={1}
-                        max={5}
-                        step={1}
-                        style={{ width: "100%" }}
-                        value={settings.num_clips ?? 3}
-                        onChange={(e) =>
-                            onSettingsChange({
-                                ...settings,
-                                num_clips: Number(e.target.value),
-                            })
-                        }
-                    />
+                    </div>
                 </div>
             )}
 
-            {isMultiCandidate &&
-                analysis &&
-                analysis.theme_candidates.length > 0 && (
-                    <div className="card">
-                        <h2>Detected topics</h2>
-                        <p className="muted">
-                            Themes the analyser surfaced from the episode.
-                            {isClipHunter
-                                ? " Clip Hunter prefers candidates that touch the selected themes."
-                                : " Short Generator builds shorts anchored to the selected themes."}{" "}
-                            Untick anything you consider noise.
-                        </p>
-                        <div style={{ marginTop: 6 }}>
-                            {analysis.theme_candidates.map((t) => (
-                                <span
-                                    key={t}
-                                    className={`chip ${settings.themes.includes(t) ? "on" : ""}`}
-                                    onClick={() => toggleTheme(t)}
-                                >
-                                    {t}
-                                </span>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
+            {/* ── Hook + Chapters + Themes priority — narrative-cut flows ── */}
             {analysis && !isTightener && !isMultiCandidate && (
                 <>
                     <div className="card">
                         <h2>Hook candidates</h2>
-                        <p className="muted">
-                            Click one to lock it as the opening beat — the Director will build the rest of the narrative outward from it. Leave all unselected to let the Director pick.
+                        <p className="muted" style={{ fontSize: "var(--fs-2)" }}>
+                            Click one to lock the opening beat — leave all unselected to let the Director pick.
                         </p>
                         {analysis.hook_candidates.map((h, i) => {
                             const selected =
@@ -740,9 +865,7 @@ export default function ConfigureScreen({
                                         }
                                     }}
                                 >
-                                    <span className="seg-time">
-                                        {h.start_s.toFixed(1)}s
-                                    </span>
+                                    <span className="seg-time">{fmtTc(h.start_s)}</span>
                                     <span className="seg-time">
                                         {(h.engagement_score * 100).toFixed(0)}%
                                     </span>
@@ -756,10 +879,10 @@ export default function ConfigureScreen({
 
                     <div className="card">
                         <h2>Chapters detected</h2>
-                        <p className="muted">
+                        <p className="muted" style={{ fontSize: "var(--fs-2)" }}>
                             {settings.selected_hook_s != null
-                                ? "Chapters before your hook are dimmed — the cut won't lead with that material."
-                                : "Detected structure. The Director will bias toward covering each chapter."}
+                                ? "Chapters before your hook are dimmed."
+                                : "The Director will bias toward covering each chapter."}
                         </p>
                         {analysis.chapters.map((c, i) => {
                             const hookAt = settings.selected_hook_s;
@@ -771,34 +894,144 @@ export default function ConfigureScreen({
                                     key={i}
                                     className={`seg chapter-row ${preHook ? "chapter-row--pre-hook" : ""} ${containsHook ? "chapter-row--contains-hook" : ""}`}
                                 >
-                                    <span className="seg-time">
-                                        {c.start_s.toFixed(1)}s
-                                    </span>
-                                    <span className="seg-time">
-                                        {(c.end_s - c.start_s).toFixed(1)}s
-                                    </span>
+                                    <span className="seg-time">{fmtTc(c.start_s)}</span>
+                                    <span className="seg-time">{(c.end_s - c.start_s).toFixed(1)}s</span>
                                     <span>{containsHook ? "● " : ""}{c.title}</span>
                                 </div>
                             );
                         })}
                     </div>
-
-                    <div className="card">
-                        <h2>Prioritize themes</h2>
-                        <p className="muted">Unchecked themes are less likely to be included.</p>
-                        {analysis.theme_candidates.map((t) => (
-                            <span
-                                key={t}
-                                className={`chip ${settings.themes.includes(t) ? "on" : ""}`}
-                                onClick={() => toggleTheme(t)}
-                            >
-                                {t}
-                            </span>
-                        ))}
-                    </div>
                 </>
             )}
 
+            {/* ── What goes in / out — topics + skips + focus ── */}
+            {!isTightener && (
+                <div className="card">
+                    <h2>What goes in / out</h2>
+
+                    {/* Topics — when present (multi-candidate or narrative
+                        with theme axes both surface them). */}
+                    {analysis && analysis.theme_candidates.length > 0 && (
+                        <div className="topics-block">
+                            <div className="topics-head">
+                                <span>
+                                    <strong>Topics</strong>
+                                    <span className="muted">
+                                        {" "}· {analysis.theme_candidates.length} detected · {settings.themes.length} kept
+                                    </span>
+                                </span>
+                                <div className="topics-actions">
+                                    <button
+                                        type="button"
+                                        className="link-button"
+                                        onClick={() =>
+                                            onSettingsChange({
+                                                ...settings,
+                                                themes: [...analysis.theme_candidates],
+                                            })
+                                        }
+                                    >
+                                        select all
+                                    </button>
+                                    <span className="muted">·</span>
+                                    <button
+                                        type="button"
+                                        className="link-button"
+                                        onClick={() => onSettingsChange({ ...settings, themes: [] })}
+                                    >
+                                        clear
+                                    </button>
+                                </div>
+                            </div>
+                            <p className="muted topics-help">
+                                {isMultiCandidate
+                                    ? "Anchor candidates to the selected themes."
+                                    : "Untick anything you consider noise — the Director down-weights unticked themes."}
+                            </p>
+                            <div className="topic-pills">
+                                {analysis.theme_candidates.map((t) => {
+                                    const on = settings.themes.includes(t);
+                                    return (
+                                        <button
+                                            key={t}
+                                            type="button"
+                                            className={`topic-pill ${on ? "on" : ""}`}
+                                            onClick={() => toggleTheme(t)}
+                                        >
+                                            <span className="topic-pill-glyph">{on ? "✓" : "+"}</span>
+                                            {t}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Skip-these — exclude categories with full-width 2-col grid */}
+                    {excludeCats.length > 0 && (
+                        <div className="skip-block">
+                            <div className="topics-head">
+                                <span>
+                                    <strong>Skip these</strong>
+                                    <span className="muted">
+                                        {" "}· {selectedExcludes.length} of {excludeCats.length} from {currentBundle?.label}
+                                    </span>
+                                </span>
+                            </div>
+                            <div className="skip-grid">
+                                {excludeCats.map((c) => {
+                                    const checked = selectedExcludes.includes(c.key);
+                                    return (
+                                        <label key={c.key} className="skip-item" title={c.description}>
+                                            <input
+                                                type="checkbox"
+                                                checked={checked}
+                                                onChange={() => toggleExclude(c.key)}
+                                            />
+                                            <span>{c.label}</span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Focus — collapsed reveal (used by ~10% of cuts) */}
+                    <div className="focus-block">
+                        {settings.custom_focus ? (
+                            <>
+                                <label htmlFor="focus-input" className="topics-head">
+                                    <span><strong>Focus</strong> <span className="muted">· soft priority</span></span>
+                                </label>
+                                <input
+                                    id="focus-input"
+                                    type="text"
+                                    placeholder={focusPlaceholder}
+                                    value={settings.custom_focus ?? ""}
+                                    onChange={(e) =>
+                                        onSettingsChange({
+                                            ...settings,
+                                            custom_focus: e.target.value || null,
+                                        })
+                                    }
+                                />
+                            </>
+                        ) : (
+                            <button
+                                type="button"
+                                className="link-button focus-add"
+                                onClick={() =>
+                                    onSettingsChange({ ...settings, custom_focus: " " })
+                                }
+                            >
+                                + add focus instruction
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* ── Take-aware mode (Assembled / Curated / Rough cut) ── */}
             {takeAwareMode && (
                 <div className="card">
                     <h2>
@@ -806,83 +1039,52 @@ export default function ConfigureScreen({
                         {curatedMode && "Curated mode"}
                         {roughCutMode && "Rough cut mode"}
                     </h2>
-                    <p className="muted">
-                        {assembledMode &&
-                            "Director will never cross take boundaries. Scrubbing happens inside each take; reordering whole takes is a separate switch."}
-                        {curatedMode &&
-                            "Every take you selected will appear in the output. The Director arranges them into the strongest narrative and may split takes into multiple spans for callbacks."}
-                        {roughCutMode &&
-                            "Adjacent takes are clustered into groups (by clip color, flags, or transcript similarity). The Director picks one winner per group — alternates that don't win get dropped."}
+                    <p className="muted" style={{ fontSize: "var(--fs-2)" }}>
+                        {assembledMode && "Director will never cross take boundaries."}
+                        {curatedMode && "Every selected take appears in the output, arranged for narrative."}
+                        {roughCutMode && "Adjacent takes cluster into groups; one winner per group."}
                     </p>
                     {assembledMode && (
-                        <div className="row" style={{ marginTop: 6 }}>
-                            <label
-                                style={{
-                                    display: "flex",
-                                    gap: 6,
-                                    alignItems: "center",
-                                    margin: 0,
-                                }}
-                            >
-                                <input
-                                    type="checkbox"
-                                    checked={settings.reorder_allowed ?? true}
-                                    onChange={(e) =>
-                                        onSettingsChange({
-                                            ...settings,
-                                            reorder_allowed: e.target.checked,
-                                        })
-                                    }
-                                />
-                                Let the AI reorder takes for narrative flow
-                            </label>
-                        </div>
-                    )}
-                    <div className="row" style={{ marginTop: 6 }}>
-                        <label
-                            style={{
-                                display: "flex",
-                                gap: 6,
-                                alignItems: "center",
-                                margin: 0,
-                            }}
-                        >
+                        <label className="wym-check" style={{ marginTop: 6 }}>
                             <input
                                 type="checkbox"
-                                checked={settings.takes_already_scrubbed ?? false}
+                                checked={settings.reorder_allowed ?? true}
                                 onChange={(e) =>
                                     onSettingsChange({
                                         ...settings,
-                                        takes_already_scrubbed: e.target.checked,
+                                        reorder_allowed: e.target.checked,
                                     })
                                 }
                             />
-                            Takes are already scrubbed — skip cleanup (use raw transcript)
+                            Let the AI reorder takes for narrative flow
                         </label>
-                    </div>
+                    )}
+                    <label className="wym-check" style={{ marginTop: 6 }}>
+                        <input
+                            type="checkbox"
+                            checked={settings.takes_already_scrubbed ?? false}
+                            onChange={(e) =>
+                                onSettingsChange({
+                                    ...settings,
+                                    takes_already_scrubbed: e.target.checked,
+                                })
+                            }
+                        />
+                        Takes are already scrubbed — skip cleanup
+                    </label>
                 </div>
             )}
 
+            {/* ── Tightener cleanup — only for the Tightener preset ── */}
             {isTightener && (
                 <div className="card">
                     <h2>Tightener cleanup</h2>
-                    <p className="muted">
-                        Tightener drops filler words and dead-air gaps inside
-                        each take, then plays the takes in their original
-                        order. No Director LLM runs — this is a deterministic
-                        pass. Adjust the thresholds below if the default cut
-                        is too loose or too aggressive.
+                    <p className="muted" style={{ fontSize: "var(--fs-2)" }}>
+                        Drops filler words and dead-air gaps inside each take, then
+                        plays takes in their original order. Deterministic — no LLM.
                     </p>
                     <div style={{ marginTop: 10 }}>
-                        <label
-                            style={{
-                                display: "flex",
-                                gap: 6,
-                                alignItems: "center",
-                                margin: 0,
-                                marginBottom: 8,
-                            }}
-                        >
+                        <label className="wym-check" style={{ marginBottom: 8 }}>
                             <input
                                 type="checkbox"
                                 checked={scrubParams.remove_fillers !== false}
@@ -892,15 +1094,7 @@ export default function ConfigureScreen({
                             />
                             Remove filler words (um, uh, ah…)
                         </label>
-                        <label
-                            style={{
-                                display: "flex",
-                                gap: 6,
-                                alignItems: "center",
-                                margin: 0,
-                                marginBottom: 8,
-                            }}
-                        >
+                        <label className="wym-check" style={{ marginBottom: 8 }}>
                             <input
                                 type="checkbox"
                                 checked={scrubParams.remove_dead_air !== false}
@@ -908,17 +1102,9 @@ export default function ConfigureScreen({
                                     updateScrub({ remove_dead_air: e.target.checked })
                                 }
                             />
-                            Remove dead-air words (fillers inside long gaps)
+                            Remove dead-air words
                         </label>
-                        <label
-                            style={{
-                                display: "flex",
-                                gap: 6,
-                                alignItems: "center",
-                                margin: 0,
-                                marginBottom: 8,
-                            }}
-                        >
+                        <label className="wym-check" style={{ marginBottom: 8 }}>
                             <input
                                 type="checkbox"
                                 checked={scrubParams.collapse_restarts !== false}
@@ -926,18 +1112,12 @@ export default function ConfigureScreen({
                                     updateScrub({ collapse_restarts: e.target.checked })
                                 }
                             />
-                            Collapse restarts (drop the earlier attempt)
+                            Collapse restarts
                         </label>
-                        <label
-                            style={{ display: "block", marginTop: 12 }}
-                        >
+                        <label style={{ display: "block", marginTop: 12 }}>
                             Dead-air gap threshold:{" "}
                             <code>
-                                {(
-                                    (scrubParams.dead_air_threshold_s as number | undefined) ??
-                                    0.3
-                                ).toFixed(2)}
-                                s
+                                {((scrubParams.dead_air_threshold_s as number | undefined) ?? 0.3).toFixed(2)}s
                             </code>
                         </label>
                         <input
@@ -945,279 +1125,83 @@ export default function ConfigureScreen({
                             min={0.1}
                             max={1.5}
                             step={0.05}
-                            style={{ width: "100%" }}
-                            value={
-                                (scrubParams.dead_air_threshold_s as
-                                    | number
-                                    | undefined) ?? 0.3
-                            }
+                            className="tune-slider"
+                            value={(scrubParams.dead_air_threshold_s as number | undefined) ?? 0.3}
                             onChange={(e) =>
-                                updateScrub({
-                                    dead_air_threshold_s: Number(e.target.value),
-                                })
+                                updateScrub({ dead_air_threshold_s: Number(e.target.value) })
                             }
                         />
                     </div>
                 </div>
             )}
 
-            {excludeCats.length > 0 && !isTightener && (
+            {/* ── Speakers — pre-filled smart defaults + edit affordance ── */}
+            {showSpeakerCard && speakerRoster && (
                 <div className="card">
-                    <h2>Content to exclude</h2>
-                    <p className="muted">
-                        Tick categories the Director should drop. Defaults come
-                        from the {currentBundle?.label} preset — adjust freely.
+                    <h2>Speakers <span className="muted" style={{ fontSize: "var(--fs-2)" }}>· {speakerRoster.length} detected</span></h2>
+                    <p className="muted" style={{ fontSize: "var(--fs-2)" }}>
+                        Suggestions are based on word count — higher count is usually the guest. Tap to override.
                     </p>
-                    <div className="exclude-grid">
-                        {excludeCats.map((c) => {
-                            const checked = selectedExcludes.includes(c.key);
-                            return (
-                                <label key={c.key} className="exclude-item">
-                                    <input
-                                        type="checkbox"
-                                        checked={checked}
-                                        onChange={() => toggleExclude(c.key)}
-                                    />
-                                    <span className="exclude-body">
-                                        <span className="exclude-label">{c.label}</span>
-                                        <br />
-                                        <span className="exclude-desc">{c.description}</span>
-                                    </span>
-                                </label>
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
-
-            {showSpeakerCard && (
-                <div className="card">
-                    <h2>Speaker labels</h2>
-                    <p className="muted">
-                        Rename speakers so the Director reasons about roles,
-                        not raw STT ids. The higher word count is usually the
-                        host.
-                    </p>
-                    {speakerRoster?.map((s) => (
-                        <div
-                            key={s.speaker_id}
-                            className="row"
-                            style={{ alignItems: "center", marginTop: 6 }}
-                        >
-                            <code style={{ minWidth: 48 }}>{s.speaker_id}</code>
-                            <span className="muted" style={{ minWidth: 90 }}>
-                                {s.word_count} words
-                            </span>
-                            <input
-                                type="text"
-                                placeholder={
-                                    s.speaker_id === "S1" ? "Host" : "Guest"
-                                }
-                                value={speakerLabels[s.speaker_id] ?? ""}
-                                onChange={(e) =>
-                                    updateSpeakerLabel(
-                                        s.speaker_id,
-                                        e.target.value,
-                                    )
-                                }
-                                style={{ flex: 1 }}
-                            />
-                        </div>
-                    ))}
-                </div>
-            )}
-
-            {!isTightener && (
-                <div className="card">
-                    <h2>Custom focus (optional)</h2>
-                    <p className="muted">
-                        One short instruction the Director treats as a soft
-                        priority. Kept across preset changes.
-                    </p>
-                    <input
-                        type="text"
-                        placeholder={focusPlaceholder}
-                        value={settings.custom_focus ?? ""}
-                        onChange={(e) =>
-                            onSettingsChange({
-                                ...settings,
-                                custom_focus: e.target.value || null,
-                            })
-                        }
-                    />
-                </div>
-            )}
-
-            {formats && formats.length > 0 && (
-                <div className="card">
-                    <h2>Output format</h2>
-                    {source && (
-                        <p className="muted">
-                            Source timeline: <code>{source.width}×{source.height}</code>
-                            &nbsp;(aspect {source.aspect.toFixed(2)}).
-                            {sourceMatchesTarget && currentFormat !== "horizontal" && (
-                                <>
-                                    {" "}
-                                    Source already matches the selected format —
-                                    no reframing needed.
-                                </>
-                            )}
-                        </p>
-                    )}
-                    <div className="row">
-                        {formats.map((f) => {
-                            const selected = currentFormat === f.key;
-                            return (
-                                <button
-                                    key={f.key}
-                                    className={selected ? "" : "secondary"}
-                                    onClick={() => {
-                                        const cap = f.max_duration_s;
-                                        const clampedLen =
-                                            cap != null &&
-                                            settings.target_length_s != null &&
-                                            settings.target_length_s > cap
-                                                ? Math.round(cap)
-                                                : settings.target_length_s;
-                                        onSettingsChange({
-                                            ...settings,
-                                            format: f.key,
-                                            target_length_s: clampedLen,
-                                        });
-                                    }}
-                                >
-                                    {f.label}
-                                </button>
-                            );
-                        })}
-                    </div>
-                    <div className="row" style={{ marginTop: 10 }}>
-                        <label
-                            style={{
-                                display: "flex",
-                                gap: 6,
-                                alignItems: "center",
-                                margin: 0,
-                            }}
-                        >
-                            <input
-                                type="checkbox"
-                                checked={settings.captions_enabled ?? false}
-                                onChange={(e) =>
-                                    onSettingsChange({
-                                        ...settings,
-                                        captions_enabled: e.target.checked,
-                                    })
-                                }
-                            />
-                            Generate captions (SRT + subtitle track)
-                        </label>
-                    </div>
-                    {currentFormat !== "horizontal" && (
-                        <div className="row" style={{ marginTop: 6 }}>
-                            <label
-                                style={{
-                                    display: "flex",
-                                    gap: 6,
-                                    alignItems: "center",
-                                    margin: 0,
-                                }}
-                            >
+                    {speakerRoster.map((s) => {
+                        const suggested = suggestSpeakerLabel(s.speaker_id, speakerRoster);
+                        const current = speakerLabels[s.speaker_id] ?? "";
+                        return (
+                            <div key={s.speaker_id} className="speaker-row">
+                                <code className="speaker-id">{s.speaker_id}</code>
+                                <span className="muted speaker-words">
+                                    {s.word_count.toLocaleString()} words
+                                </span>
+                                <span className="speaker-arrow muted">→</span>
                                 <input
-                                    type="checkbox"
-                                    checked={settings.safe_zones_enabled ?? false}
+                                    type="text"
+                                    className="speaker-input"
+                                    placeholder={suggested}
+                                    value={current}
                                     onChange={(e) =>
-                                        onSettingsChange({
-                                            ...settings,
-                                            safe_zones_enabled: e.target.checked,
-                                        })
+                                        updateSpeakerLabel(s.speaker_id, e.target.value)
                                     }
                                 />
-                                Show platform-UI safe-zone guides
-                            </label>
-                        </div>
-                    )}
+                                {!current && (
+                                    <button
+                                        type="button"
+                                        className="link-button speaker-accept"
+                                        title={`Use suggested label "${suggested}"`}
+                                        onClick={() => updateSpeakerLabel(s.speaker_id, suggested)}
+                                    >
+                                        ✓ use {suggested}
+                                    </button>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             )}
 
+            {/* ── Advanced — shot-aware editing + per-layer overrides ── */}
             {!isTightener && (
-                <SensoryCard
-                    settings={settings}
-                    preset={preset}
-                    timelineMode={timelineMode}
-                    onSettingsChange={onSettingsChange}
-                />
-            )}
-
-            {!isTightener && (
-                <div className="card">
-                    <h2>
-                        {isClipHunter
-                            ? "Target clip length"
-                            : isShortGenerator
-                              ? "Target short length"
-                              : "Target length (optional)"}
-                    </h2>
-                <input
-                    type="number"
-                    min={15}
-                    step={15}
-                    max={lengthCap ?? undefined}
-                    placeholder={
-                        lengthCap
-                            ? `max ${Math.round(lengthCap)}s for this format`
-                            : "e.g. 90 for a 90-second cut — leave blank to keep all good takes"
-                    }
-                    value={settings.target_length_s ?? ""}
-                    onChange={(e) => {
-                        const raw = e.target.value ? Number(e.target.value) : null;
-                        const clamped =
-                            raw != null && lengthCap != null && raw > lengthCap
-                                ? Math.round(lengthCap)
-                                : raw;
-                        onSettingsChange({
-                            ...settings,
-                            target_length_s: clamped,
-                        });
-                    }}
-                />
-                {lengthCap && (
-                    <p className="muted">
-                        Capped at {Math.round(lengthCap)} s for the selected format.
-                    </p>
-                )}
-                {(() => {
-                    const tgt = settings.target_length_s;
-                    if (tgt == null || !currentBundle) return null;
-                    if (isClipHunter || isShortGenerator) return null;
-                    if (tgt <= 90) {
-                        return (
-                            <p className="muted" style={{ color: "#c97a00" }}>
-                                ⚠ {currentBundle.label} is tuned for longer cuts. For outputs
-                                ≤ 90 s, Short Generator produces tighter results.
-                            </p>
-                        );
-                    }
-                    const expected = tgt / currentBundle.target_segment_s;
-                    if (expected < 2 || expected > 15) {
-                        return (
-                            <p className="muted" style={{ color: "#c97a00" }}>
-                                ⚠ {Math.round(tgt)} s ÷ {currentBundle.target_segment_s} s per
-                                beat ≈ {expected.toFixed(1)} segments — outside this preset's
-                                comfort zone (2–15). Consider a different preset or length.
-                            </p>
-                        );
-                    }
-                    return null;
-                })()}
-                </div>
+                <details className="card card--advanced">
+                    <summary>
+                        <span>Advanced</span>
+                        <span className="muted" style={{ marginLeft: 8, fontSize: "var(--fs-2)" }}>
+                            — shot-aware editing, per-layer overrides
+                        </span>
+                    </summary>
+                    <div className="card-body">
+                        <SensoryCard
+                            settings={settings}
+                            preset={preset}
+                            timelineMode={timelineMode}
+                            onSettingsChange={onSettingsChange}
+                        />
+                    </div>
+                </details>
             )}
 
             {err && <div className="error-box">{err}</div>}
 
             <div className="row between">
                 <button className="secondary" onClick={onBack} data-hotkey="back">← Back</button>
-                <button onClick={onNext} data-hotkey="primary">Build plan →</button>
+                <button onClick={onNext} data-hotkey="primary">Review the cut →</button>
             </div>
         </div>
     );

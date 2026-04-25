@@ -695,7 +695,7 @@ code {
 }
 
 /* ── Cut card — primary header that merges Plan summary + bar ─────── */
-.cut-card { padding-top: var(--s-3); }
+.cut-card { padding-top: var(--s-3); padding-bottom: var(--s-3); }
 .cut-head {
     display: flex;
     align-items: baseline;
@@ -709,43 +709,55 @@ code {
     font-variant-numeric: tabular-nums;
 }
 .cut-reasoning {
-    margin: 0 0 var(--s-2);
+    margin: 0 0 var(--s-3);
     font-size: var(--fs-2);
-    line-height: 1.45;
+    line-height: 1.5;
+    max-width: 78ch; /* keep prose readable, don't span the full card */
+    color: var(--text-secondary);
 }
 .cut-meta {
     display: flex;
     align-items: center;
     gap: var(--s-2);
-    margin-top: var(--s-2);
+    margin-top: var(--s-3);
     flex-wrap: wrap;
 }
 
 /* ── Plan bar — proportional segment strip + scrubber + marker pins ── */
 .plan-bar-wrap {
     position: relative;
-    padding-top: 22px; /* space for always-visible marker labels above */
+    /* Reserve room for the two-row label stack + a breathing gap before
+       the bar starts. Without this, leader-line dots crowd the labels. */
+    padding-top: 50px;
 }
 .plan-bar-labels {
-    position: relative;
-    height: 22px;
-    margin-bottom: 2px;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 44px;
+    pointer-events: none;
 }
 .plan-bar-marker-label {
     position: absolute;
-    top: 0;
     transform: translateX(-50%);
-    background: transparent;
-    border: 0;
-    padding: 0 4px;
+    background: var(--surface-2);
+    border: var(--border-thin);
+    border-radius: 999px;
+    padding: 1px 8px 1px 6px;
     font-size: var(--fs-1);
     font-weight: 500;
     color: var(--text-secondary);
     white-space: nowrap;
     cursor: pointer;
-    line-height: 1.2;
-    max-width: 140px;
+    line-height: 1.4;
+    max-width: 160px;
+    pointer-events: auto;
+    transition: transform 120ms, filter 120ms;
 }
+/* Two staggered rows so adjacent markers don't overlap */
+.plan-bar-marker-label--row0 { top: 2px; }
+.plan-bar-marker-label--row1 { top: 24px; }
 .plan-bar-marker-label::before {
     content: "📌 ";
     margin-right: 2px;
@@ -754,14 +766,17 @@ code {
     overflow: hidden;
     text-overflow: ellipsis;
     display: inline-block;
-    max-width: 120px;
+    max-width: 130px;
     vertical-align: bottom;
 }
-.plan-bar-marker-label:hover { filter: brightness(1.25); }
+.plan-bar-marker-label:hover {
+    filter: brightness(1.2);
+    transform: translateX(-50%) translateY(-1px);
+    z-index: 5;
+}
 .plan-bar-marker-label:focus-visible {
     outline: 2px solid var(--accent-blue);
     outline-offset: 2px;
-    border-radius: var(--radius-sm);
 }
 
 .plan-bar {
@@ -809,14 +824,16 @@ code {
     align-self: flex-end;
     opacity: 0.78;
 }
-/* Marker leader-line that drops through the bar from the label above */
+/* Marker leader-line that drops through the bar from the label above.
+   Stops a few px short of the label-row bottom so the pill and the line
+   don't visually fuse together. */
 .plan-bar-pin {
     position: absolute;
-    top: -4px;
+    top: -8px;
     bottom: -4px;
     transform: translateX(-50%);
     width: 1px;
-    background: rgba(255, 255, 255, 0.32);
+    background: rgba(255, 255, 255, 0.28);
     pointer-events: none;
     z-index: 1;
 }
@@ -1264,6 +1281,353 @@ code {
     text-align: right;
 }
 
+/* ── Configure: Recipe card ────────────────────────────────────────── */
+.recipe-card {
+    background: var(--surface-2);
+    border-left: 2px solid var(--accent-blue-dim, var(--accent-blue));
+}
+.recipe-card--unusual {
+    border-left-color: var(--warn, #ff9f0a);
+    background: rgba(255, 159, 10, 0.04);
+}
+.recipe-chips {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    flex-wrap: wrap;
+    margin-bottom: var(--s-2);
+}
+.recipe-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 8px 12px;
+    background: var(--surface-3);
+    border: var(--border-thin);
+    border-radius: var(--radius-md);
+    font-size: var(--fs-3);
+    color: var(--text-primary);
+    line-height: 1.2;
+}
+.recipe-chip-icon { font-size: 18px; line-height: 1; }
+.recipe-chip-label { font-weight: 600; }
+.recipe-chip-prov { font-size: var(--fs-1); }
+.recipe-arrow {
+    color: var(--text-tertiary);
+    font-size: var(--fs-3);
+    user-select: none;
+}
+.recipe-effects {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--fs-2);
+}
+.recipe-effects strong {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+.recipe-warn {
+    margin: var(--s-2) 0 0;
+    padding: 6px 10px;
+    background: rgba(255, 159, 10, 0.08);
+    border-radius: var(--radius-sm);
+    color: var(--warn, #ff9f0a);
+    font-size: var(--fs-2);
+}
+.recipe-why {
+    margin-top: var(--s-3);
+    border-top: var(--border-thin);
+    padding-top: var(--s-2);
+}
+.recipe-why summary {
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+    padding: 4px 0;
+    font-size: var(--fs-2);
+}
+.recipe-why summary::-webkit-details-marker { display: none; }
+.recipe-why summary::after {
+    content: " ▸";
+    color: var(--text-tertiary);
+    transition: transform 120ms;
+    display: inline-block;
+}
+.recipe-why[open] summary::after { transform: rotate(90deg); }
+.recipe-why-body {
+    padding: var(--s-2) 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-3);
+}
+.recipe-override {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.recipe-override label { margin: 0; }
+.recipe-alts {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    flex-wrap: wrap;
+}
+.cut-intent-radios {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 4px;
+}
+.cut-intent-radio {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: var(--fs-2);
+    color: var(--text-primary);
+}
+.cut-intent-radio:hover { background: var(--surface-3); }
+.cut-intent-radio input[type="radio"] {
+    accent-color: var(--accent-blue);
+    width: auto;
+    height: auto;
+}
+
+/* ── Configure: What you're making — labeled rows ─────────────────── */
+.wym-row {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: var(--s-3);
+    align-items: start;
+    padding: 10px 0;
+    border-bottom: var(--border-thin);
+}
+.wym-row:last-child { border-bottom: 0; }
+.wym-row--inline {
+    grid-template-columns: 1fr;
+    display: flex;
+    gap: var(--s-4);
+    flex-wrap: wrap;
+}
+.wym-label {
+    font-size: var(--fs-2);
+    color: var(--text-secondary);
+    font-weight: 500;
+    padding-top: 6px;
+}
+.wym-control { min-width: 0; }
+.wym-slider-row {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    margin-top: 4px;
+}
+.wym-slider-row .tune-slider { flex: 1; }
+.wym-hint {
+    margin: 6px 0 0;
+    font-size: var(--fs-1);
+    line-height: 1.4;
+}
+.wym-hint.warn { color: var(--warn, #ff9f0a); }
+.wym-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding: 4px 0;
+    font-size: var(--fs-2);
+    color: var(--text-primary);
+    cursor: pointer;
+}
+.wym-check input[type="checkbox"] {
+    accent-color: var(--accent-blue);
+    width: auto;
+    height: auto;
+}
+
+/* Stepper chips for num_clips — direct manipulation > slider */
+.stepper-chips {
+    display: inline-flex;
+    background: var(--surface-3);
+    border: var(--border-thin);
+    border-radius: var(--radius-md);
+    padding: 2px;
+    gap: 2px;
+}
+.stepper-chip {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 0;
+    padding: 4px 12px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: var(--fs-2);
+    min-width: 36px;
+}
+.stepper-chip:hover { background: var(--surface-2); color: var(--text-primary); }
+.stepper-chip.on {
+    background: var(--accent-blue);
+    color: white;
+    font-weight: 600;
+}
+
+/* Format radios — quiet row, default doesn't shout */
+.format-radios {
+    display: flex;
+    gap: var(--s-3);
+    flex-wrap: wrap;
+}
+.format-radio {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border: var(--border-thin);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-size: var(--fs-2);
+    color: var(--text-secondary);
+    margin: 0;
+    transition: border-color 120ms, color 120ms;
+}
+.format-radio:hover { color: var(--text-primary); }
+.format-radio input[type="radio"] {
+    accent-color: var(--accent-blue);
+    width: auto;
+    height: auto;
+}
+.format-radio.is-on {
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+    background: var(--accent-blue-tint);
+}
+
+/* ── Configure: What goes in / out ────────────────────────────────── */
+.topics-block, .skip-block, .focus-block {
+    padding: var(--s-3) 0;
+    border-bottom: var(--border-thin);
+}
+.focus-block:last-child { border-bottom: 0; padding-bottom: 0; }
+.topics-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--s-2);
+    margin-bottom: 4px;
+    font-size: var(--fs-2);
+}
+.topics-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    font-size: var(--fs-1);
+}
+.topics-help {
+    margin: 0 0 8px;
+    font-size: var(--fs-2);
+}
+.topic-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.topic-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface-3);
+    border: var(--border-thin);
+    border-radius: 999px;
+    padding: 3px 12px 3px 8px;
+    font-size: var(--fs-2);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 120ms, color 120ms, border-color 120ms;
+    height: auto;
+}
+.topic-pill:hover {
+    border-color: var(--accent-blue);
+    color: var(--text-primary);
+}
+.topic-pill.on {
+    background: var(--accent-blue-tint);
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+    font-weight: 500;
+}
+.topic-pill-glyph {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.06);
+    font-size: 10px;
+    line-height: 1;
+}
+.topic-pill.on .topic-pill-glyph { background: var(--accent-blue); color: white; }
+
+.skip-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px 14px;
+    margin-top: 6px;
+}
+.skip-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    cursor: pointer;
+    user-select: none;
+    font-size: var(--fs-2);
+    color: var(--text-primary);
+    margin: 0;
+}
+.skip-item input[type="checkbox"] {
+    accent-color: var(--accent-blue);
+    width: auto;
+    height: auto;
+}
+
+.focus-add {
+    font-size: var(--fs-2);
+    padding: 4px 0;
+}
+
+/* ── Configure: Speakers ──────────────────────────────────────────── */
+.speaker-row {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    padding: 6px 0;
+}
+.speaker-id {
+    min-width: 36px;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: var(--fs-1);
+    color: var(--text-secondary);
+}
+.speaker-words {
+    min-width: 90px;
+    font-size: var(--fs-2);
+    font-variant-numeric: tabular-nums;
+}
+.speaker-arrow { font-size: var(--fs-2); }
+.speaker-input { flex: 1; max-width: 240px; }
+.speaker-accept {
+    font-size: var(--fs-1);
+    padding: 0;
+    text-decoration: none;
+    color: var(--text-tertiary);
+}
+.speaker-accept:hover { color: var(--accent-blue); }
+
 /* v3-5.5 — Responsive breakpoint for docked / narrow panels */
 @media (max-width: 480px) {
     .app {
@@ -1299,4 +1663,13 @@ code {
         left: var(--s-3);
         min-width: 0;
     }
+    /* Configure: stack the wym label on top of the control on narrow panels */
+    .wym-row {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+    .wym-label { padding-top: 0; }
+    .skip-grid { grid-template-columns: 1fr; }
+    .recipe-chips { gap: 4px; }
+    .recipe-arrow { display: none; }
 }
