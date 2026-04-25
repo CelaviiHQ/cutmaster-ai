@@ -1,0 +1,23 @@
+{
+  "label": "Wedding × Narrative × 600s × raw_dump — preserve_macro reorder",
+  "source": "synthetic-v1",
+  "notes": "Wedding narrative must preserve event order across the cut.",
+  "input": {
+    "content_type": "wedding",
+    "cut_intent": "narrative",
+    "duration_s": 600,
+    "timeline_mode": "raw_dump",
+    "num_clips": 1,
+    "reorder_allowed": true,
+    "takes_already_scrubbed": false
+  },
+  "expected": {
+    "content_type": "wedding",
+    "cut_intent": "narrative",
+    "cut_intent_source": "user",
+    "reorder_mode": "preserve_macro",
+    "selection_strategy": "narrative-arc",
+    "prompt_builder": "_prompt",
+    "unusual": false
+  }
+}

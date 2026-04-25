@@ -1,0 +1,23 @@
+{
+  "label": "Tutorial × Multi-clip × 1200s × raw_dump — flagged unusual (tutorials are linear)",
+  "source": "synthetic-v1",
+  "notes": "Only currently-unusual cell in the matrix; UI surfaces a warning callout.",
+  "input": {
+    "content_type": "tutorial",
+    "cut_intent": "multi_clip",
+    "duration_s": 1200,
+    "timeline_mode": "raw_dump",
+    "num_clips": 3,
+    "reorder_allowed": true,
+    "takes_already_scrubbed": false
+  },
+  "expected": {
+    "content_type": "tutorial",
+    "cut_intent": "multi_clip",
+    "cut_intent_source": "user",
+    "reorder_mode": "per_clip_chronological",
+    "selection_strategy": "top-n",
+    "prompt_builder": "_clip_hunter_prompt",
+    "unusual": true
+  }
+}

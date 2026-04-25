@@ -1,0 +1,23 @@
+{
+  "label": "Wedding × Auto × 60s — short wedding cut → peak highlight",
+  "source": "synthetic-v1",
+  "notes": "Wedding has no sub-120s exception — falls into peak-highlight band like generic content.",
+  "input": {
+    "content_type": "wedding",
+    "cut_intent": null,
+    "duration_s": 60,
+    "timeline_mode": "raw_dump",
+    "num_clips": 1,
+    "reorder_allowed": true,
+    "takes_already_scrubbed": false
+  },
+  "expected": {
+    "content_type": "wedding",
+    "cut_intent": "peak_highlight",
+    "cut_intent_source": "auto",
+    "reorder_mode": "free",
+    "selection_strategy": "peak-hunt",
+    "prompt_builder": "_prompt",
+    "unusual": false
+  }
+}

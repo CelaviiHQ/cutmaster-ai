@@ -1,0 +1,23 @@
+{
+  "label": "Vlog × Auto × 90s — sub-2min vlog/product_demo exception → assembled_short",
+  "source": "synthetic-v1",
+  "notes": "Vlog under 2 min defaults to assembled-short montage, not peak highlight.",
+  "input": {
+    "content_type": "vlog",
+    "cut_intent": null,
+    "duration_s": 90,
+    "timeline_mode": "raw_dump",
+    "num_clips": 1,
+    "reorder_allowed": true,
+    "takes_already_scrubbed": false
+  },
+  "expected": {
+    "content_type": "vlog",
+    "cut_intent": "assembled_short",
+    "cut_intent_source": "auto",
+    "reorder_mode": "free",
+    "selection_strategy": "montage",
+    "prompt_builder": "_short_generator_prompt",
+    "unusual": false
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "label": "Tutorial × Narrative × 600s × rough_cut — locked + rough_cut builder",
+  "source": "synthetic-v1",
+  "notes": "Tutorials are linear; rough_cut prompt-builder picks winners between A/B takes.",
+  "input": {
+    "content_type": "tutorial",
+    "cut_intent": "narrative",
+    "duration_s": 600,
+    "timeline_mode": "rough_cut",
+    "num_clips": 1,
+    "reorder_allowed": true,
+    "takes_already_scrubbed": false
+  },
+  "expected": {
+    "content_type": "tutorial",
+    "cut_intent": "narrative",
+    "cut_intent_source": "user",
+    "reorder_mode": "locked",
+    "selection_strategy": "narrative-arc",
+    "prompt_builder": "_rough_cut_prompt",
+    "unusual": false
+  }
+}

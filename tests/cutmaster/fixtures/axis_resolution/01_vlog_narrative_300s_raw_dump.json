@@ -1,0 +1,23 @@
+{
+  "label": "Vlog × Narrative × 300s × raw_dump — nominal mid-length cell",
+  "source": "synthetic-v1",
+  "notes": "Standard vlog narrative cut, matches design doc §4 vlog row.",
+  "input": {
+    "content_type": "vlog",
+    "cut_intent": "narrative",
+    "duration_s": 300,
+    "timeline_mode": "raw_dump",
+    "num_clips": 1,
+    "reorder_allowed": true,
+    "takes_already_scrubbed": false
+  },
+  "expected": {
+    "content_type": "vlog",
+    "cut_intent": "narrative",
+    "cut_intent_source": "user",
+    "reorder_mode": "preserve_macro",
+    "selection_strategy": "narrative-arc",
+    "prompt_builder": "_prompt",
+    "unusual": false
+  }
+}

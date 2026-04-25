@@ -1,0 +1,23 @@
+{
+  "label": "Interview × Auto × 600s × assembled + takes_scrubbed — forces surgical_tighten",
+  "source": "synthetic-v1",
+  "notes": "Hard-rule precedence: assembled timeline + already-scrubbed takes triggers tightener. Source tagged forced.",
+  "input": {
+    "content_type": "interview",
+    "cut_intent": null,
+    "duration_s": 600,
+    "timeline_mode": "assembled",
+    "num_clips": 1,
+    "reorder_allowed": true,
+    "takes_already_scrubbed": true
+  },
+  "expected": {
+    "content_type": "interview",
+    "cut_intent": "surgical_tighten",
+    "cut_intent_source": "forced",
+    "reorder_mode": "locked",
+    "selection_strategy": "preserve-takes",
+    "prompt_builder": "_assembled_prompt",
+    "unusual": false
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "label": "Interview × Peak Highlight × 60s × raw_dump — design-doc Appendix example",
+  "source": "synthetic-v1",
+  "notes": "Pacing reference {3, 7, 18}; calibration target for Phase 6.6.",
+  "input": {
+    "content_type": "interview",
+    "cut_intent": "peak_highlight",
+    "duration_s": 60,
+    "timeline_mode": "raw_dump",
+    "num_clips": 1,
+    "reorder_allowed": true,
+    "takes_already_scrubbed": false
+  },
+  "expected": {
+    "content_type": "interview",
+    "cut_intent": "peak_highlight",
+    "cut_intent_source": "user",
+    "reorder_mode": "free",
+    "selection_strategy": "peak-hunt",
+    "prompt_builder": "_prompt",
+    "unusual": false
+  }
+}

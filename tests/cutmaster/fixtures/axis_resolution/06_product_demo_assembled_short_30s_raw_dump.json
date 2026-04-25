@@ -1,0 +1,23 @@
+{
+  "label": "Product Demo × Assembled Short × 30s × raw_dump — montage strategy",
+  "source": "synthetic-v1",
+  "notes": "Short-form product demo flows through the short-generator builder.",
+  "input": {
+    "content_type": "product_demo",
+    "cut_intent": "assembled_short",
+    "duration_s": 30,
+    "timeline_mode": "raw_dump",
+    "num_clips": 1,
+    "reorder_allowed": true,
+    "takes_already_scrubbed": false
+  },
+  "expected": {
+    "content_type": "product_demo",
+    "cut_intent": "assembled_short",
+    "cut_intent_source": "user",
+    "reorder_mode": "free",
+    "selection_strategy": "montage",
+    "prompt_builder": "_short_generator_prompt",
+    "unusual": false
+  }
+}

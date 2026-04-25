@@ -1,0 +1,23 @@
+{
+  "label": "Presentation × Narrative × 900s × assembled — locked reorder",
+  "source": "synthetic-v1",
+  "notes": "Presentations must play in slide order — locked, not preserve_macro.",
+  "input": {
+    "content_type": "presentation",
+    "cut_intent": "narrative",
+    "duration_s": 900,
+    "timeline_mode": "assembled",
+    "num_clips": 1,
+    "reorder_allowed": true,
+    "takes_already_scrubbed": false
+  },
+  "expected": {
+    "content_type": "presentation",
+    "cut_intent": "narrative",
+    "cut_intent_source": "user",
+    "reorder_mode": "locked",
+    "selection_strategy": "narrative-arc",
+    "prompt_builder": "_assembled_prompt",
+    "unusual": false
+  }
+}

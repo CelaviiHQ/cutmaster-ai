@@ -1,0 +1,23 @@
+{
+  "label": "Podcast × Multi-clip × 1800s × curated — per_clip_chronological reorder",
+  "source": "synthetic-v1",
+  "notes": "Long-form podcast → harvest N clips, each playing in source order.",
+  "input": {
+    "content_type": "podcast",
+    "cut_intent": "multi_clip",
+    "duration_s": 1800,
+    "timeline_mode": "curated",
+    "num_clips": 3,
+    "reorder_allowed": true,
+    "takes_already_scrubbed": false
+  },
+  "expected": {
+    "content_type": "podcast",
+    "cut_intent": "multi_clip",
+    "cut_intent_source": "user",
+    "reorder_mode": "per_clip_chronological",
+    "selection_strategy": "top-n",
+    "prompt_builder": "_clip_hunter_prompt",
+    "unusual": false
+  }
+}

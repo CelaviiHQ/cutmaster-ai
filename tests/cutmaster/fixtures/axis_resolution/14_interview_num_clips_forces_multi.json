@@ -1,0 +1,23 @@
+{
+  "label": "Interview × Auto × 600s × num_clips=5 — num_clips forces multi_clip",
+  "source": "synthetic-v1",
+  "notes": "Hard-rule precedence: num_clips>1 beats every duration heuristic. Source tagged forced.",
+  "input": {
+    "content_type": "interview",
+    "cut_intent": null,
+    "duration_s": 600,
+    "timeline_mode": "raw_dump",
+    "num_clips": 5,
+    "reorder_allowed": true,
+    "takes_already_scrubbed": false
+  },
+  "expected": {
+    "content_type": "interview",
+    "cut_intent": "multi_clip",
+    "cut_intent_source": "forced",
+    "reorder_mode": "per_clip_chronological",
+    "selection_strategy": "top-n",
+    "prompt_builder": "_clip_hunter_prompt",
+    "unusual": false
+  }
+}
