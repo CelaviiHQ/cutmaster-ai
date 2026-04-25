@@ -945,15 +945,99 @@ def resolve_sensory_layers(
     preset: str,
     timeline_mode: str,
 ) -> tuple[bool, bool, bool]:
-    """Resolve effective per-layer enabled flags.
+    """Legacy preset-keyed resolver — delegates to the axis-keyed version.
+
+    Maps the preset to a cut intent (per the migration table) and forwards
+    to :func:`resolve_sensory_layers_by_axes`. Kept for the migration
+    window so callers that haven't been ported yet keep working
+    byte-for-byte; deleted in Phase 7 once nothing reaches it.
+
+    Returns ``(layer_c_enabled, layer_a_enabled, layer_audio_enabled)``.
+    """
+    cut_intent = _LEGACY_PRESET_TO_CUT_INTENT.get(preset, "narrative")
+    # Tightener forces assembled — the legacy mode key has always done
+    # this collapse, the new function expects the post-collapse mode.
+    effective_mode = "assembled" if preset == "tightener" else timeline_mode
+    return resolve_sensory_layers_by_axes(
+        master_enabled=master_enabled,
+        c_override=c_override,
+        a_override=a_override,
+        audio_override=audio_override,
+        cut_intent=cut_intent,  # type: ignore[arg-type]
+        timeline_mode=effective_mode,  # type: ignore[arg-type]
+    )
+
+
+# Migration table: legacy preset key → cut intent. Content-type presets
+# fall through to ``"narrative"`` because the (narrative, mode) axis cell
+# resolves to the same SENSORY_MATRIX row the legacy preset-keyed lookup
+# returned. Mirrors ``_PRESET_TO_CUT_INTENT`` in
+# ``http/routes/cutmaster/build.py`` — kept inline here so this module
+# has no upward dependency on the HTTP layer.
+_LEGACY_PRESET_TO_CUT_INTENT: dict[str, str] = {
+    "tightener": "surgical_tighten",
+    "clip_hunter": "multi_clip",
+    "short_generator": "assembled_short",
+}
+
+
+def axes_to_sensory_key(cut_intent: str, timeline_mode: str) -> str:
+    """Collapse ``(cut_intent, timeline_mode)`` onto the SENSORY_MATRIX row.
+
+    Per §5 of ``docs/THREE_AXIS_MODEL.md``:
+
+    - ``multi_clip × *``                  → ``clip_hunter`` row
+    - ``assembled_short × *``             → ``short_generator`` row
+    - ``surgical_tighten × assembled``    → ``assembled`` row
+    - ``narrative × <mode>``              → mode's row (raw_dump / rough_cut /
+                                            curated / assembled)
+    - ``peak_highlight × *``              → ``raw_dump`` row (default;
+                                            revisit if telemetry shows
+                                            divergence per design doc)
+    - unknown intents / modes             → ``raw_dump`` row (safe default)
+
+    The mapping is data-only — no behaviour change vs. the legacy
+    ``sensory_mode_key`` once the preset → cut intent step has happened.
+    """
+    if cut_intent == "multi_clip":
+        return "clip_hunter"
+    if cut_intent == "assembled_short":
+        return "short_generator"
+    if cut_intent == "surgical_tighten":
+        return "assembled"
+    if cut_intent == "narrative":
+        if timeline_mode in ("raw_dump", "rough_cut", "curated", "assembled"):
+            return timeline_mode
+        return "raw_dump"
+    if cut_intent == "peak_highlight":
+        return "raw_dump"
+    return "raw_dump"
+
+
+def resolve_sensory_layers_by_axes(
+    *,
+    master_enabled: bool,
+    c_override: bool | None,
+    a_override: bool | None,
+    audio_override: bool | None,
+    cut_intent: str,
+    timeline_mode: str,
+) -> tuple[bool, bool, bool]:
+    """Axis-keyed resolution of effective per-layer enabled flags.
 
     Precedence: ``*_override is not None`` wins (forces on/off); else fall
     back to the matrix × master toggle: ``"default"`` layers go on when
     master is on, ``"opt_in"`` / ``"off"`` stay off unless overridden.
 
+    The activation data still lives in :data:`SENSORY_MATRIX` keyed by the
+    six pre-existing rows — this function just resolves the row through
+    :func:`axes_to_sensory_key`. Phase 7 deletes the legacy
+    :func:`resolve_sensory_layers` and ``sensory_mode_key`` shims; this
+    becomes the only path.
+
     Returns ``(layer_c_enabled, layer_a_enabled, layer_audio_enabled)``.
     """
-    key = sensory_mode_key(preset, timeline_mode)
+    key = axes_to_sensory_key(cut_intent, timeline_mode)
     row = SENSORY_MATRIX.get(key, SENSORY_MATRIX["raw_dump"])
 
     def _pick(level: ActivationLevel, override: bool | None) -> bool:

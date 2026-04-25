@@ -6,7 +6,7 @@
  * ConfigureScreen master toggle should set when it flips on.
  */
 
-import type { PresetKey, TimelineMode, UserSettings } from "./types";
+import type { CutIntent, PresetKey, TimelineMode, UserSettings } from "./types";
 
 export type SensoryLayer = "c" | "a" | "audio";
 export type ActivationLevel = "default" | "opt_in" | "off";
@@ -58,6 +58,31 @@ export function sensoryModeKey(
     return "raw_dump";
 }
 
+/** Axis-keyed mirror of `data/presets.py::axes_to_sensory_key`.
+ *  Collapses (cut_intent, timeline_mode) onto the SENSORY_MATRIX row
+ *  per §5 of THREE_AXIS_MODEL.md. */
+export function axesToSensoryKey(
+    cutIntent: CutIntent,
+    timelineMode: TimelineMode | undefined,
+): string {
+    if (cutIntent === "multi_clip") return "clip_hunter";
+    if (cutIntent === "assembled_short") return "short_generator";
+    if (cutIntent === "surgical_tighten") return "assembled";
+    if (cutIntent === "narrative") {
+        if (
+            timelineMode === "raw_dump" ||
+            timelineMode === "rough_cut" ||
+            timelineMode === "curated" ||
+            timelineMode === "assembled"
+        ) {
+            return timelineMode;
+        }
+        return "raw_dump";
+    }
+    // peak_highlight × * → raw_dump (default — revisit per telemetry)
+    return "raw_dump";
+}
+
 export interface ResolvedSensory {
     c: boolean;
     a: boolean;
@@ -71,6 +96,20 @@ export function resolveSensoryLayers(
     preset: PresetKey,
 ): ResolvedSensory {
     const key = sensoryModeKey(preset, settings.timeline_mode);
+    return _resolveFromKey(key, settings);
+}
+
+/** Axis-keyed sensory resolver.
+ *  Mirrors `data/presets.py::resolve_sensory_layers_by_axes`. */
+export function resolveSensoryLayersByAxes(
+    settings: UserSettings,
+    cutIntent: CutIntent,
+): ResolvedSensory {
+    const key = axesToSensoryKey(cutIntent, settings.timeline_mode);
+    return _resolveFromKey(key, settings);
+}
+
+function _resolveFromKey(key: string, settings: UserSettings): ResolvedSensory {
     const row = SENSORY_MATRIX[key] ?? SENSORY_MATRIX.raw_dump;
     const master = !!settings.sensory_master_enabled;
     const pick = (level: ActivationLevel, override: boolean | null | undefined): boolean => {
