@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 
 from fastapi import APIRouter, HTTPException
 
@@ -236,6 +237,90 @@ async def _director_or_validated(
         build_samples=_build_samples,
     )
     return result.plan, result
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 of story-critic — flag-gated coherence pass
+# ---------------------------------------------------------------------------
+
+
+def _story_critic_enabled() -> bool:
+    """Truthy values: 1 / true / yes / on (case-insensitive)."""
+    raw = os.environ.get("CUTMASTER_ENABLE_STORY_CRITIC", "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+def _wrap_coherence(report) -> dict:
+    """Wrap a critic report with its kind tag for the panel to branch on.
+
+    Per Implementation/optimizaiton/story-critic.md §1.2a — single-cut
+    shapes get ``{"kind": "single", ...}``; per-candidate shapes get
+    ``{"kind": "per_candidate", ...}``. The shape on disk is what the
+    Review screen reads.
+    """
+    from ....intelligence.story_critic import PerCandidateCoherenceReport
+
+    kind = "per_candidate" if isinstance(report, PerCandidateCoherenceReport) else "single"
+    return {"kind": kind, "report": report.model_dump()}
+
+
+def _run_critic_or_skip(
+    plan,
+    *,
+    transcript=None,
+    takes=None,
+    axes,
+    run_id: str,
+):
+    """Grade the plan if the flag is on AND axes are present; else skip.
+
+    Returns the report or ``None``. LLM failures never propagate — the
+    structural plan is already valid; coherence is advisory. Logs:
+      * ``story_critic.skipped`` on flag-off / missing-axes / llm-error
+      * ``story_critic.completed`` on success (Phase 4.1 enriches fields)
+    """
+    if not _story_critic_enabled():
+        log.info("story_critic.skipped reason=flag_off run_id=%s", run_id)
+        return None
+    if axes is None:
+        log.info("story_critic.skipped reason=no_axes run_id=%s", run_id)
+        return None
+
+    from ....intelligence import story_critic
+
+    try:
+        report = story_critic.critique(
+            plan,
+            transcript=transcript,
+            takes=takes,
+            axes=axes,
+        )
+    except Exception as exc:
+        log.warning(
+            "story_critic.skipped reason=llm_error run_id=%s err=%s",
+            run_id,
+            exc,
+        )
+        return None
+
+    # Phase 4.1 will widen this log shape; Phase 2 just emits enough to
+    # confirm the call ran and what it returned.
+    if isinstance(report, story_critic.CoherenceReport):
+        log.info(
+            "story_critic.completed run_id=%s score=%d verdict=%s n_issues=%d",
+            run_id,
+            report.score,
+            report.verdict,
+            len(report.issues),
+        )
+    else:
+        log.info(
+            "story_critic.completed run_id=%s n_candidates=%d best_index=%d",
+            run_id,
+            len(report.candidates),
+            report.best_candidate_index,
+        )
+    return report
 
 
 async def _persist_plan(run_id: str, plan: dict) -> None:
@@ -530,6 +615,14 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         }
         if resolved_axes is not None:
             run["plan"]["resolved_axes"] = resolved_axes.model_dump()
+        coherence = _run_critic_or_skip(
+            hunter_plan,
+            transcript=scrubbed,
+            axes=resolved_axes,
+            run_id=body.run_id,
+        )
+        if coherence is not None:
+            run["plan"]["coherence_report"] = _wrap_coherence(coherence)
         await _persist_plan(body.run_id, run["plan"])
         return run["plan"]
 
@@ -697,6 +790,14 @@ async def build_plan(body: BuildPlanRequest) -> dict:
             run["plan"]["boundary_validation"] = boundary_result.to_summary()
         if resolved_axes is not None:
             run["plan"]["resolved_axes"] = resolved_axes.model_dump()
+        coherence = _run_critic_or_skip(
+            short_plan,
+            transcript=scrubbed,
+            axes=resolved_axes,
+            run_id=body.run_id,
+        )
+        if coherence is not None:
+            run["plan"]["coherence_report"] = _wrap_coherence(coherence)
         await _persist_plan(body.run_id, run["plan"])
         return run["plan"]
 
@@ -786,6 +887,14 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         }
         if resolved_axes is not None:
             run["plan"]["resolved_axes"] = resolved_axes.model_dump()
+        coherence = _run_critic_or_skip(
+            plan,
+            transcript=scrubbed,
+            axes=resolved_axes,
+            run_id=body.run_id,
+        )
+        if coherence is not None:
+            run["plan"]["coherence_report"] = _wrap_coherence(coherence)
         await _persist_plan(body.run_id, run["plan"])
         return run["plan"]
 
@@ -948,6 +1057,11 @@ async def build_plan(body: BuildPlanRequest) -> dict:
             selected_clips=selected_clips,
             reasoning=curated_plan.reasoning,
         )
+        # Stash the native (non-flat) plan for the story-critic — the
+        # CuratedDirectorPlan adapter knows about ordered selections; the
+        # synthetic flat DirectorPlan loses that structure.
+        _critic_native_plan: object = curated_plan
+        _critic_native_takes: list[dict] | None = takes
         # Stash mode-specific metadata for the Review screen. Merged into
         # the final response after marker / resolve run.
         _v2_11_meta: dict = {
@@ -1023,6 +1137,8 @@ async def build_plan(body: BuildPlanRequest) -> dict:
             selected_clips=selected_clips,
             reasoning=assembled_plan.reasoning,
         )
+        _critic_native_plan = assembled_plan
+        _critic_native_takes = takes
     else:
         # v1 raw-dump path. Batch 7: inject cached chapters so the Director
         # prompt + reorder-mode validator can honour preserve_macro policies.
@@ -1073,6 +1189,9 @@ async def build_plan(body: BuildPlanRequest) -> dict:
             log.exception("Director failed for run %s", body.run_id)
             raise HTTPException(status_code=500, detail=f"Director agent failed: {exc}")
 
+        _critic_native_plan = plan
+        _critic_native_takes = None
+
     # Marker agent runs against the flat CutSegment list in both modes.
     try:
         markers: MarkerPlan = await with_timeout(
@@ -1113,6 +1232,21 @@ async def build_plan(body: BuildPlanRequest) -> dict:
     # "validator didn't weigh in" rather than "zero issues".
     if boundary_result is not None:
         run["plan"]["boundary_validation"] = boundary_result.to_summary()
+
+    # Story-critic — Phase 2. Grades the *native* plan shape so curated /
+    # assembled adapters see ordered selections + word-index spans rather
+    # than the synthesised flat DirectorPlan. Raw-dump grades `plan`
+    # directly (it IS the native shape).
+    coherence = _run_critic_or_skip(
+        _critic_native_plan,
+        transcript=scrubbed if _critic_native_takes is None else None,
+        takes=_critic_native_takes,
+        axes=resolved_axes,
+        run_id=body.run_id,
+    )
+    if coherence is not None:
+        run["plan"]["coherence_report"] = _wrap_coherence(coherence)
+
     await _persist_plan(body.run_id, run["plan"])
 
     return run["plan"]
