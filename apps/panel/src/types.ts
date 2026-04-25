@@ -245,6 +245,67 @@ export interface TimelineStateMeta {
   all_singletons?: boolean;
 }
 
+/**
+ * Story-coherence critic verdict band. Derived server-side from the
+ * overall score (`<60` → rework, `60-79` → review, `≥80` → ship).
+ */
+export type Verdict = "ship" | "review" | "rework";
+
+/**
+ * Issue category emitted by the critic. Mirrors the Pydantic Literal in
+ * `intelligence/story_critic.py` exactly — keep in sync if extended.
+ */
+export type CoherenceCategory =
+  | "non_sequitur"
+  | "weak_hook"
+  | "missing_setup"
+  | "abrupt_transition"
+  | "redundancy"
+  | "unresolved_thread"
+  | "inverted_arc"
+  | "weak_resolution"
+  | "buried_lede";
+
+export type CoherenceSeverity = "info" | "warning" | "error";
+
+export interface CoherenceIssue {
+  /** Index of the segment the issue points at; `-1` means whole-cut. */
+  segment_index: number;
+  /** Set on transition issues — refers to seg N → N+1. */
+  pair_index?: number | null;
+  severity: CoherenceSeverity;
+  category: CoherenceCategory;
+  message: string;
+  suggestion?: string | null;
+}
+
+export interface CoherenceReport {
+  score: number;
+  hook_strength: number;
+  /** Null on `surgical_tighten` cuts — that intent doesn't grade arc. */
+  arc_clarity: number | null;
+  /** Null on `surgical_tighten` cuts — that intent doesn't grade transitions. */
+  transitions: number | null;
+  resolution: number;
+  issues: CoherenceIssue[];
+  summary: string;
+  verdict: Verdict;
+}
+
+export interface PerCandidateCoherenceReport {
+  candidates: CoherenceReport[];
+  best_candidate_index: number;
+  summary: string;
+}
+
+/**
+ * Envelope persisted on `run["plan"]["coherence_report"]`. The `kind`
+ * tag lets the panel branch on shape without sniffing fields.
+ */
+export type CoherenceReportEnvelope =
+  | { kind: "single"; report: CoherenceReport }
+  | { kind: "per_candidate"; report: PerCandidateCoherenceReport };
+
 export interface BuildPlanResult {
   preset: PresetKey;
   user_settings: UserSettings;
@@ -257,6 +318,9 @@ export interface BuildPlanResult {
   /** Three-axis recipe (Phase 4.6). Present when the request supplied
    *  axes-keyed context; absent for pure legacy-preset calls. */
   resolved_axes?: ResolvedAxes;
+  /** Story-critic verdict on the built cut. ``null`` / absent when the
+   *  flag is off, the LLM failed, or no resolved_axes were available. */
+  coherence_report?: CoherenceReportEnvelope | null;
 }
 
 export type FormatKey = "horizontal" | "vertical_short" | "square";

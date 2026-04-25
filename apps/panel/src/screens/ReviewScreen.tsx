@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { ExecuteResult } from "../api";
 import MascotLoading from "./MascotLoading";
+import CoherenceReportCard from "../components/CoherenceReportCard";
 import { formatRelativeTime } from "../persist";
 import type {
     BuildPlanResult,
+    CoherenceReport,
     ExecuteHistoryEntry,
     PresetBundle,
     PresetKey,
@@ -771,6 +773,61 @@ export default function ReviewScreen({
                             })()}
                         </div>
                     </div>
+                );
+            })()}
+
+            {/* Story-critic verdict — Phase 3 of story-critic.md.
+                Renders only when the build attached a coherence_report
+                (flag on AND axes resolved AND LLM succeeded). Empty-state
+                is a small muted note rather than the full card so the
+                Review screen doesn't lie about why the report is missing. */}
+            {(() => {
+                const env = plan.coherence_report;
+                if (!env) {
+                    return (
+                        <div className="coherence-empty muted">
+                            Story-critic did not run for this build (flag off,
+                            no resolved axes, or the critic call failed).
+                        </div>
+                    );
+                }
+                let report: CoherenceReport;
+                let contextLabel: string | undefined;
+                if (env.kind === "per_candidate") {
+                    const cands = env.report.candidates;
+                    if (cands.length === 0) {
+                        return (
+                            <div className="coherence-empty muted">
+                                Story-critic returned no candidates for this build.
+                            </div>
+                        );
+                    }
+                    const idx = Math.min(selectedCandidate, cands.length - 1);
+                    report = cands[idx];
+                    const isBest = idx === env.report.best_candidate_index;
+                    contextLabel = `Candidate ${idx + 1} of ${cands.length}${
+                        isBest ? " · top pick" : ""
+                    }`;
+                } else {
+                    report = env.report;
+                }
+                const handleIssueClick = (segIdx: number) => {
+                    if (segIdx < 0) return;
+                    setExpandedSegment(segIdx);
+                    // defer scroll to next paint so the row's expanded
+                    // state has a chance to mount before we scroll to it.
+                    requestAnimationFrame(() => {
+                        document
+                            .getElementById(`seg-${segIdx}`)
+                            ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                    });
+                };
+                return (
+                    <CoherenceReportCard
+                        report={report}
+                        onIssueClick={handleIssueClick}
+                        contextLabel={contextLabel}
+                    />
                 );
             })()}
 

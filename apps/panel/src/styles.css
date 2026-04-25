@@ -1876,3 +1876,221 @@ code {
     .recipe-chips { gap: 4px; }
     .recipe-arrow { display: none; }
 }
+
+/* ---------------------------------------------------------------------------
+ * Story-critic — coherence card on the Review screen (Phase 3 of
+ * Implementation/optimizaiton/story-critic.md). Verdict colours follow
+ * the same green/amber/red language used elsewhere on the panel; the
+ * sub-score bars borrow the plan-bar's dim-on-track + bright-on-fill
+ * idiom so the eye groups them with the existing analytics.
+ * ------------------------------------------------------------------------- */
+
+.coherence-empty {
+    margin: var(--s-3) 0;
+    padding: var(--s-3);
+    border: var(--border-thin);
+    border-radius: 6px;
+    text-align: center;
+    font-size: var(--fs-2);
+    background: var(--surface-1);
+}
+
+.coherence-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-3);
+}
+
+.coherence-head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--s-3);
+    flex-wrap: wrap;
+}
+
+.coherence-score-block {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+}
+
+.coherence-score {
+    font-size: 32px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.02em;
+}
+.coherence-score--ship   { color: #67d97a; }
+.coherence-score--review { color: #ffb454; }
+.coherence-score--rework { color: #ff453a; }
+
+.coherence-score-suffix {
+    font-size: var(--fs-2);
+    color: var(--text-muted, #7a7a85);
+}
+
+.coherence-verdict-block {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+}
+
+.coherence-verdict {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: var(--fs-2);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+.coherence-verdict--ship   { background: rgba(103, 217, 122, 0.18); color: #67d97a; }
+.coherence-verdict--review { background: rgba(255, 180, 84, 0.18);  color: #ffb454; }
+.coherence-verdict--rework { background: rgba(255, 69, 58, 0.18);   color: #ff453a; }
+
+.coherence-context {
+    font-size: var(--fs-2);
+}
+
+.coherence-subscores {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--s-3);
+}
+
+.coherence-subscore {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.coherence-subscore--na {
+    opacity: 0.55;
+}
+
+.coherence-subscore-label {
+    font-size: var(--fs-1);
+    color: var(--text-muted, #7a7a85);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.coherence-subscore-value {
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.coherence-subscore-bar {
+    position: relative;
+    display: block;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--surface-3);
+    overflow: hidden;
+}
+
+.coherence-subscore-bar-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: var(--accent-blue);
+    border-radius: 999px;
+}
+
+.coherence-summary {
+    margin: 0;
+    font-size: var(--fs-2);
+    color: var(--text-muted, #b3b3bb);
+    line-height: 1.45;
+}
+
+.coherence-issue-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.coherence-issue-list-empty {
+    margin: 0;
+    font-size: var(--fs-2);
+}
+
+.coherence-issue {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    width: 100%;
+    padding: var(--s-2) var(--s-3);
+    border: var(--border-thin);
+    border-radius: 6px;
+    background: var(--surface-1);
+    color: inherit;
+    font-family: inherit;
+    font-size: var(--fs-2);
+    text-align: left;
+    cursor: pointer;
+    transition: background 120ms;
+}
+.coherence-issue:hover:not(:disabled) {
+    background: var(--surface-3);
+}
+.coherence-issue:disabled {
+    cursor: default;
+    opacity: 0.7;
+}
+
+.coherence-issue-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.coherence-issue-dot--info    { background: var(--accent-blue); }
+.coherence-issue-dot--warning { background: #ffb454; }
+.coherence-issue-dot--error   { background: #ff453a; }
+
+.coherence-issue-severity {
+    font-size: var(--fs-1);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted, #7a7a85);
+    flex-shrink: 0;
+    width: 38px;
+}
+
+.coherence-issue-category {
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.coherence-issue-target {
+    font-size: var(--fs-1);
+    color: var(--text-muted, #7a7a85);
+    flex-shrink: 0;
+}
+
+.coherence-issue-message {
+    flex: 1;
+    min-width: 0;
+}
+
+.coherence-issue-suggestion {
+    color: var(--accent-blue);
+    font-size: var(--fs-2);
+    flex-shrink: 0;
+}
+
+@media (max-width: 720px) {
+    .coherence-subscores {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .coherence-issue {
+        flex-wrap: wrap;
+    }
+    .coherence-issue-message {
+        flex-basis: 100%;
+    }
+}
