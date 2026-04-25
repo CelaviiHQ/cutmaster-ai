@@ -917,70 +917,6 @@ SENSORY_MODE_SUBTITLES: dict[str, str] = {
 }
 
 
-def sensory_mode_key(preset: str, timeline_mode: str) -> str:
-    """Collapse (preset, timeline_mode) to the matrix key.
-
-    - ``short_generator`` / ``clip_hunter`` → preset key (multi-candidate
-      presets don't use timeline_mode).
-    - ``tightener`` → ``"assembled"`` (preset forces assembled mode; the
-      sensory profile tracks the state, not the preset label).
-    - anything else → ``timeline_mode`` (raw_dump / rough_cut / curated /
-      assembled).
-    """
-    if preset in ("short_generator", "clip_hunter"):
-        return preset
-    if preset == "tightener":
-        return "assembled"
-    if timeline_mode in ("raw_dump", "rough_cut", "curated", "assembled"):
-        return timeline_mode
-    return "raw_dump"  # unknown mode — safe default
-
-
-def resolve_sensory_layers(
-    *,
-    master_enabled: bool,
-    c_override: bool | None,
-    a_override: bool | None,
-    audio_override: bool | None,
-    preset: str,
-    timeline_mode: str,
-) -> tuple[bool, bool, bool]:
-    """Legacy preset-keyed resolver — delegates to the axis-keyed version.
-
-    Maps the preset to a cut intent (per the migration table) and forwards
-    to :func:`resolve_sensory_layers_by_axes`. Kept for the migration
-    window so callers that haven't been ported yet keep working
-    byte-for-byte; deleted in Phase 7 once nothing reaches it.
-
-    Returns ``(layer_c_enabled, layer_a_enabled, layer_audio_enabled)``.
-    """
-    cut_intent = _LEGACY_PRESET_TO_CUT_INTENT.get(preset, "narrative")
-    # Tightener forces assembled — the legacy mode key has always done
-    # this collapse, the new function expects the post-collapse mode.
-    effective_mode = "assembled" if preset == "tightener" else timeline_mode
-    return resolve_sensory_layers_by_axes(
-        master_enabled=master_enabled,
-        c_override=c_override,
-        a_override=a_override,
-        audio_override=audio_override,
-        cut_intent=cut_intent,  # type: ignore[arg-type]
-        timeline_mode=effective_mode,  # type: ignore[arg-type]
-    )
-
-
-# Migration table: legacy preset key → cut intent. Content-type presets
-# fall through to ``"narrative"`` because the (narrative, mode) axis cell
-# resolves to the same SENSORY_MATRIX row the legacy preset-keyed lookup
-# returned. Mirrors ``_PRESET_TO_CUT_INTENT`` in
-# ``http/routes/cutmaster/build.py`` — kept inline here so this module
-# has no upward dependency on the HTTP layer.
-_LEGACY_PRESET_TO_CUT_INTENT: dict[str, str] = {
-    "tightener": "surgical_tighten",
-    "clip_hunter": "multi_clip",
-    "short_generator": "assembled_short",
-}
-
-
 def axes_to_sensory_key(cut_intent: str, timeline_mode: str) -> str:
     """Collapse ``(cut_intent, timeline_mode)`` onto the SENSORY_MATRIX row.
 
@@ -996,8 +932,8 @@ def axes_to_sensory_key(cut_intent: str, timeline_mode: str) -> str:
                                             divergence per design doc)
     - unknown intents / modes             → ``raw_dump`` row (safe default)
 
-    The mapping is data-only — no behaviour change vs. the legacy
-    ``sensory_mode_key`` once the preset → cut intent step has happened.
+    The mapping is data-only — keying off ``(cut_intent, timeline_mode)``
+    means a preset's name never enters the resolution path.
     """
     if cut_intent == "multi_clip":
         return "clip_hunter"
@@ -1031,9 +967,7 @@ def resolve_sensory_layers_by_axes(
 
     The activation data still lives in :data:`SENSORY_MATRIX` keyed by the
     six pre-existing rows — this function just resolves the row through
-    :func:`axes_to_sensory_key`. Phase 7 deletes the legacy
-    :func:`resolve_sensory_layers` and ``sensory_mode_key`` shims; this
-    becomes the only path.
+    :func:`axes_to_sensory_key`.
 
     Returns ``(layer_c_enabled, layer_a_enabled, layer_audio_enabled)``.
     """

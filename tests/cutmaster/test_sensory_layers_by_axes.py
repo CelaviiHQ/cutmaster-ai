@@ -1,12 +1,14 @@
-"""Tests for the axis-keyed sensory-layer resolver (Phase 6.1 + 6.2).
+"""Tests for the axis-keyed sensory-layer resolver.
 
-Two layers of coverage:
+Three layers of coverage:
 
-- ``axes_to_sensory_key`` collapses every (cut_intent, timeline_mode) pair
-  onto the existing 6 SENSORY_MATRIX rows per §5 of the design doc.
-- The legacy ``resolve_sensory_layers(preset=, timeline_mode=)`` delegates
-  to ``resolve_sensory_layers_by_axes`` and returns byte-identical results
-  for every (preset, mode) pair the production code passes today.
+- ``axes_to_sensory_key`` collapses every ``(cut_intent, timeline_mode)``
+  pair onto the existing 6 ``SENSORY_MATRIX`` rows per §5 of the design
+  doc (full 5×4 grid).
+- ``resolve_sensory_layers_by_axes`` honours override precedence + master
+  toggle on representative rows.
+- The full Cartesian sweep (108 cases) pins the resolver's truth table
+  over the entire state space.
 """
 
 from __future__ import annotations
@@ -16,9 +18,7 @@ import pytest
 from cutmaster_ai.cutmaster.data.presets import (
     SENSORY_MATRIX,
     axes_to_sensory_key,
-    resolve_sensory_layers,
     resolve_sensory_layers_by_axes,
-    sensory_mode_key,
 )
 
 # ---------------------------------------------------------------- axes_to_key
@@ -144,66 +144,6 @@ def test_by_axes_short_generator_row_via_assembled_short():
         timeline_mode="raw_dump",
     )
     assert layers == (True, True, True)
-
-
-# ---------------------------------------------------- legacy-shim parity loop
-
-
-# Every (preset, timeline_mode) pair the legacy shim sees in production.
-# Pairing this list against the by-axes path proves the migration is
-# byte-identical wherever the legacy function is still called.
-_LEGACY_CALL_SHAPES = [
-    # Content-type presets across all four modes
-    ("vlog", "raw_dump"),
-    ("vlog", "rough_cut"),
-    ("vlog", "curated"),
-    ("vlog", "assembled"),
-    ("interview", "raw_dump"),
-    ("wedding", "rough_cut"),
-    ("podcast", "curated"),
-    ("presentation", "assembled"),
-    ("tutorial", "raw_dump"),
-    ("reaction", "rough_cut"),
-    ("product_demo", "curated"),
-    # Cut-intent presets — timeline_mode is overridden to assembled for
-    # tightener (preserved by the shim); ignored entirely for clip_hunter
-    # / short_generator (their key collapse skips mode).
-    ("tightener", "raw_dump"),
-    ("tightener", "assembled"),
-    ("clip_hunter", "raw_dump"),
-    ("clip_hunter", "rough_cut"),
-    ("short_generator", "raw_dump"),
-    ("short_generator", "assembled"),
-]
-
-
-@pytest.mark.parametrize("preset,timeline_mode", _LEGACY_CALL_SHAPES)
-@pytest.mark.parametrize("master", [True, False])
-def test_legacy_shim_matches_pre_phase6_behaviour(preset, timeline_mode, master):
-    """Legacy shim returns the same row that the pre-Phase-6 ``sensory_mode_key``
-    + matrix lookup would have produced — proves the delegation is byte-clean."""
-    expected_key = sensory_mode_key(preset, timeline_mode)
-    expected_row = SENSORY_MATRIX[expected_key]
-
-    def _expected(level):
-        if not master:
-            return False
-        return level == "default"
-
-    expected = (
-        _expected(expected_row.c),
-        _expected(expected_row.a),
-        _expected(expected_row.audio),
-    )
-    actual = resolve_sensory_layers(
-        master_enabled=master,
-        c_override=None,
-        a_override=None,
-        audio_override=None,
-        preset=preset,
-        timeline_mode=timeline_mode,
-    )
-    assert actual == expected
 
 
 # --------------------------------------------------------- full Cartesian sweep
