@@ -602,6 +602,7 @@ export default function App() {
                         setSavedAt(Date.now());
                     }}
                     onCutNameChange={setCutName}
+                    onPresetChange={setPreset}
                 />
             )}
         </div>

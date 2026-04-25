@@ -694,7 +694,76 @@ code {
     font-size: var(--fs-2);
 }
 
-/* ── Plan bar — proportional segment strip with marker pins ───────── */
+/* ── Cut card — primary header that merges Plan summary + bar ─────── */
+.cut-card { padding-top: var(--s-3); }
+.cut-head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--s-3);
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+}
+.cut-stats {
+    color: var(--text-secondary);
+    font-size: var(--fs-2);
+    font-variant-numeric: tabular-nums;
+}
+.cut-reasoning {
+    margin: 0 0 var(--s-2);
+    font-size: var(--fs-2);
+    line-height: 1.45;
+}
+.cut-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    margin-top: var(--s-2);
+    flex-wrap: wrap;
+}
+
+/* ── Plan bar — proportional segment strip + scrubber + marker pins ── */
+.plan-bar-wrap {
+    position: relative;
+    padding-top: 22px; /* space for always-visible marker labels above */
+}
+.plan-bar-labels {
+    position: relative;
+    height: 22px;
+    margin-bottom: 2px;
+}
+.plan-bar-marker-label {
+    position: absolute;
+    top: 0;
+    transform: translateX(-50%);
+    background: transparent;
+    border: 0;
+    padding: 0 4px;
+    font-size: var(--fs-1);
+    font-weight: 500;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    cursor: pointer;
+    line-height: 1.2;
+    max-width: 140px;
+}
+.plan-bar-marker-label::before {
+    content: "📌 ";
+    margin-right: 2px;
+}
+.plan-bar-marker-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: inline-block;
+    max-width: 120px;
+    vertical-align: bottom;
+}
+.plan-bar-marker-label:hover { filter: brightness(1.25); }
+.plan-bar-marker-label:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+}
+
 .plan-bar {
     position: relative;
     display: flex;
@@ -703,7 +772,11 @@ code {
     border-radius: var(--radius-md);
     overflow: visible;
     background: var(--surface-3);
-    margin-top: var(--s-2);
+    cursor: crosshair;
+}
+.plan-bar:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 2px;
 }
 .plan-bar-seg {
     position: relative;
@@ -736,45 +809,82 @@ code {
     align-self: flex-end;
     opacity: 0.78;
 }
+/* Marker leader-line that drops through the bar from the label above */
 .plan-bar-pin {
     position: absolute;
-    top: -10px;
+    top: -4px;
+    bottom: -4px;
     transform: translateX(-50%);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    pointer-events: auto;
-    z-index: 2;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.32);
+    pointer-events: none;
+    z-index: 1;
 }
 .plan-bar-pin-dot {
+    position: absolute;
+    top: -4px;
+    left: 50%;
+    transform: translateX(-50%);
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background: var(--accent-blue);
-    box-shadow: 0 0 0 2px var(--surface-1), 0 0 8px rgba(74, 158, 255, 0.6);
 }
-.plan-bar-pin::after {
-    content: "";
-    width: 1px;
-    height: 56px;
-    background: rgba(255, 255, 255, 0.35);
-    margin-top: 2px;
-}
-.plan-bar-pin-label {
+
+/* Hover scrubber — thin guide line + chip with source TC under cursor */
+.plan-bar-hover {
     position: absolute;
-    top: -22px;
+    top: 0;
+    bottom: 0;
+    transform: translateX(-50%);
+    pointer-events: none;
+    z-index: 3;
+}
+.plan-bar-hover-line {
+    position: absolute;
+    top: -4px;
+    bottom: -4px;
+    left: 50%;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.85);
+}
+.plan-bar-hover-chip {
+    position: absolute;
+    top: -28px;
+    left: 50%;
+    transform: translateX(-50%);
     background: var(--surface-2);
     border: var(--border-thin);
     border-radius: var(--radius-sm);
-    padding: 1px 6px;
+    padding: 2px 6px;
+    font-family: var(--font-mono);
     font-size: var(--fs-1);
-    color: var(--text-secondary);
+    color: var(--text-primary);
     white-space: nowrap;
-    opacity: 0;
-    transition: opacity 120ms;
-    pointer-events: none;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
 }
-.plan-bar-pin:hover .plan-bar-pin-label { opacity: 1; }
+.plan-bar-playhead {
+    position: absolute;
+    top: -8px;
+    bottom: -8px;
+    transform: translateX(-50%);
+    width: 2px;
+    background: var(--accent-blue);
+    box-shadow: 0 0 8px rgba(74, 158, 255, 0.8);
+    pointer-events: none;
+    z-index: 4;
+}
+.plan-bar-playhead::before {
+    content: "";
+    position: absolute;
+    top: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 10px;
+    height: 10px;
+    background: var(--accent-blue);
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(74, 158, 255, 0.9);
+}
 
 /* ── Segment cards — full-quote, no truncation, role-coded stripe ──── */
 .seg-cards {
@@ -808,14 +918,35 @@ code {
 }
 .seg-badge {
     display: inline-block;
-    padding: 1px 8px;
-    border: 1px solid;
+    padding: 2px 9px;
+    border: 1px solid transparent;
     border-radius: 999px;
     font-size: var(--fs-1);
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
 }
+.seg-badge--filled {
+    /* Color comes inline; this just controls typography contrast */
+    border: 0;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+/* Left-side disclosure caret on a segment card — replaces the right-aligned
+   "Show transcript" ghost button. */
+.seg-card-disc {
+    background: transparent;
+    border: 0;
+    padding: 0;
+    width: 18px;
+    height: 18px;
+    color: var(--text-tertiary);
+    font-size: var(--fs-2);
+    cursor: pointer;
+    transition: transform 120ms, color 120ms;
+    line-height: 1;
+}
+.seg-card-disc:hover { color: var(--text-primary); }
+.seg-card-disc.is-open { transform: rotate(90deg); color: var(--accent-blue); }
 .seg-card-tc {
     font-family: var(--font-mono);
     font-size: var(--fs-2);
@@ -865,6 +996,273 @@ code {
 }
 .marker-name { color: var(--text-primary); font-size: var(--fs-2); }
 .marker-note { font-size: var(--fs-2); }
+@keyframes marker-flash {
+    0%   { background: rgba(74, 158, 255, 0.28); }
+    100% { background: transparent; }
+}
+.marker-row--flash {
+    animation: marker-flash 1.2s ease-out;
+    border-radius: var(--radius-sm);
+}
+
+/* ── Tune the cut — slider + value chip ──────────────────────────── */
+.tune-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+.tune-chip {
+    font-family: var(--font-mono);
+    font-size: var(--fs-2);
+    color: var(--text-primary);
+    background: var(--surface-3);
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+}
+.tune-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    background: var(--surface-3);
+    border-radius: 999px;
+    outline: none;
+    padding: 0;
+}
+.tune-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent-blue);
+    cursor: pointer;
+    border: 2px solid var(--surface-1);
+    box-shadow: 0 0 6px rgba(74, 158, 255, 0.6);
+}
+.tune-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent-blue);
+    cursor: pointer;
+    border: 2px solid var(--surface-1);
+}
+
+/* "Currently using" anchor row */
+.tune-anchor {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    padding: 8px 10px;
+    background: var(--surface-3);
+    border-left: 2px solid var(--accent-blue);
+    border-radius: var(--radius-sm);
+    flex-wrap: wrap;
+}
+.tune-anchor-chip {
+    font-family: var(--font-mono);
+    font-size: var(--fs-2);
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+/* Quick-target preset chips next to the slider */
+.tune-presets {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+.tune-presets .chip {
+    margin: 0;
+    padding: 3px 10px;
+    font-size: var(--fs-1);
+    background: var(--surface-3);
+    border: var(--border-thin);
+    color: var(--text-secondary);
+}
+.tune-presets .chip.on {
+    background: var(--accent-blue-tint);
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+}
+
+/* Hook candidates as cards with radio + strength bar + transcript context */
+.hook-cards {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-2);
+}
+.hook-card {
+    background: var(--surface-2);
+    border: var(--border-thin);
+    border-radius: var(--radius-md);
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: border-color 120ms, background 120ms;
+}
+.hook-card:hover { border-color: var(--accent-blue-dim, var(--accent-blue)); }
+.hook-card:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 2px;
+}
+.hook-card--current {
+    border-left: 2px solid var(--text-tertiary);
+    padding-left: 11px;
+}
+.hook-card--selected {
+    background: var(--accent-blue-tint);
+    border-color: var(--accent-blue);
+}
+.hook-card-head {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    flex-wrap: wrap;
+}
+.hook-radio {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid var(--text-tertiary);
+    flex-shrink: 0;
+    transition: border-color 120ms, background 120ms;
+}
+.hook-radio.is-on {
+    border-color: var(--accent-blue);
+    background: radial-gradient(circle, var(--accent-blue) 45%, transparent 48%);
+}
+.hook-card-title {
+    font-size: var(--fs-2);
+    color: var(--text-primary);
+    font-weight: 500;
+    flex: 1;
+    min-width: 0;
+}
+.hook-card-badge {
+    font-size: var(--fs-1);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-tertiary);
+    border: 1px solid var(--text-tertiary);
+    border-radius: 999px;
+    padding: 1px 6px;
+}
+.hook-card-meta {
+    margin: 4px 0 6px 22px;
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
+}
+.hook-context {
+    margin: 0 0 0 22px;
+    font-size: var(--fs-2);
+    line-height: 1.5;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+.hook-context strong {
+    color: var(--text-primary);
+    font-style: normal;
+    font-weight: 600;
+    background: rgba(74, 158, 255, 0.12);
+    padding: 0 2px;
+    border-radius: 2px;
+}
+
+/* Strength bar — 5 ticks, lit by tier */
+.hook-strength {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+.hook-strength-bar {
+    display: inline-flex;
+    gap: 2px;
+}
+.hook-strength-tick {
+    width: 4px;
+    height: 12px;
+    background: var(--surface-3);
+    border-radius: 1px;
+}
+.hook-strength-tick.is-on { background: var(--accent-blue); }
+.hook-strength-label {
+    font-size: var(--fs-1);
+    text-transform: lowercase;
+    letter-spacing: 0.02em;
+    min-width: 70px;
+    text-align: right;
+}
+
+/* Will-change diff card */
+.will-change {
+    margin-top: 16px;
+    padding: 10px 12px;
+    background: rgba(255, 159, 10, 0.06);
+    border: 1px solid rgba(255, 159, 10, 0.35);
+    border-radius: var(--radius-md);
+}
+.will-change-head {
+    font-size: var(--fs-1);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--warn, #ff9f0a);
+    margin-bottom: 6px;
+    font-weight: 600;
+}
+.will-change-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.will-change-list li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: var(--fs-2);
+    color: var(--text-primary);
+}
+.will-change-key {
+    display: inline-block;
+    min-width: 60px;
+    color: var(--text-tertiary);
+    font-size: var(--fs-1);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+/* ── Build action split — primary + collision-toggle secondary ───── */
+.build-split {
+    display: inline-flex;
+    align-items: stretch;
+    gap: 0;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+.build-split > button:first-child {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+.build-split-toggle {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-left: 0;
+    font-size: var(--fs-2);
+}
+.build-collision-hint {
+    margin: var(--s-2) 0 0;
+    font-size: var(--fs-2);
+    text-align: right;
+}
 
 /* v3-5.5 — Responsive breakpoint for docked / narrow panels */
 @media (max-width: 480px) {

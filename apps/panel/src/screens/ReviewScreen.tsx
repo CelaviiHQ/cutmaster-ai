@@ -56,6 +56,26 @@ const MARKER_HEX: Record<string, string> = {
 const markerColor = (name: string): string =>
     MARKER_HEX[name.trim().toLowerCase()] || "#4a9eff";
 
+// Map an engagement score (0..1) to a human strength label + segment count
+// for the visual bar. Designers don't read "0.82" as "good".
+const STRENGTH_TIERS = [
+    { min: 0.85, label: "very strong", segs: 5 },
+    { min: 0.7,  label: "strong",      segs: 4 },
+    { min: 0.55, label: "ok",          segs: 3 },
+    { min: 0.4,  label: "weak",        segs: 2 },
+    { min: 0,    label: "fragile",     segs: 1 },
+];
+const strengthOf = (score: number) =>
+    STRENGTH_TIERS.find((t) => score >= t.min) ?? STRENGTH_TIERS[STRENGTH_TIERS.length - 1];
+
+// Quick-target presets shown as chips next to the slider.
+const TARGET_PRESETS: { label: string; seconds: number }[] = [
+    { label: "TikTok",  seconds: 30  },
+    { label: "Reel",    seconds: 60  },
+    { label: "Default", seconds: 180 },
+    { label: "Long",    seconds: 300 },
+];
+
 // Short-form label so always-visible marker pins don't overflow the bar.
 const shortMarkerLabel = (name: string): string => {
     // Strip leading "B-Roll to cover cut:" / "Archive insert:" prefixes.
@@ -96,6 +116,10 @@ interface Props {
     // Updates the cutName in the app header — used by the Rebuild action
     // in the execute_history panel to prefill a unique name.
     onCutNameChange?: (name: string) => void;
+    // Updates the App-level preset when Review has to resolve "auto" itself
+    // (resume-direct-to-Review skips Configure's detect step). Optional so
+    // the screen still works in isolation.
+    onPresetChange?: (p: PresetKey) => void;
 }
 
 export default function ReviewScreen({
@@ -110,6 +134,7 @@ export default function ReviewScreen({
     cutName,
     onBuildSuccess,
     onCutNameChange,
+    onPresetChange,
 }: Props) {
     const [analysis, setAnalysis] = useState<StoryAnalysis | null>(null);
     const [regenerating, setRegenerating] = useState(false);
@@ -233,22 +258,34 @@ export default function ReviewScreen({
             setLoading(true);
             setErr(null);
             try {
+                // Resume-direct-to-Review can carry preset="auto" (the
+                // sentinel for "run the cascade") because Configure's
+                // detect step never ran. /build-plan only knows resolved
+                // preset keys, so resolve it here first — mirrors the
+                // ConfigureScreen mount effect.
+                let effectivePreset: PresetKey = preset;
+                if (preset === "auto") {
+                    const r = await api.detectPreset(runId);
+                    if (cancelled) return;
+                    effectivePreset = r.preset;
+                    onPresetChange?.(r.preset);
+                }
                 // Phase 5.8 — send ``content_type`` when the preset is a
                 // content-type key; legacy cut-intent presets (tightener
                 // / clip_hunter / short_generator) still rely on the
                 // backend's auto-remapping.
-                const contentType = CONTENT_TYPE_PRESETS_REVIEW.has(preset)
-                    ? preset
+                const contentType = CONTENT_TYPE_PRESETS_REVIEW.has(effectivePreset)
+                    ? effectivePreset
                     : null;
                 const [p, presetList, cachedThemes] = await Promise.all([
-                    api.buildPlan(runId, preset, settings, contentType),
+                    api.buildPlan(runId, effectivePreset, settings, contentType),
                     api.listPresets().catch(() => ({ presets: [] })),
                     api.themesCache(runId).catch(() => null),
                 ]);
                 if (cancelled) return;
                 setPlan(p);
                 setBundle(
-                    presetList.presets.find((b) => b.key === preset) ?? null,
+                    presetList.presets.find((b) => b.key === effectivePreset) ?? null,
                 );
                 if (cachedThemes?.analysis) {
                     setAnalysis(cachedThemes.analysis);
@@ -269,10 +306,19 @@ export default function ReviewScreen({
         setRegenerating(true);
         setErr(null);
         try {
-            const contentType = CONTENT_TYPE_PRESETS_REVIEW.has(preset)
-                ? preset
+            // Same auto-resolution guard as the mount effect — a regenerate
+            // call shouldn't 400 just because the seed preset never got
+            // promoted past the "auto" sentinel.
+            let effectivePreset: PresetKey = preset;
+            if (preset === "auto") {
+                const r = await api.detectPreset(runId);
+                effectivePreset = r.preset;
+                onPresetChange?.(r.preset);
+            }
+            const contentType = CONTENT_TYPE_PRESETS_REVIEW.has(effectivePreset)
+                ? effectivePreset
                 : null;
-            const p = await api.buildPlan(runId, preset, next, contentType);
+            const p = await api.buildPlan(runId, effectivePreset, next, contentType);
             setPlan(p);
             onSettingsChange?.(next);
             // Reset any build attempt tied to the prior plan.
@@ -313,11 +359,6 @@ export default function ReviewScreen({
 
     if (!plan) return null;
 
-    const totalS = plan.director.selected_clips.reduce(
-        (s, c) => s + (c.end_s - c.start_s),
-        0,
-    );
-
     const appliedExcludes = plan.user_settings.exclude_categories ?? [];
     const appliedFocus = plan.user_settings.custom_focus ?? null;
     const clipHunter = plan.clip_hunter;
@@ -334,172 +375,77 @@ export default function ReviewScreen({
 
     return (
         <div>
-            <div className="card">
-                <h2>Plan summary</h2>
-                <p>
-                    <strong>{plan.director.selected_clips.length}</strong> segments
-                    &nbsp;·&nbsp; total <strong>{tc(totalS)}</strong>
-                    <span className="muted"> ({totalS.toFixed(1)}s)</span>
-                    &nbsp;·&nbsp; {plan.markers.markers.length} markers
-                </p>
-                {plan.director.reasoning && (
-                    <p className="muted">{plan.director.reasoning}</p>
-                )}
-                <p className="muted">
-                    <button
-                        type="button"
-                        className="link-button"
-                        onClick={openPrompt}
-                        title="Show the prompt that was sent to the Director model for this run"
-                    >
-                        View Director prompt
-                    </button>
-                </p>
-                {clipHunter && (
-                    <p className="muted">
-                        {clipHunter.candidates.length} clip candidate(s) @ target{" "}
-                        <code>{clipHunter.target_clip_length_s.toFixed(0)}s</code>
-                        &nbsp;from a {(clipHunter.source_duration_s / 60).toFixed(1)}-min source.
-                    </p>
-                )}
-                {clipHunter?.duration_warning && (
-                    <p className="muted" style={{ color: "var(--warn)" }}>
-                        {clipHunter.duration_warning}
-                    </p>
-                )}
-                {plan.timeline_state && (
-                    <p className="muted">
-                        {plan.timeline_state.mode === "curated" && (
-                            <>
-                                <strong>Curated</strong> — used all{" "}
-                                <code>{plan.timeline_state.total_takes}</code> takes,
-                                arranged in order{" "}
-                                <code>[{plan.timeline_state.takes_used.join(", ")}]</code>.
-                            </>
-                        )}
-                        {plan.timeline_state.mode === "rough_cut" && (
-                            <>
-                                <strong>Rough cut</strong> — detected{" "}
-                                <code>{plan.timeline_state.groups?.length ?? 0}</code>{" "}
-                                group(s); kept{" "}
-                                <code>{plan.timeline_state.takes_used.length}</code>{" "}
-                                winner(s) from{" "}
-                                <code>{plan.timeline_state.total_takes}</code> candidate
-                                take(s).
-                                {plan.timeline_state.all_singletons && (
-                                    <>
-                                        {" "}No alternates detected — treated as
-                                        Curated.
-                                    </>
-                                )}
-                            </>
-                        )}
-                    </p>
-                )}
-                {plan.tightener && (
-                    <p className="muted">
-                        <strong>
-                            {(plan.tightener.percent_tighter * 100).toFixed(1)}% tighter
-                        </strong>
-                        &nbsp;— kept <code>{plan.tightener.kept_words}</code> of{" "}
-                        <code>{plan.tightener.original_words}</code> words&nbsp;
-                        (<code>{plan.tightener.segment_total_s.toFixed(1)}s</code> out of{" "}
-                        <code>{plan.tightener.take_total_s.toFixed(1)}s</code> take time).
-                    </p>
-                )}
-                {(excludeLabels.length > 0 || appliedFocus) && (
-                    <p className="muted" style={{ marginTop: 8 }}>
-                        {excludeLabels.length > 0 && (
-                            <>
-                                Applied exclusions ({excludeLabels.length}):{" "}
-                                {excludeLabels.join(", ")}
-                            </>
-                        )}
-                        {excludeLabels.length > 0 && appliedFocus && " · "}
-                        {appliedFocus && (
-                            <>Focus: &ldquo;{appliedFocus}&rdquo;</>
-                        )}
-                    </p>
-                )}
-            </div>
-
-            {!clipHunter && analysis && (
+            {/* "Plan details" — kept for clipHunter / timeline_state /
+                tightener / exclusions metadata that doesn't belong on the
+                primary cut card. Renders only when there's something to show. */}
+            {(clipHunter || plan.timeline_state || plan.tightener ||
+              excludeLabels.length > 0 || appliedFocus) && (
                 <details className="card card--advanced">
                     <summary>
-                        <span>Regenerate plan</span>
+                        <span>Plan details</span>
                         <span className="muted" style={{ marginLeft: 8, fontSize: "var(--fs-2)" }}>
-                            — nudge the hook or target length, get a fresh cut in ~5s
+                            — preset settings, exclusions, take selection
                         </span>
                     </summary>
-
-                    <div style={{ marginTop: 12 }}>
-                        <label style={{ display: "block", marginBottom: 6 }}>
-                            Target length (seconds)
-                        </label>
-                        <input
-                            type="number"
-                            min={15}
-                            step={5}
-                            defaultValue={settings.target_length_s ?? 180}
-                            style={{ width: 120 }}
-                            onBlur={(e) => {
-                                const next = Number(e.target.value) || null;
-                                if (next === settings.target_length_s) return;
-                                onSettingsChange?.({
-                                    ...settings,
-                                    target_length_s: next,
-                                });
-                            }}
-                        />
-                        <p className="muted" style={{ marginTop: 4 }}>
-                            Director enforces a 75–125 % window around this.
-                        </p>
-                    </div>
-
-                    <div style={{ marginTop: 12 }}>
-                        <h3 style={{ margin: "0 0 6px" }}>Hook</h3>
-                        <p className="muted" style={{ marginTop: 0 }}>
-                            Click to swap the opening beat. Clear to let the Director pick.
-                        </p>
-                        {analysis.hook_candidates.map((h, i) => {
-                            const selected =
-                                settings.selected_hook_s != null &&
-                                Math.abs(settings.selected_hook_s - h.start_s) < 0.01;
-                            return (
-                                <div
-                                    key={i}
-                                    className={`seg hook-row ${selected ? "hook-row--selected" : ""}`}
-                                    role="button"
-                                    tabIndex={0}
-                                    onClick={() =>
-                                        onSettingsChange?.({
-                                            ...settings,
-                                            selected_hook_s: selected ? null : h.start_s,
-                                        })
-                                    }
-                                >
-                                    <span className="seg-time">{h.start_s.toFixed(1)}s</span>
-                                    <span className="seg-time">
-                                        {(h.engagement_score * 100).toFixed(0)}%
-                                    </span>
-                                    <span className="seg-reason">
-                                        {selected ? "● " : ""}{h.text}
-                                    </span>
-                                </div>
-                            );
-                        })}
-                    </div>
-
-                    <div className="row" style={{ marginTop: 12 }}>
-                        <button
-                            disabled={regenerating}
-                            onClick={() => regenerate(settings)}
-                        >
-                            {regenerating ? "Regenerating…" : "Regenerate plan"}
-                        </button>
-                        <span className="muted" style={{ fontSize: "var(--fs-2)" }}>
-                            Reuses the scrubbed transcript — no re-transcription.
-                        </span>
+                    <div className="card-body">
+                        {clipHunter && (
+                            <p className="muted">
+                                {clipHunter.candidates.length} clip candidate(s) @ target{" "}
+                                <code>{clipHunter.target_clip_length_s.toFixed(0)}s</code>
+                                &nbsp;from a {(clipHunter.source_duration_s / 60).toFixed(1)}-min source.
+                            </p>
+                        )}
+                        {clipHunter?.duration_warning && (
+                            <p className="muted" style={{ color: "var(--warn)" }}>
+                                {clipHunter.duration_warning}
+                            </p>
+                        )}
+                        {plan.timeline_state && (
+                            <p className="muted">
+                                {plan.timeline_state.mode === "curated" && (
+                                    <>
+                                        <strong>Curated</strong> — used all{" "}
+                                        <code>{plan.timeline_state.total_takes}</code> takes,
+                                        arranged in order{" "}
+                                        <code>[{plan.timeline_state.takes_used.join(", ")}]</code>.
+                                    </>
+                                )}
+                                {plan.timeline_state.mode === "rough_cut" && (
+                                    <>
+                                        <strong>Rough cut</strong> — detected{" "}
+                                        <code>{plan.timeline_state.groups?.length ?? 0}</code>{" "}
+                                        group(s); kept{" "}
+                                        <code>{plan.timeline_state.takes_used.length}</code>{" "}
+                                        winner(s) from{" "}
+                                        <code>{plan.timeline_state.total_takes}</code> candidate
+                                        take(s).
+                                        {plan.timeline_state.all_singletons && (
+                                            <> No alternates detected — treated as Curated.</>
+                                        )}
+                                    </>
+                                )}
+                            </p>
+                        )}
+                        {plan.tightener && (
+                            <p className="muted">
+                                <strong>
+                                    {(plan.tightener.percent_tighter * 100).toFixed(1)}% tighter
+                                </strong>
+                                &nbsp;— kept <code>{plan.tightener.kept_words}</code> of{" "}
+                                <code>{plan.tightener.original_words}</code> words&nbsp;
+                                (<code>{plan.tightener.segment_total_s.toFixed(1)}s</code> out of{" "}
+                                <code>{plan.tightener.take_total_s.toFixed(1)}s</code> take time).
+                            </p>
+                        )}
+                        {(excludeLabels.length > 0 || appliedFocus) && (
+                            <p className="muted">
+                                {excludeLabels.length > 0 && (
+                                    <>Applied exclusions ({excludeLabels.length}): {excludeLabels.join(", ")}</>
+                                )}
+                                {excludeLabels.length > 0 && appliedFocus && " · "}
+                                {appliedFocus && <>Focus: &ldquo;{appliedFocus}&rdquo;</>}
+                            </p>
+                        )}
                     </div>
                 </details>
             )}
@@ -627,9 +573,9 @@ export default function ReviewScreen({
                     : plan.director.selected_clips;
                 const total = segs.reduce((a, c) => a + (c.end_s - c.start_s), 0);
                 const markers = plan.markers.markers;
-                // Map a marker (in source seconds) onto its position along the
-                // assembled cut by walking the segment list.
-                const markerCutOffset = (atS: number): number | null => {
+                // Map a source-time second onto its offset along the assembled
+                // cut by walking the segment list.
+                const sourceToCutOffset = (atS: number): number | null => {
                     let acc = 0;
                     for (const seg of segs) {
                         const dur = seg.end_s - seg.start_s;
@@ -640,52 +586,170 @@ export default function ReviewScreen({
                     }
                     return null;
                 };
+                // Inverse — given a cut offset (seconds along assembled), find
+                // the source second of that frame. Powers the scrubber tooltip.
+                const cutOffsetToSource = (offS: number): { src: number; segIndex: number } | null => {
+                    let acc = 0;
+                    for (let i = 0; i < segs.length; i++) {
+                        const seg = segs[i];
+                        const dur = seg.end_s - seg.start_s;
+                        if (offS <= acc + dur) {
+                            return { src: seg.start_s + (offS - acc), segIndex: i };
+                        }
+                        acc += dur;
+                    }
+                    return null;
+                };
+                const onBarMove = (e: React.MouseEvent<HTMLDivElement>) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                    setHoverPct(pct);
+                };
+                const onBarClick = (e: React.MouseEvent<HTMLDivElement>) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                    setPlayheadPct(pct);
+                };
+                const hoverTip =
+                    hoverPct !== null && total > 0 ? cutOffsetToSource(hoverPct * total) : null;
                 return (
-                    <div className="card">
-                        <h2>The cut</h2>
-                        <div className="plan-bar" role="img" aria-label={`Proportional view of ${segs.length} segments`}>
-                            {segs.map((c, i) => {
-                                const isHook = !clipHunter && i === plan.director.hook_index;
-                                const role = "arc_role" in c ? (c as { arc_role?: string | null }).arc_role : null;
-                                const dur = c.end_s - c.start_s;
-                                const label = isHook ? "HOOK" : (role || "");
-                                return (
-                                    <div
-                                        key={i}
-                                        className="plan-bar-seg"
-                                        style={{
-                                            flexGrow: dur,
-                                            background: roleColor(role, isHook),
-                                        }}
-                                        title={`${label || `Segment ${i + 1}`} · ${dur.toFixed(1)}s\n${c.reason}`}
-                                        onClick={() => setExpandedSegment(expandedSegment === i ? null : i)}
-                                    >
-                                        <span className="plan-bar-label">{label}</span>
-                                        <span className="plan-bar-dur">{dur.toFixed(0)}s</span>
-                                    </div>
-                                );
-                            })}
-                            {markers.map((m, i) => {
-                                const off = markerCutOffset(m.at_s);
-                                if (off === null || total === 0) return null;
-                                const pct = (off / total) * 100;
-                                return (
-                                    <div
-                                        key={i}
-                                        className="plan-bar-pin"
-                                        style={{ left: `${pct}%` }}
-                                        title={`📌 ${m.name} — ${m.note}`}
-                                    >
-                                        <span className="plan-bar-pin-dot" />
-                                        <span className="plan-bar-pin-label">📌 {m.name}</span>
-                                    </div>
-                                );
-                            })}
+                    <div className="card card--primary cut-card">
+                        <div className="cut-head">
+                            <h2 style={{ marginBottom: 0 }}>The cut</h2>
+                            <span className="cut-stats">
+                                {segs.length} segments · {tc(total)}
+                                <span className="muted"> ({total.toFixed(1)}s)</span>
+                                {markers.length > 0 && <> · {markers.length} markers</>}
+                            </span>
                         </div>
-                        <p className="muted" style={{ marginTop: 8, fontSize: "var(--fs-2)" }}>
-                            {segs.length} segments · {tc(total)} total
-                            {markers.length > 0 && <> · {markers.length} marker{markers.length === 1 ? "" : "s"} pinned</>}
-                        </p>
+                        {plan.director.reasoning && (
+                            <p className="muted cut-reasoning">{plan.director.reasoning}</p>
+                        )}
+
+                        <div className="plan-bar-wrap">
+                            {/* Always-visible marker labels above the bar */}
+                            <div className="plan-bar-labels">
+                                {markers.map((m, i) => {
+                                    const off = sourceToCutOffset(m.at_s);
+                                    if (off === null || total === 0) return null;
+                                    const pct = (off / total) * 100;
+                                    return (
+                                        <button
+                                            key={i}
+                                            type="button"
+                                            className="plan-bar-marker-label"
+                                            style={{ left: `${pct}%`, color: markerColor(m.color) }}
+                                            title={`${m.name} — ${m.note}`}
+                                            onClick={() => {
+                                                const el = document.getElementById(`marker-${i}`);
+                                                el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                                                el?.classList.add("marker-row--flash");
+                                                setTimeout(
+                                                    () => el?.classList.remove("marker-row--flash"),
+                                                    1200,
+                                                );
+                                            }}
+                                        >
+                                            <span className="plan-bar-marker-text">
+                                                {shortMarkerLabel(m.name)}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            <div
+                                className="plan-bar"
+                                role="slider"
+                                aria-label={`Cut scrubber, ${segs.length} segments`}
+                                aria-valuemin={0}
+                                aria-valuemax={Math.round(total)}
+                                aria-valuenow={Math.round((playheadPct ?? 0) * total)}
+                                tabIndex={0}
+                                onMouseMove={onBarMove}
+                                onMouseLeave={() => setHoverPct(null)}
+                                onClick={onBarClick}
+                            >
+                                {segs.map((c, i) => {
+                                    const isHook = !clipHunter && i === plan.director.hook_index;
+                                    const role = "arc_role" in c ? (c as { arc_role?: string | null }).arc_role : null;
+                                    const dur = c.end_s - c.start_s;
+                                    const label = isHook ? "HOOK" : (role || "");
+                                    return (
+                                        <div
+                                            key={i}
+                                            className="plan-bar-seg"
+                                            style={{
+                                                flexGrow: dur,
+                                                background: roleColor(role, isHook),
+                                            }}
+                                            title={`${label || `Segment ${i + 1}`} · ${dur.toFixed(1)}s\n${c.reason}`}
+                                        >
+                                            <span className="plan-bar-label">{label}</span>
+                                            <span className="plan-bar-dur">{dur.toFixed(0)}s</span>
+                                        </div>
+                                    );
+                                })}
+                                {/* Marker leader-lines — pin dot + drop line through the bar */}
+                                {markers.map((m, i) => {
+                                    const off = sourceToCutOffset(m.at_s);
+                                    if (off === null || total === 0) return null;
+                                    const pct = (off / total) * 100;
+                                    return (
+                                        <span
+                                            key={i}
+                                            className="plan-bar-pin"
+                                            style={{ left: `${pct}%` }}
+                                        >
+                                            <span
+                                                className="plan-bar-pin-dot"
+                                                style={{
+                                                    background: markerColor(m.color),
+                                                    boxShadow: `0 0 0 2px var(--surface-2), 0 0 8px ${markerColor(m.color)}66`,
+                                                }}
+                                            />
+                                        </span>
+                                    );
+                                })}
+                                {/* Hover tooltip — shows source TC under the cursor */}
+                                {hoverPct !== null && hoverTip && (
+                                    <div
+                                        className="plan-bar-hover"
+                                        style={{ left: `${hoverPct * 100}%` }}
+                                    >
+                                        <span className="plan-bar-hover-line" />
+                                        <span className="plan-bar-hover-chip">
+                                            src {tc(hoverTip.src)} · seg {hoverTip.segIndex + 1}
+                                        </span>
+                                    </div>
+                                )}
+                                {/* Persistent playhead from a click */}
+                                {playheadPct !== null && (
+                                    <div
+                                        className="plan-bar-playhead"
+                                        style={{ left: `${playheadPct * 100}%` }}
+                                    />
+                                )}
+                            </div>
+                        </div>
+                        <div className="cut-meta">
+                            <button
+                                type="button"
+                                className="link-button"
+                                onClick={openPrompt}
+                                title="Show the prompt that was sent to the Director model"
+                            >
+                                View Director prompt
+                            </button>
+                            {playheadPct !== null && total > 0 && (() => {
+                                const here = cutOffsetToSource(playheadPct * total);
+                                return here ? (
+                                    <span className="muted" style={{ fontSize: "var(--fs-2)" }}>
+                                        · playhead at cut {tc(playheadPct * total)} · source {tc(here.src)}
+                                    </span>
+                                ) : null;
+                            })()}
+                        </div>
                     </div>
                 );
             })()}
@@ -717,23 +781,35 @@ export default function ReviewScreen({
                               )
                             : [];
                         const badge = isHook ? "HOOK" : role;
+                        const colour = roleColor(role, isHook);
                         return (
                             <div
                                 key={i}
+                                id={`seg-${i}`}
                                 className={`seg-card ${isHook ? "seg-card--hook" : ""}`}
                             >
-                                <div
-                                    className="seg-card-stripe"
-                                    style={{ background: roleColor(role, isHook) }}
-                                />
+                                <div className="seg-card-stripe" style={{ background: colour }} />
                                 <div className="seg-card-body">
                                     <div className="seg-card-head">
+                                        {canExpand && (
+                                            <button
+                                                type="button"
+                                                aria-label={isExpanded ? "Hide transcript" : "Show transcript"}
+                                                aria-expanded={isExpanded}
+                                                className={`seg-card-disc ${isExpanded ? "is-open" : ""}`}
+                                                onClick={() =>
+                                                    setExpandedSegment(isExpanded ? null : i)
+                                                }
+                                            >
+                                                ▸
+                                            </button>
+                                        )}
                                         {badge && (
                                             <span
-                                                className={`seg-badge ${isHook ? "seg-badge--hook" : ""}`}
+                                                className="seg-badge seg-badge--filled"
                                                 style={{
-                                                    borderColor: roleColor(role, isHook),
-                                                    color: roleColor(role, isHook),
+                                                    background: colour,
+                                                    color: "rgba(0,0,0,0.82)",
                                                 }}
                                             >
                                                 {badge}
@@ -745,16 +821,6 @@ export default function ReviewScreen({
                                         <span className="seg-card-dur">
                                             {(c.end_s - c.start_s).toFixed(1)}s
                                         </span>
-                                        {canExpand && (
-                                            <button
-                                                className="btn-ghost seg-card-toggle"
-                                                onClick={() =>
-                                                    setExpandedSegment(isExpanded ? null : i)
-                                                }
-                                            >
-                                                {isExpanded ? "Hide transcript ▾" : "Show transcript ▸"}
-                                            </button>
-                                        )}
                                     </div>
                                     <p className="seg-card-text">{c.reason}</p>
                                     {isExpanded && (
@@ -776,10 +842,17 @@ export default function ReviewScreen({
                     <h2>Markers</h2>
                     <ul className="marker-list">
                         {plan.markers.markers.map((m, i) => (
-                            <li key={i} className="marker-row">
+                            <li
+                                key={i}
+                                id={`marker-${i}`}
+                                className="marker-row"
+                            >
                                 <span
                                     className="marker-dot"
-                                    style={{ background: m.color.toLowerCase() }}
+                                    style={{
+                                        background: markerColor(m.color),
+                                        boxShadow: `0 0 0 2px var(--surface-1), 0 0 6px ${markerColor(m.color)}55`,
+                                    }}
                                     aria-hidden
                                 />
                                 <span className="seg-card-tc">{tc(m.at_s)}</span>
@@ -790,6 +863,284 @@ export default function ReviewScreen({
                     </ul>
                 </div>
             )}
+
+            {/* "Tune the cut" — refinement panel. Surfaces current state,
+                shows hook context + a will-change diff before regenerating. */}
+            {!clipHunter && analysis && (() => {
+                // Anchor: what's currently in the cut.
+                const currentTarget = plan.user_settings.target_length_s ?? 180;
+                const currentHookSrc =
+                    plan.director.selected_clips[plan.director.hook_index]?.start_s ?? null;
+                const currentSegCount = plan.director.selected_clips.length;
+
+                // Pending: what the user has dialed in (may equal current).
+                const nextTarget = settings.target_length_s ?? currentTarget;
+                const nextHookSrc =
+                    settings.selected_hook_s ?? currentHookSrc;
+
+                const targetChanged = nextTarget !== currentTarget;
+                const hookChanged =
+                    nextHookSrc !== null &&
+                    currentHookSrc !== null &&
+                    Math.abs(nextHookSrc - currentHookSrc) > 0.01;
+                const willChange = targetChanged || hookChanged;
+
+                // Estimate new segment count by scaling from the current ratio.
+                const currentTotal = plan.director.selected_clips.reduce(
+                    (a, c) => a + (c.end_s - c.start_s), 0,
+                );
+                const avgSegLen = currentTotal > 0 ? currentTotal / currentSegCount : 20;
+                const estSegCount = Math.max(2, Math.round(nextTarget / avgSegLen));
+
+                // Pull surrounding transcript words for a hook candidate to give
+                // the designer context — 5s before, 5s after the candidate span.
+                const hookContext = (h: typeof analysis.hook_candidates[number]) => {
+                    if (transcript.length === 0) return null;
+                    const words = transcript.filter(
+                        (w) => w.start_time >= h.start_s - 5 && w.end_time <= h.end_s + 6,
+                    );
+                    if (words.length === 0) return null;
+                    const text = words.map((w) => w.word).join(" ").trim();
+                    // Mark the candidate quote inside the context for emphasis.
+                    const inside = words
+                        .filter((w) => w.start_time >= h.start_s - 0.001 && w.end_time <= h.end_s + 0.001)
+                        .map((w) => w.word)
+                        .join(" ")
+                        .trim();
+                    return { text, inside };
+                };
+
+                return (
+                <details className="card card--advanced" open={willChange}>
+                    <summary>
+                        <span>Tune the cut</span>
+                        <span className="muted" style={{ marginLeft: 8, fontSize: "var(--fs-2)" }}>
+                            {willChange
+                                ? "— pending changes, click Regenerate to apply"
+                                : "— nudge the hook or target length, get a fresh cut in ~5s"}
+                        </span>
+                    </summary>
+                    <div className="card-body">
+                        {/* Anchor — what's currently used */}
+                        <div className="tune-anchor">
+                            <span className="muted" style={{ fontSize: "var(--fs-2)" }}>
+                                Currently using
+                            </span>
+                            <span className="tune-anchor-chip">
+                                HOOK at {currentHookSrc !== null ? tc(currentHookSrc) : "auto"}
+                            </span>
+                            <span className="muted" style={{ fontSize: "var(--fs-2) " }}>· target</span>
+                            <span className="tune-anchor-chip">{tc(currentTarget)}</span>
+                        </div>
+
+                        {/* Target length — slider + chip + presets */}
+                        <div className="tune-row" style={{ marginTop: 14 }}>
+                            <label htmlFor="tune-target" style={{ marginBottom: 0 }}>
+                                Target length
+                            </label>
+                            <span className="tune-chip">
+                                {tc(nextTarget)}
+                                <span className="muted"> ({nextTarget}s)</span>
+                            </span>
+                        </div>
+                        <input
+                            id="tune-target"
+                            type="range"
+                            min={15}
+                            max={600}
+                            step={5}
+                            value={nextTarget}
+                            className="tune-slider"
+                            onChange={(e) => {
+                                const next = Number(e.target.value);
+                                onSettingsChange?.({ ...settings, target_length_s: next });
+                            }}
+                        />
+                        <div className="tune-presets">
+                            {TARGET_PRESETS.map((p) => {
+                                const active = nextTarget === p.seconds;
+                                return (
+                                    <button
+                                        key={p.label}
+                                        type="button"
+                                        className={`chip ${active ? "on" : ""}`}
+                                        onClick={() =>
+                                            onSettingsChange?.({
+                                                ...settings,
+                                                target_length_s: p.seconds,
+                                            })
+                                        }
+                                    >
+                                        {p.label}
+                                        <span className="muted"> · {tc(p.seconds)}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <p className="muted" style={{ marginTop: 6, fontSize: "var(--fs-2)" }}>
+                            Director enforces a 75–125 % window around this.
+                        </p>
+
+                        {/* Hook candidates — radio + strength bar + context */}
+                        <h3 style={{ margin: "18px 0 6px" }}>Hook candidates</h3>
+                        <p className="muted" style={{ marginTop: 0, marginBottom: 8, fontSize: "var(--fs-2)" }}>
+                            Pick the opening beat — or leave it on the current one to let the Director keep it.
+                        </p>
+                        <div className="hook-cards">
+                            {analysis.hook_candidates.map((h, i) => {
+                                const selected =
+                                    settings.selected_hook_s != null &&
+                                    Math.abs(settings.selected_hook_s - h.start_s) < 0.01;
+                                const isCurrent =
+                                    currentHookSrc !== null &&
+                                    Math.abs(currentHookSrc - h.start_s) < 0.01;
+                                const strength = strengthOf(h.engagement_score);
+                                const ctx = hookContext(h);
+                                const dur = (h.end_s - h.start_s).toFixed(1);
+                                return (
+                                    <div
+                                        key={i}
+                                        className={`hook-card ${selected ? "hook-card--selected" : ""} ${isCurrent ? "hook-card--current" : ""}`}
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={() =>
+                                            onSettingsChange?.({
+                                                ...settings,
+                                                selected_hook_s: selected ? null : h.start_s,
+                                            })
+                                        }
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter" || e.key === " ") {
+                                                e.preventDefault();
+                                                onSettingsChange?.({
+                                                    ...settings,
+                                                    selected_hook_s: selected ? null : h.start_s,
+                                                });
+                                            }
+                                        }}
+                                    >
+                                        <div className="hook-card-head">
+                                            <span className={`hook-radio ${selected ? "is-on" : ""}`} aria-hidden />
+                                            <span className="hook-card-title">{h.text}</span>
+                                            {isCurrent && !selected && (
+                                                <span className="hook-card-badge">current</span>
+                                            )}
+                                            <span
+                                                className="hook-strength"
+                                                title={`Engagement: ${(h.engagement_score * 100).toFixed(0)}%`}
+                                            >
+                                                <span className="hook-strength-bar">
+                                                    {[0, 1, 2, 3, 4].map((idx) => (
+                                                        <span
+                                                            key={idx}
+                                                            className={`hook-strength-tick ${idx < strength.segs ? "is-on" : ""}`}
+                                                        />
+                                                    ))}
+                                                </span>
+                                                <span className="hook-strength-label muted">
+                                                    {strength.label}
+                                                </span>
+                                            </span>
+                                        </div>
+                                        <div className="hook-card-meta">
+                                            <span className="seg-card-tc">{tc(h.start_s)} → {tc(h.end_s)}</span>
+                                            <span className="muted" style={{ fontSize: "var(--fs-1)" }}>· {dur}s</span>
+                                        </div>
+                                        {ctx && (
+                                            <p className="hook-context">
+                                                {ctx.inside ? (() => {
+                                                    const idx = ctx.text.indexOf(ctx.inside);
+                                                    if (idx === -1) return ctx.text;
+                                                    return (
+                                                        <>
+                                                            <span className="muted">…{ctx.text.slice(0, idx)}</span>
+                                                            <strong>{ctx.text.slice(idx, idx + ctx.inside.length)}</strong>
+                                                            <span className="muted">{ctx.text.slice(idx + ctx.inside.length)}…</span>
+                                                        </>
+                                                    );
+                                                })() : <span className="muted">{ctx.text}</span>}
+                                            </p>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {/* Will-change diff — only when something has been nudged */}
+                        {willChange && (
+                            <div className="will-change">
+                                <div className="will-change-head">
+                                    <span>Will change on Regenerate</span>
+                                </div>
+                                <ul className="will-change-list">
+                                    {hookChanged && (
+                                        <li>
+                                            <span className="will-change-key">hook</span>
+                                            <span className="seg-card-tc">{tc(currentHookSrc!)}</span>
+                                            <span className="muted">→</span>
+                                            <span className="seg-card-tc">{tc(nextHookSrc!)}</span>
+                                            <span className="muted">
+                                                ({nextHookSrc! < currentHookSrc!
+                                                    ? `jumps ${tc(currentHookSrc! - nextHookSrc!)} earlier`
+                                                    : `jumps ${tc(nextHookSrc! - currentHookSrc!)} later`})
+                                            </span>
+                                        </li>
+                                    )}
+                                    {targetChanged && (
+                                        <li>
+                                            <span className="will-change-key">total</span>
+                                            <span className="seg-card-tc">{tc(currentTotal)}</span>
+                                            <span className="muted">→</span>
+                                            <span className="seg-card-tc">~{tc(nextTarget)}</span>
+                                            <span className="muted">
+                                                ({nextTarget > currentTotal ? "+" : ""}
+                                                {Math.round(nextTarget - currentTotal)}s,{" "}
+                                                ~{estSegCount} segments)
+                                            </span>
+                                        </li>
+                                    )}
+                                    <li>
+                                        <span className="will-change-key">markers</span>
+                                        <span className="muted">
+                                            {plan.markers.markers.length} kept (re-evaluated)
+                                        </span>
+                                    </li>
+                                </ul>
+                            </div>
+                        )}
+
+                        <div className="row" style={{ marginTop: 12 }}>
+                            <button
+                                disabled={regenerating || !willChange}
+                                onClick={() => regenerate(settings)}
+                                title={willChange ? "Apply pending changes" : "No pending changes"}
+                            >
+                                {regenerating ? "Regenerating…" : "Regenerate plan"}
+                            </button>
+                            {willChange && (
+                                <button
+                                    type="button"
+                                    className="secondary"
+                                    disabled={regenerating}
+                                    onClick={() =>
+                                        onSettingsChange?.({
+                                            ...settings,
+                                            target_length_s: currentTarget,
+                                            selected_hook_s: null,
+                                        })
+                                    }
+                                >
+                                    ↶ Revert
+                                </button>
+                            )}
+                            <span className="muted" style={{ fontSize: "var(--fs-2)" }}>
+                                ~5s · reuses scrubbed transcript
+                            </span>
+                        </div>
+                    </div>
+                </details>
+                );
+            })()}
 
             <details className="card card--advanced">
                 <summary>
@@ -1110,42 +1461,19 @@ export default function ReviewScreen({
                           ? `${timelineName}_AI_${clipHunter.mode === "short_generator" ? "Short" : "Clip"}_${selectedCandidate + 1}`
                           : `${timelineName}_AI_Cut`);
                 const willCollide = existingNames.has(projectedBase);
+                // Pre-compute the friendly label that goes inside the Build
+                // button — the collision banner is folded into the action.
+                const buildLabel = building && !buildProgress
+                    ? "Building…"
+                    : clipHunter
+                      ? `Build ${clipHunter.mode === "short_generator" ? "short" : "clip"} #${selectedCandidate + 1} →`
+                      : willCollide
+                        ? (replaceExisting
+                              ? `Replace ${projectedBase} →`
+                              : `Build as ${projectedBase}_2 →`)
+                        : "Build Timeline →";
                 return (
                     <>
-                    {willCollide && (
-                        <div
-                            className="card"
-                            style={{
-                                borderColor: "var(--warn)",
-                                background: "rgba(255, 159, 10, 0.08)",
-                            }}
-                        >
-                            <p style={{ margin: 0 }}>
-                                ⚠ Timeline <code>{projectedBase}</code> already exists in this project.
-                            </p>
-                            <p className="muted" style={{ marginTop: 6 }}>
-                                {replaceExisting
-                                    ? "The existing timeline will be deleted after the new build succeeds. Snapshot is preserved."
-                                    : <>A suffix (e.g. <code>{projectedBase}_2</code>) will be appended so nothing is overwritten.</>}
-                            </p>
-                            <label
-                                style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 8,
-                                    marginTop: 8,
-                                    cursor: "pointer",
-                                }}
-                            >
-                                <input
-                                    type="checkbox"
-                                    checked={replaceExisting}
-                                    onChange={(e) => setReplaceExisting(e.target.checked)}
-                                />
-                                <span>Replace the existing timeline</span>
-                            </label>
-                        </div>
-                    )}
                 <div className="row between">
                     <button className="secondary" onClick={onBack} disabled={building} data-hotkey="back">
                         ← Back
@@ -1198,38 +1526,60 @@ export default function ReviewScreen({
                                     : `Build all ${clipHunter.candidates.length} ${clipHunter.mode === "short_generator" ? "shorts" : "clips"} →`}
                             </button>
                         )}
-                        <button
-                            disabled={building}
-                            data-hotkey="primary"
-                            onClick={async () => {
-                                setBuilding(true);
-                                setBuildErr(null);
-                                try {
-                                    const res = await api.execute(
-                                        runId,
-                                        clipHunter ? selectedCandidate : undefined,
-                                        cutName,
-                                        replaceExisting,
-                                    );
-                                    setBuildResult(res);
-                                    refreshTimelineNames();
-                                    refreshHistory();
-                                    onBuildSuccess?.();
-                                } catch (e) {
-                                    setBuildErr(String(e));
-                                } finally {
-                                    setBuilding(false);
-                                }
-                            }}
-                        >
-                            {building && !buildProgress
-                                ? "Building…"
-                                : clipHunter
-                                  ? `Build ${clipHunter.mode === "short_generator" ? "short" : "clip"} #${selectedCandidate + 1} →`
-                                  : "Build Timeline →"}
-                        </button>
+                        <div className="build-split">
+                            <button
+                                disabled={building}
+                                data-hotkey="primary"
+                                onClick={async () => {
+                                    setBuilding(true);
+                                    setBuildErr(null);
+                                    try {
+                                        const res = await api.execute(
+                                            runId,
+                                            clipHunter ? selectedCandidate : undefined,
+                                            cutName,
+                                            replaceExisting,
+                                        );
+                                        setBuildResult(res);
+                                        refreshTimelineNames();
+                                        refreshHistory();
+                                        onBuildSuccess?.();
+                                    } catch (e) {
+                                        setBuildErr(String(e));
+                                    } finally {
+                                        setBuilding(false);
+                                    }
+                                }}
+                            >
+                                {buildLabel}
+                            </button>
+                            {willCollide && !clipHunter && (
+                                <button
+                                    type="button"
+                                    className="secondary build-split-toggle"
+                                    disabled={building}
+                                    onClick={() => setReplaceExisting(!replaceExisting)}
+                                    title={
+                                        replaceExisting
+                                            ? `Switch to non-destructive ${projectedBase}_2`
+                                            : `Replace existing ${projectedBase} after the build succeeds`
+                                    }
+                                >
+                                    {replaceExisting
+                                        ? "↶ Save as new instead"
+                                        : "↻ Replace instead"}
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
+                {willCollide && !clipHunter && (
+                    <p className="muted build-collision-hint">
+                        {replaceExisting
+                            ? <>The existing <code>{projectedBase}</code> will be deleted after the new build succeeds. Snapshot stays on disk.</>
+                            : <>A timeline named <code>{projectedBase}</code> already exists — your build will be saved as <code>{projectedBase}_2</code>.</>}
+                    </p>
+                )}
                 </>
                 );
             })()}
