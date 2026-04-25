@@ -283,6 +283,36 @@ export default function ConfigureScreen({
     const effectiveCutIntentInfo =
         effectiveCutIntent ? getCutIntent(effectiveCutIntent) : null;
 
+    // Phase 6.7 — hover-tooltip text for the resolved chip. Built
+    // client-side from what the panel already has so there's no extra
+    // round-trip; lines:
+    //   1) provenance label (auto-resolved / user-supplied / forced)
+    //   2) the resolver's reason string (auto / forced paths only)
+    //   3) the cut intent's catalogue description
+    //   4) "unusual combination" warning when applicable
+    const chipTooltip = (() => {
+        if (!effectiveCutIntent || !effectiveCutIntentInfo) return undefined;
+        const lines: string[] = [];
+        const source = resolvedCutIntentPreview?.source;
+        if (explicitCutIntent !== null) {
+            lines.push("Source: user-supplied");
+        } else if (source === "forced") {
+            lines.push("Source: forced override (num_clips or assembled+scrubbed)");
+        } else if (source === "auto") {
+            lines.push("Source: auto-resolved from duration band");
+        }
+        if (resolvedCutIntentPreview && explicitCutIntent === null) {
+            lines.push(`Why: ${resolvedCutIntentPreview.reason}`);
+        }
+        lines.push(`${effectiveCutIntentInfo.label}: ${effectiveCutIntentInfo.description}`);
+        if (isUnusualCombination(preset as ContentType, effectiveCutIntent)) {
+            lines.push(
+                "⚠ Unusual combination — confirm this is what you want for this content type.",
+            );
+        }
+        return lines.join("\n");
+    })();
+
     // Multi-candidate = num_clips slider is relevant. New-API path: the
     // Axis 2 cut_intent is (or auto-resolves to) multi_clip. Legacy
     // presets + multi_clip cover the same UI need.
@@ -408,12 +438,14 @@ export default function ConfigureScreen({
             {canResolveAxes && !isTightener && effectiveCutIntent && (
                 <div
                     className="muted"
+                    title={chipTooltip}
                     style={{
                         padding: "var(--s-3) var(--s-4)",
                         marginBottom: "var(--s-3)",
                         background: "var(--surface-3)",
                         borderRadius: "var(--radius-md)",
                         fontSize: "var(--fs-2)",
+                        cursor: chipTooltip ? "help" : undefined,
                     }}
                 >
                     {explicitCutIntent === null ? "Auto → " : ""}
