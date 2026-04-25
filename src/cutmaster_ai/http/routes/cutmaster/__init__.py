@@ -19,7 +19,7 @@ from fastapi import APIRouter
 # Re-exports for test-suite monkeypatching (kept intentionally).
 from ....cutmaster.analysis import auto_detect as auto_detect_mod  # noqa: F401
 from ....cutmaster.analysis import themes as themes_mod  # noqa: F401
-from . import analyze, build, execute, info, presets, runs, sensory_cache
+from . import analyze, build, debug, execute, info, presets, runs, sensory_cache
 
 router = APIRouter(prefix="/cutmaster", tags=["cutmaster"])
 router.include_router(analyze.router)
@@ -29,5 +29,6 @@ router.include_router(build.router)
 router.include_router(execute.router)
 router.include_router(runs.router)
 router.include_router(sensory_cache.router)
+router.include_router(debug.router)
 
 __all__ = ["router", "auto_detect_mod", "themes_mod"]
