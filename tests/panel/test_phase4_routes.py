@@ -209,6 +209,43 @@ def test_plan_warnings_dedupes_and_returns_structured_records():
     assert kinds == ["low_coverage", "low_confidence_hook"]
 
 
+def test_build_plan_400_from_validation_does_not_leave_stuck_started_event(
+    client,
+    scrubbed_run,
+):
+    """When the editor presses browser-back and rebuilds with stale
+    settings, an incompatible preset+mode combo 400s. The build_director
+    started emit must not fire before validation, otherwise run.events
+    accumulates a stuck `started` with no terminal partner and the
+    Building-plan poller renders perpetual "in progress…"."""
+    r = client.post(
+        "/cutmaster/build-plan",
+        json={
+            "run_id": scrubbed_run["run_id"],
+            "preset": "vlog",
+            "user_settings": {
+                "target_length_s": 60,
+                "themes": [],
+                # rough_cut + reorder_allowed=False is an explicit 400
+                # in the route — uses the same validation gate that
+                # browser-back-with-stale-settings hits in real life.
+                "timeline_mode": "rough_cut",
+                "reorder_allowed": False,
+            },
+        },
+    )
+    assert r.status_code == 400, r.text
+
+    events = state.load(scrubbed_run["run_id"]).get("events", [])
+    build_events = [e for e in events if str(e.get("stage", "")).startswith("build_")]
+    # Zero build_* events because validation failed before any work
+    # could legitimately start. A panel poller seeing this run will
+    # render the stage rows as pending, not stuck.
+    assert build_events == [], (
+        f"validation 400 should emit nothing, got {[e.get('stage') for e in build_events]}"
+    )
+
+
 def test_build_plan_emits_per_stage_progress_events(
     client,
     monkeypatch,

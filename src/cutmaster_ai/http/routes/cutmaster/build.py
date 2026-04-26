@@ -1165,16 +1165,6 @@ async def build_plan(body: BuildPlanRequest) -> dict:
     will load the same state and actually build the timeline.
     """
     run, scrubbed = _require_scrubbed(body.run_id)
-    # Emit a started event so the panel's Building-plan poller can show
-    # something is in flight before any LLM call returns. The matching
-    # complete event fires just before /build-plan returns its dict; the
-    # except branches emit failed so the row never gets stuck.
-    await state.emit(
-        run,
-        stage="build_director",
-        status="started",
-        message="Director composing the cut",
-    )
     if body.preset not in PRESETS:
         raise HTTPException(status_code=400, detail=f"unknown preset '{body.preset}'")
     preset = get_preset(body.preset)
@@ -1245,6 +1235,19 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         mode,
         body.preset,
         body.run_id,
+    )
+    # Emit started AFTER validation guards so a 400 from an incompatible
+    # preset+mode combo (common when the editor presses browser-back and
+    # rebuilds with stale settings) doesn't leave a stuck `started` event
+    # in run.events for the panel poller to render as "in progress…
+    # forever". The matching complete event fires once the Director
+    # returns; the marker/frames stages have their own start/complete
+    # pairs further down.
+    await state.emit(
+        run,
+        stage="build_director",
+        status="started",
+        message="Director composing the cut",
     )
 
     # Phase 4.6: compute the three-axis resolution once so every stage
