@@ -1738,3 +1738,60 @@ def test_build_plan_request_no_critic_feedback_first_call_clean(client, monkeypa
 
     assert len(director_calls) == 1
     assert "_critic_feedback" not in director_calls[0]
+
+
+def test_build_plan_request_filtered_critic_feedback(client, monkeypatch, scrubbed_run):
+    """Regenerate-with-recommendations + Mark fixed: when the panel
+    drops a "marked fixed" issue from the request payload, the Director
+    only sees the remaining issues. Wire-level verification — the
+    editor's local triage state lands in the prompt block.
+    """
+    _flag_on(monkeypatch)
+    monkeypatch.setenv("CUTMASTER_STORY_CRITIC_REWORK_MAX", "0")
+
+    director_calls = _capture_director_calls(monkeypatch)
+    _seq_critic(monkeypatch, [_good_report()])
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    _stub_resolver_and_resolve(monkeypatch)
+
+    # Editor marked seg-0's "weak_hook" fixed locally and is sending
+    # only the seg-3 abrupt-transition issue back.
+    feedback_payload = {
+        "score": 55,
+        "verdict": "rework",
+        "summary": "transition jarring",
+        "issues": [
+            {
+                "segment_index": 3,
+                "severity": "warning",
+                "category": "abrupt_transition",
+                "message": "seg 3 to 4 jumps",
+            }
+        ],
+        "history": [],
+    }
+
+    r = client.post(
+        "/cutmaster/build-plan",
+        json={
+            "run_id": scrubbed_run["run_id"],
+            "preset": "vlog",
+            "content_type": "vlog",
+            "cut_intent": "narrative",
+            "user_settings": {
+                "target_length_s": 60,
+                "themes": [],
+                "cut_intent": "narrative",
+            },
+            "critic_feedback": feedback_payload,
+        },
+    )
+    assert r.status_code == 200, r.text
+
+    assert len(director_calls) == 1
+    fb = director_calls[0]["_critic_feedback"]
+    assert len(fb["issues"]) == 1
+    assert fb["issues"][0]["category"] == "abrupt_transition"
+    # weak_hook (the marked-fixed issue) MUST NOT be in the payload.
+    categories = [iss["category"] for iss in fb["issues"]]
+    assert "weak_hook" not in categories

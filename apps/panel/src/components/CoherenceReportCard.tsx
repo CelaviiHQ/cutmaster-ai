@@ -234,11 +234,15 @@ interface Props {
     recritiqueError?: string | null;
     /**
      * "Regenerate with recommendations" — fires a fresh build seeded
-     * with this report as the Director's rework feedback. Different
-     * from ``onRecritique`` (re-grade the SAME plan) and the host's
-     * plain Regenerate (no feedback). Hidden when not provided.
+     * with the issues the editor still wants the Director to address.
+     * Different from ``onRecritique`` (re-grade the SAME plan) and the
+     * host's plain Regenerate (no feedback). Hidden when not provided.
+     *
+     * The card invokes this with the subset of issues NOT marked fixed
+     * locally — editors can offload "I'll add a voiceover myself" via
+     * Mark fixed and the regenerate call only ships the unfixed issues.
      */
-    onRegenerateWithFeedback?: () => void;
+    onRegenerateWithFeedback?: (unfixedIssues: CoherenceIssue[]) => void;
     regenerateWithFeedbackBusy?: boolean;
     /**
      * Pre-rework single-pass report. Used by the legacy two-pass lift
@@ -376,19 +380,38 @@ export default function CoherenceReportCard({
                     )}
                 </div>
                 <div className="coherence-actions">
-                    {onRegenerateWithFeedback && report.verdict !== "ship" && (
-                        <button
-                            type="button"
-                            className="coherence-regenerate-with-feedback"
-                            onClick={onRegenerateWithFeedback}
-                            disabled={regenerateWithFeedbackBusy}
-                            title="Build a new plan with the Director addressing every issue flagged above"
-                        >
-                            {regenerateWithFeedbackBusy
-                                ? "Regenerating…"
-                                : "Regenerate with recommendations"}
-                        </button>
-                    )}
+                    {onRegenerateWithFeedback &&
+                        report.verdict !== "ship" &&
+                        (() => {
+                            const unfixed = report.issues.filter(
+                                (_iss, idx) => !fixedSet.has(idx),
+                            );
+                            const allFixed =
+                                report.issues.length > 0 && unfixed.length === 0;
+                            const fixedCount = report.issues.length - unfixed.length;
+                            const tooltip = allFixed
+                                ? "Mark fixed any issue to leave it for you to fix manually; un-fix at least one to regenerate"
+                                : fixedCount > 0
+                                  ? `Build a new plan addressing ${unfixed.length} of ${report.issues.length} issue${unfixed.length === 1 ? "" : "s"} (${fixedCount} marked fixed will be skipped)`
+                                  : "Build a new plan with the Director addressing every issue flagged above";
+                            return (
+                                <button
+                                    type="button"
+                                    className="coherence-regenerate-with-feedback"
+                                    onClick={() => onRegenerateWithFeedback(unfixed)}
+                                    disabled={
+                                        regenerateWithFeedbackBusy || allFixed
+                                    }
+                                    title={tooltip}
+                                >
+                                    {regenerateWithFeedbackBusy
+                                        ? "Regenerating…"
+                                        : fixedCount > 0
+                                          ? `Regenerate (${unfixed.length} of ${report.issues.length})`
+                                          : "Regenerate with recommendations"}
+                                </button>
+                            );
+                        })()}
                     {onRecritique && (
                         <button
                             type="button"

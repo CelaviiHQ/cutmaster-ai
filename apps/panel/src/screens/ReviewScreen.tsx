@@ -393,18 +393,22 @@ export default function ReviewScreen({
      * coherence_report into a fresh /build-plan call as the critic
      * feedback the Director must address. Different from the plain
      * Regenerate button (no feedback, fresh start) and from Re-critique
-     * (re-grades the SAME plan). Only meaningful when the critic flagged
-     * something actionable; the host gates the button accordingly.
+     * (re-grades the SAME plan).
+     *
+     * The card filters out any issue the editor marked fixed locally
+     * before invoking this — so "I'll add a voiceover myself" issues
+     * don't get sent. ``unfixedIssues`` is the post-filter subset.
      */
     const regenerateWithCriticFeedback = async (
         report: CoherenceReport,
+        unfixedIssues: typeof report.issues,
     ): Promise<void> => {
         await regenerate(settings, {
             criticFeedback: {
                 score: report.score,
                 verdict: report.verdict,
                 summary: report.summary,
-                issues: report.issues.map((iss) => ({
+                issues: unfixedIssues.map((iss) => ({
                     segment_index: iss.segment_index,
                     severity: iss.severity,
                     category: iss.category,
@@ -995,7 +999,8 @@ export default function ReviewScreen({
 
                 const handleRegenerateWithFeedback =
                     report && report.verdict !== "ship"
-                        ? () => regenerateWithCriticFeedback(report)
+                        ? (unfixed: typeof report.issues) =>
+                              regenerateWithCriticFeedback(report, unfixed)
                         : undefined;
 
                 return (

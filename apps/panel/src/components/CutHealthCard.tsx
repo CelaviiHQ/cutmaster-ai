@@ -1,5 +1,5 @@
 import CoherenceReportCard from "./CoherenceReportCard";
-import type { CoherenceReport, Verdict } from "../types";
+import type { CoherenceIssue, CoherenceReport, Verdict } from "../types";
 
 interface Props {
     /**
@@ -27,7 +27,7 @@ interface Props {
     recritiqueDisabled?: boolean;
     recritiqueDisabledReason?: string;
     onViewReworkPrompt?: () => void;
-    onRegenerateWithFeedback?: () => void;
+    onRegenerateWithFeedback?: (unfixedIssues: CoherenceIssue[]) => void;
     regenerateWithFeedbackBusy?: boolean;
 }
 
