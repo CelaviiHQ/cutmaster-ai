@@ -140,6 +140,12 @@ export default function ReviewScreen({
 }: Props) {
     const [analysis, setAnalysis] = useState<StoryAnalysis | null>(null);
     const [regenerating, setRegenerating] = useState(false);
+    // Tracks "regenerate with recommendations" specifically — the
+    // critic-fed-rebuild path is a 20–60s round-trip with the auto-rework
+    // loop on top, so we surface the same MascotLoading screen as the
+    // initial-mount build instead of leaving the editor staring at a
+    // stale plan with only a tiny "Regenerating…" button label changing.
+    const [regeneratingWithFeedback, setRegeneratingWithFeedback] = useState(false);
     const [plan, setPlan] = useState<BuildPlanResult | null>(null);
     const [bundle, setBundle] = useState<PresetBundle | null>(null);
     const [loading, setLoading] = useState(true);
@@ -403,21 +409,26 @@ export default function ReviewScreen({
         report: CoherenceReport,
         unfixedIssues: typeof report.issues,
     ): Promise<void> => {
-        await regenerate(settings, {
-            criticFeedback: {
-                score: report.score,
-                verdict: report.verdict,
-                summary: report.summary,
-                issues: unfixedIssues.map((iss) => ({
-                    segment_index: iss.segment_index,
-                    severity: iss.severity,
-                    category: iss.category,
-                    message: iss.message,
-                    suggestion: iss.suggestion,
-                })),
-                history: [],
-            },
-        });
+        setRegeneratingWithFeedback(true);
+        try {
+            await regenerate(settings, {
+                criticFeedback: {
+                    score: report.score,
+                    verdict: report.verdict,
+                    summary: report.summary,
+                    issues: unfixedIssues.map((iss) => ({
+                        segment_index: iss.segment_index,
+                        severity: iss.severity,
+                        category: iss.category,
+                        message: iss.message,
+                        suggestion: iss.suggestion,
+                    })),
+                    history: [],
+                },
+            });
+        } finally {
+            setRegeneratingWithFeedback(false);
+        }
     };
 
     if (loading) {
@@ -429,6 +440,20 @@ export default function ReviewScreen({
                     { label: "Director agent (plan the cut)", status: "started" },
                     { label: "Marker agent (B-roll cues)", status: "started" },
                     { label: "Resolve source-frame mapping", status: "pending" },
+                ]}
+            />
+        );
+    }
+
+    if (regeneratingWithFeedback) {
+        return (
+            <MascotLoading
+                label="Regenerating with recommendations"
+                hint="Director rebuilds with the critic's feedback; the iterative loop runs up to 3 reworks. Usually 20–60 s."
+                stages={[
+                    { label: "Director agent (rework with feedback)", status: "started" },
+                    { label: "Story-critic loop (iterate while improving)", status: "started" },
+                    { label: "Marker agent (B-roll cues)", status: "pending" },
                 ]}
             />
         );
