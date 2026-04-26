@@ -48,6 +48,7 @@ all = [
 dev = [
     "ruff>=0.9.0",
     "pytest>=8.0",
+    "pytest-asyncio>=0.24",
     "pyright>=1.1",
     "pre-commit>=3.0",
 ]
@@ -87,3 +88,4 @@ typeCheckingMode = "basic"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
