@@ -23,7 +23,10 @@ def _spec(
     offset: float = 0.0,
     duration: float = 10.0,
     name: str | None = None,
+    fps: float = 24.0,
 ) -> ClipAudioSpec:
+    in_s = in_f / fps
+    out_s = out_f / fps
     return ClipAudioSpec(
         item_index=idx,
         source_name=name or f"take_{idx}.mov",
@@ -32,6 +35,7 @@ def _spec(
         source_out_frame=out_f,
         timeline_offset_s=offset,
         duration_s=duration,
+        segments=[(path, in_s, out_s)],
     )
 
 
