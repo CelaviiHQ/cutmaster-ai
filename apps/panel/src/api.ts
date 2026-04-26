@@ -211,6 +211,19 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ run_id: runId }),
     }),
+
+  paintShotColors: (
+    timelineName: string,
+    opts?: { overwrite?: boolean; videoTrack?: number },
+  ) =>
+    http<PaintShotColorsResult>("/cutmaster/paint-shot-colors", {
+      method: "POST",
+      body: JSON.stringify({
+        timeline_name: timelineName,
+        ...(opts?.overwrite ? { overwrite: true } : {}),
+        ...(opts?.videoTrack ? { video_track: opts.videoTrack } : {}),
+      }),
+    }),
 };
 
 export interface ExecuteResult {
@@ -230,6 +243,26 @@ export interface ExecuteResult {
   };
   safe_zones?: { enabled: boolean; added?: number; reason?: string };
   replaced_timelines?: string[];
+}
+
+export interface PaintShotColorsResult {
+  timeline_name: string;
+  total_items: number;
+  painted: number;
+  skipped_already_colored: number;
+  skipped_no_tags: number;
+  skipped_unknown: number;
+  rows: Array<{
+    item_index: number;
+    action:
+      | "painted"
+      | "skipped_already_colored"
+      | "skipped_no_tags"
+      | "skipped_unknown";
+    shot_type?: string | null;
+    color?: string | null;
+  }>;
+  color_legend: Record<string, string>;
 }
 
 export interface DeleteCutResult {

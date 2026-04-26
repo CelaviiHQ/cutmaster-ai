@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `POST /cutmaster/paint-shot-colors` endpoint + Review-screen
+  "Paint shot colors" button. After a build succeeds, paints each
+  cut-timeline item by its modal cached `shot_type` (closeup → Orange,
+  medium → Lime, wide → Teal, over-shoulder → Violet, broll → Blue,
+  title-card → Pink). Reuses the analyze-time tag cache so no new
+  Gemini calls are made; idempotent. Editor-set manual colors are
+  preserved by default (overrideable via `overwrite=true`). Lives in
+  `cutmaster.analysis.shot_color_painter`; covered by 7 hermetic tests.
 - Pre-merge CI workflow (`.github/workflows/ci.yml`) with four parallel
   jobs — ruff lint + format check, pytest matrix on Python 3.11 and 3.12,
   gitleaks secrets scan, and an absolute home-path hygiene grep to catch

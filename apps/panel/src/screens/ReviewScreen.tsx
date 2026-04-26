@@ -161,6 +161,14 @@ export default function ReviewScreen({
     const [buildAllResults, setBuildAllResults] = useState<ExecuteResult[]>([]);
     const [buildErr, setBuildErr] = useState<string | null>(null);
     const [deleting, setDeleting] = useState(false);
+    // Shot-color paint state — only meaningful after a build succeeds, so
+    // it's keyed by the timeline name we paint to. Cleared on
+    // delete-cut/start-new-run via the same setBuildResult(null) path.
+    const [painting, setPainting] = useState(false);
+    const [paintResult, setPaintResult] = useState<
+        import("../api").PaintShotColorsResult | null
+    >(null);
+    const [paintErr, setPaintErr] = useState<string | null>(null);
     const [selectedCandidate, setSelectedCandidate] = useState(0);
     const [replaceExisting, setReplaceExisting] = useState(false);
     const [existingNames, setExistingNames] = useState<Set<string>>(new Set());
@@ -1046,9 +1054,26 @@ export default function ReviewScreen({
                               regenerateWithCriticFeedback(report, unfixed)
                         : undefined;
 
+                // Inline action wiring for the per-warning buttons. Each
+                // kind maps to an existing primitive — go-to-Configure
+                // reuses the host's onBack, regenerate reuses the same
+                // settings-keyed regenerate the Tune-the-cut button uses.
+                const handlePlanWarningAction = (
+                    kind: import("../types").PlanWarningActionKind,
+                ) => {
+                    if (kind === "configure_hook" || kind === "configure_target_length") {
+                        onBack();
+                        return;
+                    }
+                    if (kind === "regenerate") {
+                        void regenerate(settings);
+                    }
+                };
+
                 return (
                     <CutHealthCard
                         planWarnings={plan.plan_warnings}
+                        onPlanWarningAction={handlePlanWarningAction}
                         coherenceReport={report}
                         previousReport={previousReport}
                         ladderSteps={ladderSteps}
@@ -1596,7 +1621,88 @@ export default function ReviewScreen({
                         </p>
                     )}
 
+                    {/* Shot-color paint — only renders meaningfully when
+                        the build was tagged (analyze ran with shot-aware
+                        editing on). The button itself is always visible
+                        post-build; the backend returns `painted: 0` and
+                        `skipped_no_tags: N` when no tags exist, which we
+                        surface as a one-line hint. */}
+                    {paintResult ? (
+                        <div className="paint-result">
+                            <p className="paint-result-summary">
+                                Painted <strong>{paintResult.painted}</strong> of{" "}
+                                {paintResult.total_items} item(s)
+                                {paintResult.skipped_already_colored > 0 && (
+                                    <>
+                                        {" "}· kept{" "}
+                                        {paintResult.skipped_already_colored} manual
+                                        color(s)
+                                    </>
+                                )}
+                                {paintResult.skipped_no_tags > 0 && (
+                                    <>
+                                        {" "}· {paintResult.skipped_no_tags} item(s) had no
+                                        cached tags
+                                    </>
+                                )}
+                                {paintResult.skipped_unknown > 0 && (
+                                    <>
+                                        {" "}· {paintResult.skipped_unknown} unknown
+                                    </>
+                                )}
+                            </p>
+                            {Object.keys(paintResult.color_legend).length > 0 && (
+                                <p className="paint-legend">
+                                    {Object.entries(paintResult.color_legend).map(
+                                        ([shot, color]) => (
+                                            <span key={shot} className="paint-legend-chip">
+                                                <span
+                                                    className={`paint-swatch paint-swatch--${color.toLowerCase()}`}
+                                                    aria-hidden="true"
+                                                />
+                                                {shot.replace("_", " ")}
+                                            </span>
+                                        ),
+                                    )}
+                                </p>
+                            )}
+                        </div>
+                    ) : paintErr ? (
+                        <p className="muted" style={{ color: "var(--err)" }}>
+                            Paint failed: {paintErr}
+                        </p>
+                    ) : null}
+
                     <div className="row">
+                        <button
+                            className="secondary"
+                            disabled={painting || deleting}
+                            title={
+                                paintResult
+                                    ? "Re-run; will overwrite shot-painted clips but preserve manual colors."
+                                    : "Color the new timeline's items by shot type (closeup / wide / B-roll …). Skips items you've already colored."
+                            }
+                            onClick={async () => {
+                                setPainting(true);
+                                setPaintErr(null);
+                                try {
+                                    const r = await api.paintShotColors(
+                                        buildResult.new_timeline_name,
+                                    );
+                                    setPaintResult(r);
+                                } catch (e) {
+                                    setPaintErr(String(e));
+                                } finally {
+                                    setPainting(false);
+                                }
+                            }}
+                        >
+                            {painting
+                                ? "Painting…"
+                                : paintResult
+                                  ? "Repaint shot colors"
+                                  : "Paint shot colors"}
+                        </button>
                         <button
                             className="secondary"
                             disabled={deleting}
@@ -1609,6 +1715,8 @@ export default function ReviewScreen({
                                 try {
                                     await api.deleteCut(runId);
                                     setBuildResult(null);
+                                    setPaintResult(null);
+                                    setPaintErr(null);
                                     refreshTimelineNames();
                                     refreshHistory();
                                 } catch (e) {
@@ -1633,6 +1741,8 @@ export default function ReviewScreen({
                                     await api.deleteAllCuts(runId);
                                     setBuildResult(null);
                                     setBuildAllResults([]);
+                                    setPaintResult(null);
+                                    setPaintErr(null);
                                     refreshTimelineNames();
                                     refreshHistory();
                                 } catch (e) {

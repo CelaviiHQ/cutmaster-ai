@@ -559,6 +559,14 @@ class DeleteAllCutsRequest(BaseModel):
     run_id: str
 
 
+class PaintShotColorsRequest(BaseModel):
+    """Reuses cached shot tags; never makes new vision calls."""
+
+    timeline_name: str
+    overwrite: bool = False
+    video_track: int = 1
+
+
 class DeleteRunRequest(BaseModel):
     run_id: str
 

@@ -11,7 +11,12 @@ from fastapi import APIRouter, HTTPException
 from ....cutmaster.core import state
 from ....cutmaster.core.execute import ExecuteCancelled, ExecuteError, execute_plan
 from ....logging_setup import with_run_id
-from ._models import DeleteAllCutsRequest, DeleteCutRequest, ExecuteRequest
+from ._models import (
+    DeleteAllCutsRequest,
+    DeleteCutRequest,
+    ExecuteRequest,
+    PaintShotColorsRequest,
+)
 
 log = logging.getLogger("cutmaster-ai.http.cutmaster")
 
@@ -319,3 +324,29 @@ async def delete_all_cuts(body: DeleteAllCutsRequest) -> dict:
         "deleted": removed,
         "skipped": sorted(wanted - set(removed)),
     }
+
+
+@router.post("/paint-shot-colors")
+async def paint_shot_colors(body: PaintShotColorsRequest) -> dict:
+    """Paint Resolve clip colors on the cut timeline by modal shot tag.
+
+    Reuses cached tags from analyze; never makes new vision calls. The
+    handler is a thin adapter — the real work lives in
+    :mod:`cutmaster.analysis.shot_color_painter`.
+    """
+    from ....cutmaster.analysis.shot_color_painter import (
+        paint_shot_colors_on_timeline,
+    )
+
+    try:
+        return await asyncio.to_thread(
+            paint_shot_colors_on_timeline,
+            body.timeline_name,
+            overwrite=body.overwrite,
+            video_track=body.video_track,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        log.exception("paint_shot_colors crashed for '%s'", body.timeline_name)
+        raise HTTPException(status_code=500, detail=f"paint failed: {exc}")
