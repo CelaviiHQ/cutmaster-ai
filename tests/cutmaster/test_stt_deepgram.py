@@ -200,13 +200,14 @@ def test_dispatch_routes_to_deepgram_when_selected(tmp_path, monkeypatch):
 
 
 def test_dispatch_falls_back_to_env_var(tmp_path, monkeypatch):
+    from cutmaster_ai.cutmaster.stt import base as stt_base
+
     audio = tmp_path / "a.wav"
     audio.write_bytes(b"x")
-    monkeypatch.setenv("GEMINI_API_KEY", "fake-key-for-dispatch-init")
     monkeypatch.setenv("CUTMASTER_STT_PROVIDER", "deepgram")
-    # Reload module-level DEFAULT_PROVIDER reflects the new env var only
-    # if we patch it directly; the module reads it at import time.
-    monkeypatch.setattr(stt_module, "DEFAULT_PROVIDER", "deepgram")
+    # transcribe_audio reads DEFAULT_PROVIDER as a module-level name from
+    # base.py, so patching the package re-export wouldn't take effect.
+    monkeypatch.setattr(stt_base, "DEFAULT_PROVIDER", "deepgram")
 
     calls: dict[str, str] = {}
 
