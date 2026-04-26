@@ -306,6 +306,42 @@ export type CoherenceReportEnvelope =
   | { kind: "single"; report: CoherenceReport }
   | { kind: "per_candidate"; report: PerCandidateCoherenceReport };
 
+/**
+ * Vlogger-friendly translation of a Director validator warning.
+ * Backend `_humanise_validator_warning` builds these from the raw
+ * validator strings so the panel can render plain English with
+ * optional inline actions instead of dumping `segment[2]: starts on
+ * low-confidence word…` at the editor.
+ */
+export type PlanWarningActionKind =
+  | "configure_hook"
+  | "configure_target_length"
+  | "regenerate";
+
+export interface PlanWarningAction {
+  label: string;
+  kind: PlanWarningActionKind;
+  payload?: Record<string, unknown>;
+}
+
+export type PlanWarningKind =
+  | "low_confidence_hook"
+  | "low_confidence_end"
+  | "low_coverage"
+  | "segment_too_short"
+  | "segment_too_long"
+  | "duplicate_takes"
+  | "other";
+
+export interface PlanWarning {
+  kind: PlanWarningKind;
+  title: string;
+  detail: string;
+  action?: PlanWarningAction;
+  /** Original validator string — kept for tooltips / debugging. */
+  raw: string;
+}
+
 export interface BuildPlanResult {
   preset: PresetKey;
   user_settings: UserSettings;
@@ -331,7 +367,7 @@ export interface BuildPlanResult {
    *  plan after exhausting retries). Empty / absent when the plan
    *  satisfies every constraint. Surfaced so the editor learns when
    *  their hook / target / pacing pick wasn't fully honoured. */
-  plan_warnings?: string[];
+  plan_warnings?: PlanWarning[];
 }
 
 export type FormatKey = "horizontal" | "vertical_short" | "square";

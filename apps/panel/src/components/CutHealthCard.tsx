@@ -1,5 +1,11 @@
 import CoherenceReportCard from "./CoherenceReportCard";
-import type { CoherenceIssue, CoherenceReport, Verdict } from "../types";
+import type {
+    CoherenceIssue,
+    CoherenceReport,
+    PlanWarning,
+    PlanWarningActionKind,
+    Verdict,
+} from "../types";
 
 interface Props {
     /**
@@ -7,7 +13,14 @@ interface Props {
      * null when the model honoured every constraint. Renders the
      * "couldn't fully honour your plan" strip when populated.
      */
-    planWarnings?: string[] | null;
+    planWarnings?: PlanWarning[] | null;
+    /**
+     * Inline-action handler. Fires when the editor clicks a per-warning
+     * action button (e.g. "Pick a different hook moment" → host
+     * navigates to Configure with the hook field focused). Host owns
+     * navigation + regenerate plumbing; the card just emits intent.
+     */
+    onPlanWarningAction?: (kind: PlanWarningActionKind, warning: PlanWarning) => void;
     /** Story-critic verdict on the built cut. ``null`` hides the section. */
     coherenceReport: CoherenceReport | null;
     /** Pre-rework report when the auto-rework loop fired. */
@@ -41,6 +54,7 @@ interface Props {
  */
 export default function CutHealthCard({
     planWarnings,
+    onPlanWarningAction,
     coherenceReport,
     previousReport = null,
     ladderSteps,
@@ -81,22 +95,37 @@ export default function CutHealthCard({
                     <div className="plan-warning-head">
                         <span aria-hidden>⚠</span>
                         <strong>
-                            The Director couldn't fully honour your plan
+                            {planWarnings!.length === 1
+                                ? "One thing to know about this cut"
+                                : `${planWarnings!.length} things to know about this cut`}
                         </strong>
-                        <span className="muted">
-                            · best-effort fallback after retry exhaustion
-                        </span>
                     </div>
                     <ul className="plan-warning-list">
                         {planWarnings!.map((w, i) => (
-                            <li key={i}>{w}</li>
+                            <li key={i} className="plan-warning-item">
+                                <div className="plan-warning-item-head">
+                                    <span className="plan-warning-item-title">
+                                        {w.title}
+                                    </span>
+                                    {w.action && onPlanWarningAction && (
+                                        <button
+                                            type="button"
+                                            className="plan-warning-action"
+                                            onClick={() =>
+                                                onPlanWarningAction(w.action!.kind, w)
+                                            }
+                                            title={w.raw}
+                                        >
+                                            {w.action.label} →
+                                        </button>
+                                    )}
+                                </div>
+                                <p className="plan-warning-item-detail">
+                                    {w.detail}
+                                </p>
+                            </li>
                         ))}
                     </ul>
-                    <p className="muted plan-warning-foot">
-                        Try Regenerate (the model is non-deterministic),
-                        pick a longer or clearer hook quote, or relax the
-                        target length.
-                    </p>
                 </div>
             )}
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 
 from fastapi import APIRouter, HTTPException
 
@@ -238,28 +239,184 @@ async def _director_or_validated(
     return result.plan, result
 
 
-def _plan_warnings(*plans) -> list[str]:
-    """Extract ``_validation_errors`` from any ``llm.call_structured`` result.
+def _plan_warnings(*plans) -> list[dict]:
+    """Extract ``_validation_errors`` from any ``llm.call_structured`` result
+    and translate each into a structured, vlogger-friendly warning.
 
     When the Director (or any agent invoked with ``accept_best_effort=True``)
     exhausts its retry budget while still failing validation, ``llm.py``
     stamps the offending plan object with a ``_validation_errors`` list and
     returns it anyway. Without this helper those silent failures would only
     surface in server logs — the panel would render the best-of-bad plan as
-    if everything succeeded. Walks every supplied plan, dedupes errors,
+    if everything succeeded.
+
+    The raw validator strings (``"segment[2]: starts on low-confidence word
+    'This' (conf 0.56 < 0.60)…"``) are written for the Director's retry
+    prompt, not for non-technical editors. This helper regex-translates
+    them into ``{kind, title, detail, action?}`` records so the panel can
+    render plain English with optional inline actions instead of dumping
+    the raw string. Walks every supplied plan, dedupes by raw string,
     returns ``[]`` when no plan carries warnings.
     """
-    out: list[str] = []
+    out: list[dict] = []
     seen: set[str] = set()
     for p in plans:
         if p is None:
             continue
         errors = getattr(p, "_validation_errors", None) or []
         for e in errors:
-            if e not in seen:
-                seen.add(e)
-                out.append(e)
+            if e in seen:
+                continue
+            seen.add(e)
+            out.append(_humanise_validator_warning(e))
     return out
+
+
+# Compiled once — these patterns are stable contracts with the Director's
+# validator strings (see cutmaster.core.director.validate_plan). If a
+# validator message is reworded, the matching branch falls back to
+# ``kind="other"`` and the original string surfaces verbatim, so the
+# editor still sees something useful.
+_RE_LOW_CONF_START = re.compile(r"segment\[(\d+)\]: starts on low-confidence word '([^']*)'")
+_RE_LOW_CONF_END = re.compile(r"segment\[(\d+)\]: ends on low-confidence word '([^']*)'")
+_RE_COVERAGE = re.compile(
+    r"per-clip coverage: touched (\d+)/(\d+) units \((\d+)%, threshold (\d+)%\)"
+)
+_RE_FLOOR = re.compile(r"segment\[(\d+)\]: ([\d.]+)s is under the ([\d.]+)s pacing floor")
+_RE_CEILING = re.compile(r"segment\[(\d+)\]: ([\d.]+)s exceeds the ([\d.]+)s pacing ceiling")
+_RE_DUPLICATE_TAKES = re.compile(
+    r"take-group \d+: plan uses clip_index \[([\d, ]+)\] from the same duplicate-take group"
+)
+
+
+def _humanise_validator_warning(raw: str) -> dict:
+    """Map a raw validator string to a structured panel warning.
+
+    Returns ``{kind, title, detail, action?}`` where:
+      - ``kind`` is a stable enum the frontend can branch on
+      - ``title`` is a short vlogger-language headline (~5-8 words)
+      - ``detail`` is one sentence explaining what happened
+      - ``action`` (optional) is ``{label, kind, payload?}`` describing
+        an inline button the panel renders. ``action.kind`` values:
+          - ``configure_hook`` — return to Configure with the hook field
+          - ``configure_target_length`` — return to Configure
+          - ``regenerate`` — trigger a fresh build (cheap nudge for
+            non-deterministic situations)
+
+    Always returns a record. Unknown shapes fall through to
+    ``{kind: "other", title: "Heads up", detail: <raw>}`` so the editor
+    still sees the validator's words rather than an empty alert.
+    """
+    if m := _RE_LOW_CONF_START.search(raw):
+        seg_one_based = int(m.group(1)) + 1
+        word = m.group(2)
+        return {
+            "kind": "low_confidence_hook",
+            "title": "Your hook starts mid-word",
+            "detail": (
+                f"Segment {seg_one_based} begins on the word “{word}” "
+                "— the AI wasn't fully sure where that word started, so the "
+                "cut may begin a beat later than you intended."
+            ),
+            "action": {
+                "label": "Pick a different hook moment",
+                "kind": "configure_hook",
+            },
+            "raw": raw,
+        }
+    if m := _RE_LOW_CONF_END.search(raw):
+        seg_one_based = int(m.group(1)) + 1
+        word = m.group(2)
+        return {
+            "kind": "low_confidence_end",
+            "title": "A segment ends mid-word",
+            "detail": (
+                f"Segment {seg_one_based} ends on “{word}” "
+                "— the transcription was unclear here, so the segment "
+                "may cut a beat earlier than expected."
+            ),
+            "raw": raw,
+        }
+    if m := _RE_COVERAGE.search(raw):
+        used, total, _ratio, _threshold = (
+            int(m.group(1)),
+            int(m.group(2)),
+            int(m.group(3)),
+            int(m.group(4)),
+        )
+        missing = total - used
+        return {
+            "kind": "low_coverage",
+            "title": (
+                f"{missing} of your clip{'s' if missing != 1 else ''} "
+                f"{'were' if missing != 1 else 'was'} left out"
+            ),
+            "detail": (
+                f"The AI used {used} of your {total} clips. Some footage "
+                "you placed on the timeline may be missing from this cut."
+            ),
+            "action": {
+                "label": "Try Regenerate",
+                "kind": "regenerate",
+            },
+            "raw": raw,
+        }
+    if m := _RE_FLOOR.search(raw):
+        seg_one_based = int(m.group(1)) + 1
+        actual = float(m.group(2))
+        floor = float(m.group(3))
+        return {
+            "kind": "segment_too_short",
+            "title": "A segment is shorter than the preset prefers",
+            "detail": (
+                f"Segment {seg_one_based} runs {actual:.1f}s — under the "
+                f"{floor:.0f}s pacing floor for this preset. The cut may "
+                "feel rushed at this beat."
+            ),
+            "action": {
+                "label": "Adjust target length",
+                "kind": "configure_target_length",
+            },
+            "raw": raw,
+        }
+    if m := _RE_CEILING.search(raw):
+        seg_one_based = int(m.group(1)) + 1
+        actual = float(m.group(2))
+        ceiling = float(m.group(3))
+        return {
+            "kind": "segment_too_long",
+            "title": "A segment is longer than the preset prefers",
+            "detail": (
+                f"Segment {seg_one_based} runs {actual:.1f}s — over the "
+                f"{ceiling:.0f}s pacing ceiling for this preset. The cut "
+                "may drag at this beat."
+            ),
+            "action": {
+                "label": "Adjust target length",
+                "kind": "configure_target_length",
+            },
+            "raw": raw,
+        }
+    if _RE_DUPLICATE_TAKES.search(raw):
+        return {
+            "kind": "duplicate_takes",
+            "title": "Two takes of the same line ended up in the cut",
+            "detail": (
+                "The AI picked more than one clip from a group it identified "
+                "as duplicate takes. You may hear the same line twice."
+            ),
+            "action": {
+                "label": "Try Regenerate",
+                "kind": "regenerate",
+            },
+            "raw": raw,
+        }
+    return {
+        "kind": "other",
+        "title": "Heads up",
+        "detail": raw,
+        "raw": raw,
+    }
 
 
 # ---------------------------------------------------------------------------

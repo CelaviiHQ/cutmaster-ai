@@ -138,6 +138,77 @@ def test_build_plan_accepts_and_persists_v2_10_format_fields(
     assert saved["safe_zones_enabled"] is True
 
 
+def test_humanise_validator_warning_low_confidence_hook():
+    from cutmaster_ai.http.routes.cutmaster.build import _humanise_validator_warning
+
+    raw = (
+        "segment[2]: starts on low-confidence word 'This' "
+        "(conf 0.56 < 0.60). Move the start to the next "
+        "crisply-transcribed word boundary."
+    )
+    out = _humanise_validator_warning(raw)
+    assert out["kind"] == "low_confidence_hook"
+    # 1-based segment index for vlogger sanity (raw uses 0-based).
+    assert "Segment 3" in out["detail"]
+    assert "“This”" in out["detail"]
+    # No "conf 0.56" or "< 0.60" jargon should leak.
+    assert "0.56" not in out["detail"]
+    assert "0.60" not in out["detail"]
+    assert out["action"]["kind"] == "configure_hook"
+
+
+def test_humanise_validator_warning_low_coverage():
+    from cutmaster_ai.http.routes.cutmaster.build import _humanise_validator_warning
+
+    raw = (
+        "per-clip coverage: touched 7/11 units (64%, threshold 70%). "
+        "Add segments from clip_index [1, 2, 6, 9]."
+    )
+    out = _humanise_validator_warning(raw)
+    assert out["kind"] == "low_coverage"
+    # "4 of your clips were left out" — the count is what matters.
+    assert "4" in out["title"]
+    assert "left out" in out["title"]
+    # No "threshold 70%" or "clip_index [1, 2, 6, 9]" jargon.
+    assert "threshold" not in out["detail"].lower()
+    assert "clip_index" not in out["detail"]
+    assert out["action"]["kind"] == "regenerate"
+
+
+def test_humanise_validator_warning_unknown_falls_through():
+    from cutmaster_ai.http.routes.cutmaster.build import _humanise_validator_warning
+
+    raw = "some validator string the regex doesn't recognise yet"
+    out = _humanise_validator_warning(raw)
+    assert out["kind"] == "other"
+    # Unknown shapes still surface the original string so the editor
+    # never sees an empty alert when the validator adds a new check.
+    assert raw in out["detail"]
+    assert "action" not in out
+
+
+def test_plan_warnings_dedupes_and_returns_structured_records():
+    from cutmaster_ai.http.routes.cutmaster.build import _plan_warnings
+
+    class _Plan:
+        pass
+
+    p = _Plan()
+    object.__setattr__(
+        p,
+        "_validation_errors",
+        [
+            "per-clip coverage: touched 7/11 units (64%, threshold 70%).",
+            "per-clip coverage: touched 7/11 units (64%, threshold 70%).",  # duplicate
+            "segment[1]: starts on low-confidence word 'Yo' (conf 0.5 < 0.6).",
+        ],
+    )
+    out = _plan_warnings(p)
+    assert len(out) == 2
+    kinds = [w["kind"] for w in out]
+    assert kinds == ["low_coverage", "low_confidence_hook"]
+
+
 def test_build_plan_emits_per_stage_progress_events(
     client,
     monkeypatch,
