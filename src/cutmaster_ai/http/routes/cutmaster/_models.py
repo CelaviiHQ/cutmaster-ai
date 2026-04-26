@@ -391,13 +391,20 @@ class UserSettings(BaseModel):
             "each take. Default false — editor picked takes but hasn't scrubbed."
         ),
     )
-    # v2-4: Clip Hunter — number of candidate clips to surface. target_length_s
-    # is reused as the per-clip target duration when preset=clip_hunter.
+    # Multi-candidate count — used by Clip Hunter (number of candidate
+    # clips returned), Short Generator (number of shorts), and the
+    # multi_clip cut intent more generally. Ceiling matches the panel's
+    # stepper chip set [1, 2, 3, 5, 8, 10]; cap at 10 so editors can't
+    # request runaway cardinalities while still covering every chip.
     num_clips: int = Field(
         default=3,
         ge=1,
-        le=5,
-        description="Clip Hunter only. How many candidate clips to return (1–5).",
+        le=10,
+        description=(
+            "Number of candidate clips / shorts to produce. Used by Clip "
+            "Hunter and Short Generator; also informs cut-intent resolution "
+            "when >1 (multi-clip harvesting). Range 1–10."
+        ),
     )
     # v2-5: speaker labels. Map of STT speaker_id → human label
     # ({"S1": "Host", "S2": "Guest"}). Director + Marker prompts read these
