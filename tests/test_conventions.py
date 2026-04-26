@@ -89,6 +89,8 @@ TOOL_MODULES = [
     "cutmaster_ai.cutmaster.core.timeouts",
     "cutmaster_ai.cutmaster.media.ffmpeg_frames",
     "cutmaster_ai.cutmaster.analysis.shot_tagger",
+    "cutmaster_ai.cutmaster.analysis.shot_color_painter",
+    "cutmaster_ai.cutmaster.analysis.shot_metadata_stamper",
     "cutmaster_ai.cutmaster.analysis.boundary_validator",
     "cutmaster_ai.cutmaster.core.validator_loop",
     "cutmaster_ai.cutmaster.analysis.audio_cues",
