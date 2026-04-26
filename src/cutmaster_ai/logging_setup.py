@@ -126,6 +126,28 @@ ALLOWED_EXTRA_KEYS = frozenset(
         "mean_score",
         "max_score",
         "min_score",
+        # Story-critic auto-rework telemetry. The two-pass comparison
+        # fields make the regression-guard decision auditable in JSON /
+        # human logs without forcing JSON mode.
+        "first_score",
+        "second_score",
+        "score_delta",
+        "first_verdict",
+        "second_verdict",
+        "crossed_to_ship",
+        "kept_pass",
+        # Iterative critic loop telemetry (story_critic.iteration +
+        # story_critic.loop_terminated). Loop bounds are advisory — the
+        # field set is forward-compatible with N>2 iteration counts,
+        # plateau / regression / token_budget exit reasons, and per-
+        # iteration token accounting.
+        "iteration_index",
+        "delta_from_prev",
+        "n_issues_unchanged",
+        "tokens_spent_iteration",
+        "tokens_spent_total",
+        "final_score",
+        "iterations_run",
     }
 )
 

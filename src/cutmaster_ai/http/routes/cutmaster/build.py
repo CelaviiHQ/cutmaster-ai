@@ -454,6 +454,32 @@ def _rework_max_attempts() -> int:
         return 1
 
 
+def _envelope_score(envelope: dict) -> int:
+    """Pull a comparable score out of a single-cut or per-candidate
+    envelope. Per-candidate envelopes return the best candidate's score;
+    they never round-trip through the rework loop today, but the helper
+    is defensive."""
+    rep = envelope.get("report") or {}
+    if envelope.get("kind") == "per_candidate":
+        cands = rep.get("candidates") or []
+        if not cands:
+            return 0
+        best_idx = rep.get("best_candidate_index", 0)
+        if 0 <= best_idx < len(cands):
+            return int(cands[best_idx].get("score", 0))
+        return max(int(c.get("score", 0)) for c in cands)
+    return int(rep.get("score", 0))
+
+
+def _pick_shipped_envelope(history: list[dict]) -> dict:
+    """Return the envelope corresponding to the plan that was actually
+    shipped. Today the rework loop's regression-guard keeps whichever
+    pass scored higher, so the highest-scoring envelope wins."""
+    if not history:
+        raise ValueError("coherence_history must contain at least one entry")
+    return max(history, key=_envelope_score)
+
+
 def _should_rework(report) -> bool:
     """Decide whether the critic's verdict warrants a re-pick.
 
@@ -482,6 +508,84 @@ def _critic_feedback_payload(report) -> dict:
         "summary": report.summary,
         "issues": [iss.model_dump() for iss in report.issues],
     }
+
+
+def _emit_iteration(
+    run_id: str,
+    *,
+    iteration_index: int,
+    report,
+    delta_from_prev: int | None,
+    tokens_spent_iteration: int | None = None,
+    tokens_spent_total: int | None = None,
+    n_issues_unchanged: int | None = None,
+    axes=None,
+) -> None:
+    """Per-pass iteration record. Emitted once per critic call inside
+    ``_critic_with_rework``. Today's loop emits 1 (no rework) or 2 (one
+    rework). The ``tokens_*`` and ``n_issues_unchanged`` fields are
+    placeholders until the iterative-loop proposal's Phase 2 / Phase 4
+    plumbing land; null in Phase 1.
+    """
+    payload = {
+        "event": "story_critic.iteration",
+        "run_id": run_id,
+        "iteration_index": iteration_index,
+        "score": report.score,
+        "verdict": report.verdict,
+        "delta_from_prev": delta_from_prev,
+        "n_issues": len(report.issues),
+        "n_issues_unchanged": n_issues_unchanged,
+        "tokens_spent_iteration": tokens_spent_iteration,
+        "tokens_spent_total": tokens_spent_total,
+        "cut_intent": axes.cut_intent if axes else None,
+        "content_type": axes.content_type if axes else None,
+    }
+    log.info(
+        "story_critic.iteration run_id=%s iter=%d score=%d verdict=%s",
+        run_id,
+        iteration_index,
+        report.score,
+        report.verdict,
+        extra=payload,
+    )
+
+
+def _emit_loop_terminated(
+    run_id: str,
+    *,
+    reason: str,
+    final_score: int | None,
+    iterations_run: int,
+    tokens_spent_total: int | None = None,
+    axes=None,
+) -> None:
+    """One terminal record per loop run. Reason is one of
+    ``{shipped, max_iterations, director_failed}`` in Phase 1; the
+    proposal reserves ``plateau``, ``regression``, ``token_budget``
+    for Phase 2 so downstream consumers don't have to retrofit the
+    schema. The critic-skipped path (loop never starts) deliberately
+    does NOT emit — ``coherence_history is None`` already signals it
+    and ``story_critic.skipped`` is the load-bearing log there.
+    """
+    payload = {
+        "event": "story_critic.loop_terminated",
+        "run_id": run_id,
+        "reason": reason,
+        "final_score": final_score,
+        "iterations_run": iterations_run,
+        "tokens_spent_total": tokens_spent_total,
+        "cut_intent": axes.cut_intent if axes else None,
+        "content_type": axes.content_type if axes else None,
+    }
+    log.info(
+        "story_critic.loop_terminated run_id=%s reason=%s iterations=%d final_score=%s",
+        run_id,
+        reason,
+        iterations_run,
+        final_score,
+        extra=payload,
+    )
 
 
 def _emit_rework_triggered(run_id: str, report, axes) -> None:
@@ -539,12 +643,41 @@ async def _critic_with_rework(
         user_opt_in=user_opt_in,
     )
     if first is None:
-        return initial_plan, None  # critic skipped — preserve legacy behaviour
+        # Critic skipped (flag off / no axes / llm error). Per the
+        # iterative-critic-loop proposal Phase 1.3, no loop_terminated
+        # log here — `coherence_history is None` plus the existing
+        # `story_critic.skipped` log are the load-bearing signals.
+        return initial_plan, None
+
+    _emit_iteration(
+        run_id,
+        iteration_index=0,
+        report=first,
+        delta_from_prev=None,
+        axes=axes,
+    )
 
     history: list[dict] = [_wrap_coherence(first)]
     if not _should_rework(first):
+        _emit_loop_terminated(
+            run_id,
+            reason="shipped",
+            final_score=first.score,
+            iterations_run=1,
+            axes=axes,
+        )
         return initial_plan, history
     if _rework_max_attempts() < 1:
+        # Env disables rework even though the verdict requested one.
+        # Loop hit its iteration ceiling at zero; reuse the same reason
+        # the >0 path emits when REWORK_MAX is exhausted.
+        _emit_loop_terminated(
+            run_id,
+            reason="max_iterations",
+            final_score=first.score,
+            iterations_run=1,
+            axes=axes,
+        )
         return initial_plan, history
 
     _emit_rework_triggered(run_id, first, axes)
@@ -563,6 +696,13 @@ async def _critic_with_rework(
                 "error_type": type(exc).__name__,
             },
         )
+        _emit_loop_terminated(
+            run_id,
+            reason="director_failed",
+            final_score=first.score,
+            iterations_run=1,
+            axes=axes,
+        )
         return initial_plan, history
 
     second = _run_critic_or_skip(
@@ -575,10 +715,32 @@ async def _critic_with_rework(
     )
     if second is None:
         # Second critic call failed; still ship the rework plan since the
-        # Director did honour the feedback. History records v1 only.
+        # Director did honour the feedback. History records v1 only. No
+        # iteration log for the missing pass — telemetry contract is "one
+        # iteration record per critic call that returned a report."
+        _emit_loop_terminated(
+            run_id,
+            reason="max_iterations",
+            final_score=first.score,
+            iterations_run=1,
+            axes=axes,
+        )
         return new_plan, history
+
+    _emit_iteration(
+        run_id,
+        iteration_index=1,
+        report=second,
+        delta_from_prev=second.score - first.score,
+        axes=axes,
+    )
     history.append(_wrap_coherence(second))
 
+    # Regression guard: if pass 2 scored lower than pass 1, the rework
+    # made things worse. Ship the original plan and the original report.
+    # The history still records both passes so the panel can surface the
+    # regression chip and editors can audit the decision.
+    kept_pass = "second" if second.score >= first.score else "first"
     crossed = first.verdict != "ship" and second.verdict == "ship"
     _emit_rework_completed(
         run_id,
@@ -586,7 +748,19 @@ async def _critic_with_rework(
         second=second,
         axes=axes,
         crossed_to_ship=crossed,
+        kept_pass=kept_pass,
     )
+    shipped_score = second.score if kept_pass == "second" else first.score
+    terminated_reason = "shipped" if second.verdict == "ship" else "max_iterations"
+    _emit_loop_terminated(
+        run_id,
+        reason=terminated_reason,
+        final_score=shipped_score,
+        iterations_run=2,
+        axes=axes,
+    )
+    if kept_pass == "first":
+        return initial_plan, history
     return new_plan, history
 
 
@@ -597,6 +771,7 @@ def _emit_rework_completed(
     second,
     axes,
     crossed_to_ship: bool,
+    kept_pass: str = "second",
 ) -> None:
     score_delta = (second.score - first.score) if (first and second) else 0
     payload = {
@@ -608,16 +783,18 @@ def _emit_rework_completed(
         "first_verdict": first.verdict if first else None,
         "second_verdict": second.verdict if second else None,
         "crossed_to_ship": crossed_to_ship,
+        "kept_pass": kept_pass,
         "cut_intent": axes.cut_intent if axes else None,
         "content_type": axes.content_type if axes else None,
     }
     log.info(
-        "story_critic.rework_completed run_id=%s delta=%+d first=%d→second=%d crossed_to_ship=%s",
+        "story_critic.rework_completed run_id=%s delta=%+d first=%d→second=%d crossed_to_ship=%s kept=%s",
         run_id,
         score_delta,
         first.score if first else 0,
         second.score if second else 0,
         crossed_to_ship,
+        kept_pass,
         extra=payload,
     )
 
@@ -1722,9 +1899,11 @@ async def build_plan(body: BuildPlanRequest) -> dict:
             run["plan"]["coherence_history"] = [envelope]
     else:
         # Rework-aware path: history carries 1 (no rework) or 2 (rework
-        # fired) envelopes; the final report is the last one.
+        # fired) envelopes. The mirrored ``coherence_report`` points at
+        # whichever entry scored highest — when the regression-guard
+        # kept pass 1, that's pass 1, not the chronologically-last one.
         run["plan"]["coherence_history"] = coherence_history
-        run["plan"]["coherence_report"] = coherence_history[-1]
+        run["plan"]["coherence_report"] = _pick_shipped_envelope(coherence_history)
 
     await _persist_plan(body.run_id, run["plan"])
 

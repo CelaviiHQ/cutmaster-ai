@@ -82,10 +82,10 @@ DEFAULTS: dict[str, str] = {
     "shot_tagger": "gemini-3.1-flash-lite-preview",
     "boundary_validator": "gemini-3.1-flash-lite-preview",
     # Story-coherence critic (Implementation/optimizaiton/story-critic.md).
-    # Defaults to non-lite flash because the critic does editorial reasoning,
-    # not classification — the lite tier has shown flakiness on nuanced calls
-    # in autodetect. Override with CUTMASTER_STORY_CRITIC_MODEL.
-    "story_critic": "gemini-3.1-flash",
+    # Defaults to the same lite-preview slug as the other agents because the
+    # non-lite gemini-3.1-flash is not available on the v1beta endpoint.
+    # Override with CUTMASTER_STORY_CRITIC_MODEL once a non-lite slug ships.
+    "story_critic": "gemini-3.1-flash-lite-preview",
 }
 
 

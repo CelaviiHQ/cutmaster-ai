@@ -636,6 +636,99 @@ def test_build_plan_critic_rework_max_zero_disables_loop(client, monkeypatch, sc
     assert history[0]["report"]["verdict"] == "rework"
 
 
+def test_build_plan_critic_rework_regression_guard_keeps_better_pass(
+    client, monkeypatch, scrubbed_run, caplog
+):
+    """When pass 2 scores LOWER than pass 1, the regression-guard keeps
+    pass 1's plan and final report. History records both envelopes so
+    the panel can surface the regression chip; telemetry carries
+    ``kept_pass="first"`` so we can audit the decision."""
+    _flag_on(monkeypatch)
+
+    pass1_plan = DirectorPlan(
+        hook_index=0,
+        selected_clips=[CutSegment(start_s=0.0, end_s=0.95, reason="pass1")],
+        reasoning="pass1",
+    )
+    pass2_plan = DirectorPlan(
+        hook_index=0,
+        selected_clips=[CutSegment(start_s=0.0, end_s=0.95, reason="pass2")],
+        reasoning="pass2",
+    )
+    counter = {"i": 0}
+
+    def _fake_build(transcript, preset, settings, resolved=None):
+        i = counter["i"]
+        counter["i"] += 1
+        return pass1_plan if i == 0 else pass2_plan
+
+    monkeypatch.setattr(routes.build, "build_cut_plan", _fake_build)
+
+    # Pass 1 scores 65 (verdict=review → triggers rework); pass 2 scores
+    # 45 (verdict=rework, lower than pass 1) — guard must keep pass 1.
+    pass1 = story_critic.CoherenceReport(
+        score=65,
+        hook_strength=70,
+        arc_clarity=60,
+        transitions=65,
+        resolution=70,
+        issues=[],
+        summary="ok-ish",
+        verdict="review",
+    )
+    pass2 = story_critic.CoherenceReport(
+        score=45,
+        hook_strength=60,
+        arc_clarity=30,
+        transitions=40,
+        resolution=50,
+        issues=[],
+        summary="worse",
+        verdict="rework",
+    )
+    _seq_critic(monkeypatch, [pass1, pass2])
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    _stub_resolver_and_resolve(monkeypatch)
+
+    with caplog.at_level("INFO", logger="cutmaster-ai.http.cutmaster"):
+        r = client.post(
+            "/cutmaster/build-plan",
+            json={
+                "run_id": scrubbed_run["run_id"],
+                "preset": "vlog",
+                "content_type": "vlog",
+                "cut_intent": "narrative",
+                "user_settings": {
+                    "target_length_s": 60,
+                    "themes": [],
+                    "cut_intent": "narrative",
+                },
+            },
+        )
+    assert r.status_code == 200, r.text
+
+    persisted = state.load(scrubbed_run["run_id"])
+    # Final plan is pass 1's (higher score). The shipped Director plan
+    # carries the pass 1 reasoning string.
+    assert persisted["plan"]["director"]["reasoning"] == "pass1"
+    # History records both passes for auditability.
+    history = persisted["plan"]["coherence_history"]
+    assert len(history) == 2
+    assert history[0]["report"]["score"] == 65
+    assert history[1]["report"]["score"] == 45
+    # The mirrored coherence_report points at pass 1 (the kept one).
+    assert persisted["plan"]["coherence_report"]["report"]["score"] == 65
+
+    completed = [
+        rec
+        for rec in caplog.records
+        if getattr(rec, "event", None) == "story_critic.rework_completed"
+    ]
+    assert len(completed) == 1
+    assert completed[0].kept_pass == "first"
+    assert completed[0].score_delta == -20
+
+
 def test_build_plan_critic_rework_director_failure_ships_original(
     client, monkeypatch, scrubbed_run, caplog
 ):
@@ -690,3 +783,314 @@ def test_build_plan_critic_rework_director_failure_ships_original(
         getattr(rec, "event", None) == "story_critic.rework_director_failed"
         for rec in caplog.records
     )
+
+
+# ---------------------------------------------------------------------------
+# Iterative-loop telemetry — story_critic.iteration + story_critic.loop_terminated
+# ---------------------------------------------------------------------------
+#
+# Phase 1 reachable subset of `loop_terminated.reason`: {shipped,
+# max_iterations, director_failed}. The other three values (plateau,
+# regression, token_budget) are reserved by the proposal but only become
+# reachable once Phase 2 lifts MAX above 1; tests here assert they do
+# NOT fire under MAX=1.
+#
+# `iteration_index` is bounded to {0, 1} for Phase 1: 1 iteration on
+# no-rework, 2 on a single rework. These bounds widen in Phase 2 when
+# REWORK_MAX defaults to 3.
+
+
+def _iteration_records(caplog) -> list:
+    return [
+        rec for rec in caplog.records if getattr(rec, "event", None) == "story_critic.iteration"
+    ]
+
+
+def _terminated_records(caplog) -> list:
+    return [
+        rec
+        for rec in caplog.records
+        if getattr(rec, "event", None) == "story_critic.loop_terminated"
+    ]
+
+
+def test_loop_telemetry_shipped_on_first_pass(client, monkeypatch, scrubbed_run, caplog):
+    """verdict=ship on pass 1 → 1 iteration record + 1 terminated record
+    with reason=shipped. The no-rework hot path (most builds) MUST emit
+    these even though it returns before any rework logic runs."""
+    _flag_on(monkeypatch)
+    _capture_director_calls(monkeypatch)
+    _seq_critic(monkeypatch, [_good_report()])
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    _stub_resolver_and_resolve(monkeypatch)
+
+    with caplog.at_level("INFO", logger="cutmaster-ai.http.cutmaster"):
+        r = client.post(
+            "/cutmaster/build-plan",
+            json={
+                "run_id": scrubbed_run["run_id"],
+                "preset": "vlog",
+                "content_type": "vlog",
+                "cut_intent": "narrative",
+                "user_settings": {
+                    "target_length_s": 60,
+                    "themes": [],
+                    "cut_intent": "narrative",
+                },
+            },
+        )
+    assert r.status_code == 200, r.text
+
+    iterations = _iteration_records(caplog)
+    terminated = _terminated_records(caplog)
+    assert len(iterations) == 1
+    assert iterations[0].iteration_index == 0
+    assert iterations[0].score == 82
+    assert iterations[0].verdict == "ship"
+    assert iterations[0].delta_from_prev is None
+    assert iterations[0].n_issues == 0
+
+    assert len(terminated) == 1
+    assert terminated[0].reason == "shipped"
+    assert terminated[0].iterations_run == 1
+    assert terminated[0].final_score == 82
+
+
+def test_loop_telemetry_max_iterations_when_rework_disabled(
+    client, monkeypatch, scrubbed_run, caplog
+):
+    """Critic flags rework but REWORK_MAX=0 → loop terminated as
+    max_iterations after one pass (env disables the rework attempt)."""
+    _flag_on(monkeypatch)
+    monkeypatch.setenv("CUTMASTER_STORY_CRITIC_REWORK_MAX", "0")
+    _capture_director_calls(monkeypatch)
+    _seq_critic(monkeypatch, [_rework_report()])
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    _stub_resolver_and_resolve(monkeypatch)
+
+    with caplog.at_level("INFO", logger="cutmaster-ai.http.cutmaster"):
+        r = client.post(
+            "/cutmaster/build-plan",
+            json={
+                "run_id": scrubbed_run["run_id"],
+                "preset": "vlog",
+                "content_type": "vlog",
+                "cut_intent": "narrative",
+                "user_settings": {
+                    "target_length_s": 60,
+                    "themes": [],
+                    "cut_intent": "narrative",
+                },
+            },
+        )
+    assert r.status_code == 200, r.text
+
+    iterations = _iteration_records(caplog)
+    terminated = _terminated_records(caplog)
+    assert len(iterations) == 1
+    assert iterations[0].iteration_index == 0
+    assert len(terminated) == 1
+    assert terminated[0].reason == "max_iterations"
+    assert terminated[0].iterations_run == 1
+
+
+def test_loop_telemetry_two_iterations_on_rework(client, monkeypatch, scrubbed_run, caplog):
+    """Pass 1 verdict=rework → rework fires → pass 2 verdict=ship.
+    Two iteration records with delta_from_prev wired on iter 1, and
+    a terminated record with reason=shipped (because pass 2 shipped)."""
+    _flag_on(monkeypatch)
+    _capture_director_calls(monkeypatch)
+    _seq_critic(monkeypatch, [_rework_report(), _good_report()])
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    _stub_resolver_and_resolve(monkeypatch)
+
+    with caplog.at_level("INFO", logger="cutmaster-ai.http.cutmaster"):
+        r = client.post(
+            "/cutmaster/build-plan",
+            json={
+                "run_id": scrubbed_run["run_id"],
+                "preset": "vlog",
+                "content_type": "vlog",
+                "cut_intent": "narrative",
+                "user_settings": {
+                    "target_length_s": 60,
+                    "themes": [],
+                    "cut_intent": "narrative",
+                },
+            },
+        )
+    assert r.status_code == 200, r.text
+
+    iterations = _iteration_records(caplog)
+    terminated = _terminated_records(caplog)
+    assert [rec.iteration_index for rec in iterations] == [0, 1]
+    assert iterations[0].delta_from_prev is None
+    assert iterations[1].delta_from_prev == 24  # 82 - 58
+
+    assert len(terminated) == 1
+    assert terminated[0].reason == "shipped"
+    assert terminated[0].iterations_run == 2
+    assert terminated[0].final_score == 82
+
+
+def test_loop_telemetry_max_iterations_when_neither_pass_ships(
+    client, monkeypatch, scrubbed_run, caplog
+):
+    """Pass 1 verdict=rework, pass 2 verdict=rework (or review) →
+    REWORK_MAX=1 exhausted without verdict=ship. Reason=max_iterations
+    even though both critic calls returned reports."""
+    _flag_on(monkeypatch)
+    _capture_director_calls(monkeypatch)
+    pass1 = _rework_report()
+    pass2 = story_critic.CoherenceReport(
+        score=70,  # higher so kept_pass="second"; verdict still not ship
+        hook_strength=70,
+        arc_clarity=70,
+        transitions=70,
+        resolution=70,
+        issues=[],
+        summary="better but not ship",
+        verdict="review",
+    )
+    _seq_critic(monkeypatch, [pass1, pass2])
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    _stub_resolver_and_resolve(monkeypatch)
+
+    with caplog.at_level("INFO", logger="cutmaster-ai.http.cutmaster"):
+        r = client.post(
+            "/cutmaster/build-plan",
+            json={
+                "run_id": scrubbed_run["run_id"],
+                "preset": "vlog",
+                "content_type": "vlog",
+                "cut_intent": "narrative",
+                "user_settings": {
+                    "target_length_s": 60,
+                    "themes": [],
+                    "cut_intent": "narrative",
+                },
+            },
+        )
+    assert r.status_code == 200, r.text
+
+    terminated = _terminated_records(caplog)
+    assert len(terminated) == 1
+    assert terminated[0].reason == "max_iterations"
+    assert terminated[0].iterations_run == 2
+    assert terminated[0].final_score == 70  # pass 2 (kept_pass="second")
+
+
+def test_loop_telemetry_director_failed_reason(client, monkeypatch, scrubbed_run, caplog):
+    """When the Director's rework call raises, terminated.reason is
+    director_failed and only iteration 0 was recorded."""
+    _flag_on(monkeypatch)
+
+    plan = DirectorPlan(
+        hook_index=0,
+        selected_clips=[CutSegment(start_s=0.0, end_s=0.95, reason="hook")],
+        reasoning="ok",
+    )
+    counter = {"i": 0}
+
+    def _fake_build(transcript, preset, settings, resolved=None):
+        i = counter["i"]
+        counter["i"] += 1
+        if i >= 1:
+            raise RuntimeError("director timeout on rework")
+        return plan
+
+    monkeypatch.setattr(routes.build, "build_cut_plan", _fake_build)
+    _seq_critic(monkeypatch, [_rework_report()])
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    _stub_resolver_and_resolve(monkeypatch)
+
+    with caplog.at_level("INFO", logger="cutmaster-ai.http.cutmaster"):
+        r = client.post(
+            "/cutmaster/build-plan",
+            json={
+                "run_id": scrubbed_run["run_id"],
+                "preset": "vlog",
+                "content_type": "vlog",
+                "cut_intent": "narrative",
+                "user_settings": {
+                    "target_length_s": 60,
+                    "themes": [],
+                    "cut_intent": "narrative",
+                },
+            },
+        )
+    assert r.status_code == 200, r.text
+
+    iterations = _iteration_records(caplog)
+    terminated = _terminated_records(caplog)
+    assert len(iterations) == 1
+    assert iterations[0].iteration_index == 0
+
+    assert len(terminated) == 1
+    assert terminated[0].reason == "director_failed"
+    assert terminated[0].iterations_run == 1
+
+
+def test_loop_telemetry_no_log_when_critic_skipped(client, monkeypatch, scrubbed_run, caplog):
+    """Flag off → critic skipped → loop never starts → NO iteration
+    or loop_terminated records. Phase 1.3 explicitly defers this branch
+    to story_critic.skipped, which already exists."""
+    _flag_off(monkeypatch)
+    _capture_director_calls(monkeypatch)
+    _mock_critic(monkeypatch)
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    _stub_resolver_and_resolve(monkeypatch)
+
+    with caplog.at_level("INFO", logger="cutmaster-ai.http.cutmaster"):
+        r = client.post(
+            "/cutmaster/build-plan",
+            json={
+                "run_id": scrubbed_run["run_id"],
+                "preset": "vlog",
+                "content_type": "vlog",
+                "cut_intent": "narrative",
+                "user_settings": {
+                    "target_length_s": 60,
+                    "themes": [],
+                    "cut_intent": "narrative",
+                },
+            },
+        )
+    assert r.status_code == 200, r.text
+
+    assert _iteration_records(caplog) == []
+    assert _terminated_records(caplog) == []
+    assert any(getattr(rec, "event", None) == "story_critic.skipped" for rec in caplog.records)
+
+
+def test_loop_telemetry_phase1_reachable_reasons_only(client, monkeypatch, scrubbed_run, caplog):
+    """Phase 1 must NOT reach plateau / regression / token_budget — those
+    require MAX>=2 (currently capped at MAX=1). Run the rework path and
+    verify the reason is one of the three Phase 1 reachable values."""
+    _flag_on(monkeypatch)
+    _capture_director_calls(monkeypatch)
+    _seq_critic(monkeypatch, [_rework_report(), _good_report()])
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    _stub_resolver_and_resolve(monkeypatch)
+
+    with caplog.at_level("INFO", logger="cutmaster-ai.http.cutmaster"):
+        r = client.post(
+            "/cutmaster/build-plan",
+            json={
+                "run_id": scrubbed_run["run_id"],
+                "preset": "vlog",
+                "content_type": "vlog",
+                "cut_intent": "narrative",
+                "user_settings": {
+                    "target_length_s": 60,
+                    "themes": [],
+                    "cut_intent": "narrative",
+                },
+            },
+        )
+    assert r.status_code == 200, r.text
+
+    terminated = _terminated_records(caplog)
+    assert len(terminated) == 1
+    assert terminated[0].reason in {"shipped", "max_iterations", "director_failed"}
+    assert terminated[0].reason not in {"plateau", "regression", "token_budget"}
