@@ -19,6 +19,15 @@ const SEVERITY_LABEL: Record<CoherenceSeverity, string> = {
     error: "Block",
 };
 
+// Triage order — Block first (must address), Warn next (should address),
+// Note last (FYI). Editors scan top-down; non-actionable issues belong at
+// the bottom of the visual queue regardless of insertion order.
+const SEVERITY_RANK: Record<CoherenceSeverity, number> = {
+    error: 0,
+    warning: 1,
+    info: 2,
+};
+
 const CATEGORY_LABEL: Record<CoherenceCategory, string> = {
     non_sequitur: "Non-sequitur",
     weak_hook: "Weak hook",
@@ -324,6 +333,32 @@ export default function CoherenceReportCard({
     //   * — terminal marker on the shipped step (latest-wins on ties)
     const showLadder = !!ladderSteps && ladderSteps.length >= 2;
 
+    // Triage-sorted issue list. Each entry carries its original index so
+    // the fixed-set bookkeeping (which keys by insertion order) keeps
+    // working — the sort is a render-time concern, not a data mutation.
+    const sortedIssues = report.issues
+        .map((issue, originalIndex) => ({ issue, originalIndex }))
+        .sort((a, b) => {
+            const r = SEVERITY_RANK[a.issue.severity] - SEVERITY_RANK[b.issue.severity];
+            if (r !== 0) return r;
+            // Within a severity, group by category so two abrupt-transition
+            // issues read as a cluster instead of being split apart by an
+            // unrelated redundancy in between.
+            return a.issue.category.localeCompare(b.issue.category);
+        });
+
+    // Severity counts for the header chip — "4 issues · 3 warn · 1 note".
+    // Built off the unsorted list so the count is stable regardless of
+    // sort criteria.
+    const counts = report.issues.reduce(
+        (acc, iss) => {
+            acc[iss.severity] = (acc[iss.severity] ?? 0) + 1;
+            return acc;
+        },
+        {} as Record<CoherenceSeverity, number>,
+    );
+    const total = report.issues.length;
+
     return (
         <div className="coherence-card">
             {sectionLabel && (
@@ -441,37 +476,60 @@ export default function CoherenceReportCard({
                 </div>
             </div>
 
+            {/* Sub-scores promoted out of the collapsed <details>. They're
+                the answer to "why is the score 65?" and burying them
+                behind a tiny disclosure was hiding the most useful
+                breakdown on the card. */}
+            <div className="coherence-subscores">
+                <SubScore label="Hook" value={report.hook_strength} />
+                <SubScore label="Arc" value={report.arc_clarity} />
+                <SubScore label="Transitions" value={report.transitions} />
+                <SubScore label="Resolution" value={report.resolution} />
+            </div>
+
             {report.summary && (
                 <p className="coherence-summary">{report.summary}</p>
             )}
 
             {report.issues.length > 0 ? (
-                <div className="coherence-issue-list">
-                    {report.issues.map((iss, i) => (
-                        <IssueRow
-                            key={i}
-                            issue={iss}
-                            fixed={fixedSet.has(i)}
-                            onToggleFixed={() => toggleFixed(i)}
-                            onJump={onIssueClick}
-                        />
-                    ))}
-                </div>
+                <>
+                    <div className="coherence-issue-list-header">
+                        <span className="coherence-issue-count">
+                            {total} issue{total === 1 ? "" : "s"}
+                        </span>
+                        {(["error", "warning", "info"] as CoherenceSeverity[])
+                            .filter((sev) => counts[sev])
+                            .map((sev) => (
+                                <span
+                                    key={sev}
+                                    className={`coherence-issue-count-chip coherence-issue-count-chip--${sev}`}
+                                    title={`${counts[sev]} ${SEVERITY_LABEL[sev].toLowerCase()} issue${counts[sev] === 1 ? "" : "s"}`}
+                                >
+                                    <span
+                                        className={`coherence-issue-dot coherence-issue-dot--${sev}`}
+                                        aria-hidden
+                                    />
+                                    {counts[sev]} {SEVERITY_LABEL[sev]}
+                                </span>
+                            ))}
+                    </div>
+                    <div className="coherence-issue-list">
+                        {sortedIssues.map(({ issue, originalIndex }) => (
+                            <IssueRow
+                                key={originalIndex}
+                                issue={issue}
+                                fixed={fixedSet.has(originalIndex)}
+                                onToggleFixed={() => toggleFixed(originalIndex)}
+                                onJump={onIssueClick}
+                            />
+                        ))}
+                    </div>
+                </>
             ) : (
                 <p className="coherence-issue-list-empty muted">
                     No issues flagged.
                 </p>
             )}
-
-            <details className="coherence-subscores-details">
-                <summary>Sub-scores</summary>
-                <div className="coherence-subscores">
-                    <SubScore label="Hook" value={report.hook_strength} />
-                    <SubScore label="Arc" value={report.arc_clarity} />
-                    <SubScore label="Transitions" value={report.transitions} />
-                    <SubScore label="Resolution" value={report.resolution} />
-                </div>
-            </details>
 
             {recritiqueError && (
                 <p className="coherence-recritique-err">

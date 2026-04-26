@@ -2399,27 +2399,100 @@ code {
 }
 
 /* Target is a button that jumps to the segment row. Disabled state is
-   the whole-cut variant — no segment to scroll to. */
+   the whole-cut variant — no segment to scroll to. The "↗" arrow + the
+   filled background tint make the click affordance obvious; the
+   previous flat chip read like static metadata. */
 .coherence-issue-target {
     font-size: var(--fs-1);
     color: var(--accent-blue);
-    background: transparent;
+    background: rgba(74, 158, 255, 0.08);
     border: var(--border-thin);
     border-color: rgba(74, 158, 255, 0.4);
     border-radius: 4px;
-    padding: 1px 6px;
+    padding: 1px 6px 1px 8px;
     cursor: pointer;
     flex-shrink: 0;
     font-family: inherit;
-    transition: background 120ms, color 120ms;
+    transition: background 120ms, color 120ms, border-color 120ms, transform 80ms;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.coherence-issue-target::after {
+    content: "↗";
+    font-size: 10px;
+    opacity: 0.6;
+    transition: opacity 120ms, transform 120ms;
 }
 .coherence-issue-target:hover:not(:disabled) {
-    background: rgba(74, 158, 255, 0.1);
+    background: rgba(74, 158, 255, 0.18);
+    border-color: rgba(74, 158, 255, 0.7);
+    color: #7ab8ff;
+}
+.coherence-issue-target:hover:not(:disabled)::after {
+    opacity: 1;
+    transform: translate(1px, -1px);
+}
+.coherence-issue-target:active:not(:disabled) {
+    transform: scale(0.97);
+}
+.coherence-issue-target:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 2px;
 }
 .coherence-issue-target:disabled {
     cursor: default;
     color: var(--text-muted, #7a7a85);
+    background: transparent;
     border-color: var(--surface-3);
+}
+.coherence-issue-target:disabled::after {
+    content: none;
+}
+
+/* Count-chip strip above the issue list — total + per-severity tally so
+   the editor sees "4 issues · 3 warn · 1 note" before scanning. The chip
+   colour mirrors the dot palette already used inside each row. */
+.coherence-issue-list-header {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    margin: var(--s-3) 0 var(--s-2);
+    flex-wrap: wrap;
+}
+.coherence-issue-count {
+    font-size: var(--fs-1);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted, #7a7a85);
+    font-weight: 600;
+}
+.coherence-issue-count-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--fs-1);
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    border: var(--border-thin);
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+.coherence-issue-count-chip--error {
+    color: var(--err);
+    border-color: rgba(255, 92, 92, 0.35);
+    background: rgba(255, 92, 92, 0.08);
+}
+.coherence-issue-count-chip--warning {
+    color: #ffb547;
+    border-color: rgba(255, 181, 71, 0.35);
+    background: rgba(255, 181, 71, 0.08);
+}
+.coherence-issue-count-chip--info {
+    color: var(--accent-blue);
+    border-color: rgba(74, 158, 255, 0.35);
+    background: rgba(74, 158, 255, 0.08);
 }
 
 .coherence-issue-fix {
@@ -2458,19 +2531,14 @@ code {
     word-break: break-word;
 }
 
-.coherence-subscores-details {
+/* Sub-scores promoted to inline pip strip — always visible right under
+   the score header. The previous <details> collapse hid the breakdown
+   that explains the headline number; flipping the default to "shown"
+   makes the score audit one glance instead of one click. */
+.coherence-subscores {
     border-top: var(--border-thin);
-    padding-top: var(--s-2);
-}
-.coherence-subscores-details > summary {
-    cursor: pointer;
-    font-size: var(--fs-2);
-    color: var(--text-muted, #7a7a85);
-    margin-bottom: var(--s-2);
-    list-style: revert;
-}
-.coherence-subscores-details[open] > summary {
-    margin-bottom: var(--s-3);
+    padding-top: var(--s-3);
+    margin-top: var(--s-1);
 }
 
 @media (max-width: 720px) {
