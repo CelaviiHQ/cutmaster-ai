@@ -442,16 +442,101 @@ def _run_critic_or_skip(
 #   - Hard cap 1 retry; CUTMASTER_STORY_CRITIC_REWORK_MAX overrides
 
 
+_REWORK_MAX_DEFAULT = 3
+_REWORK_MAX_CEILING = 5
+_MIN_DELTA_DEFAULT = 3
+_TOKEN_BUDGET_DEFAULT = 300_000
+
+
 def _rework_max_attempts() -> int:
-    """Read ``CUTMASTER_STORY_CRITIC_REWORK_MAX`` (default 1, clamped ≥0)."""
+    """Read ``CUTMASTER_STORY_CRITIC_REWORK_MAX``.
+
+    Default ``3`` — the iterative critic loop runs up to three rework
+    iterations before shipping the best-scoring envelope from history.
+    Floor clamped to ``0`` (disables rework). Ceiling clamped to ``5``
+    so a runaway env override can't skip the upper bound; the previous
+    parser only floored at zero, which Phase 2 of the proposal tightens.
+    """
     raw = os.environ.get("CUTMASTER_STORY_CRITIC_REWORK_MAX", "").strip()
     if not raw:
-        return 1
+        return _REWORK_MAX_DEFAULT
+    try:
+        value = int(raw)
+    except ValueError:
+        log.warning(
+            "CUTMASTER_STORY_CRITIC_REWORK_MAX not an int (%r), using %d",
+            raw,
+            _REWORK_MAX_DEFAULT,
+        )
+        return _REWORK_MAX_DEFAULT
+    if value > _REWORK_MAX_CEILING:
+        log.warning(
+            "CUTMASTER_STORY_CRITIC_REWORK_MAX=%d exceeds ceiling %d; clamping",
+            value,
+            _REWORK_MAX_CEILING,
+        )
+        return _REWORK_MAX_CEILING
+    return max(0, value)
+
+
+def _rework_min_delta() -> int:
+    """Read ``CUTMASTER_STORY_CRITIC_MIN_DELTA`` (default 3, clamped ≥0).
+
+    Plateau / regression floor: when ``|delta| < MIN_DELTA`` the loop exits
+    with ``reason="plateau"``; when ``delta <= -MIN_DELTA`` it exits with
+    ``reason="regression"``. Both behaviours kick in at iteration ≥1.
+    """
+    raw = os.environ.get("CUTMASTER_STORY_CRITIC_MIN_DELTA", "").strip()
+    if not raw:
+        return _MIN_DELTA_DEFAULT
     try:
         return max(0, int(raw))
     except ValueError:
-        log.warning("CUTMASTER_STORY_CRITIC_REWORK_MAX not an int (%r), using 1", raw)
-        return 1
+        log.warning(
+            "CUTMASTER_STORY_CRITIC_MIN_DELTA not an int (%r), using %d",
+            raw,
+            _MIN_DELTA_DEFAULT,
+        )
+        return _MIN_DELTA_DEFAULT
+
+
+def _rework_token_budget() -> int:
+    """Read ``CUTMASTER_STORY_CRITIC_TOKEN_BUDGET`` (default 300_000).
+
+    Hard cost rail. The loop exits with ``reason="token_budget"`` once
+    the per-build sum of ``in + out`` Gemini tokens (across critic +
+    Director calls) crosses this ceiling. Provisional default sized for
+    ≥3 iterations on top of today's ~90k single-pass baseline; Phase 0
+    of the proposal calibrates against a real measurement.
+    """
+    raw = os.environ.get("CUTMASTER_STORY_CRITIC_TOKEN_BUDGET", "").strip()
+    if not raw:
+        return _TOKEN_BUDGET_DEFAULT
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        log.warning(
+            "CUTMASTER_STORY_CRITIC_TOKEN_BUDGET not an int (%r), using %d",
+            raw,
+            _TOKEN_BUDGET_DEFAULT,
+        )
+        return _TOKEN_BUDGET_DEFAULT
+
+
+def _read_token_usage(plan) -> int:
+    """Extract and sum the ``_token_usage`` stash put on the parsed plan
+    by ``call_structured``. Returns 0 when the attribute is missing
+    (e.g. a stub Director used by tests, or a plan that bypassed
+    ``call_structured``)."""
+    usage = getattr(plan, "_token_usage", None)
+    if not isinstance(usage, dict):
+        return 0
+    total = 0
+    for key in ("in", "out"):
+        v = usage.get(key)
+        if isinstance(v, int):
+            total += v
+    return total
 
 
 def _envelope_score(envelope: dict) -> int:
@@ -471,13 +556,28 @@ def _envelope_score(envelope: dict) -> int:
     return int(rep.get("score", 0))
 
 
-def _pick_shipped_envelope(history: list[dict]) -> dict:
-    """Return the envelope corresponding to the plan that was actually
-    shipped. Today the rework loop's regression-guard keeps whichever
-    pass scored higher, so the highest-scoring envelope wins."""
+def _pick_shipped_envelope(history: list[dict]) -> tuple[int, dict]:
+    """Return ``(index, envelope)`` for the plan that should ship.
+
+    Iterative critic loop: the highest-scoring envelope wins. Ties are
+    broken in favour of the **latest** iteration (matches today's
+    in-loop ``second.score >= first.score`` regression-guard, which
+    preferred the second pass on ties). Python's ``max`` returns the
+    *first* match on ties, so the tie-break is implemented by reverse-
+    scanning history with ``>=``. A 65 = 65 = 65 history therefore
+    ships the last entry. Locked under
+    ``test_pick_shipped_envelope_ties_pick_latest``.
+    """
     if not history:
         raise ValueError("coherence_history must contain at least one entry")
-    return max(history, key=_envelope_score)
+    best_idx = 0
+    best_score = _envelope_score(history[0])
+    for idx in range(1, len(history)):
+        score = _envelope_score(history[idx])
+        if score >= best_score:
+            best_idx = idx
+            best_score = score
+    return best_idx, history[best_idx]
 
 
 def _should_rework(report) -> bool:
@@ -618,22 +718,43 @@ async def _critic_with_rework(
     settings_dict: dict,
     rebuild_fn,
 ):
-    """Run the critic; if it flags a rework, re-call the Director with the
-    critic's findings and re-grade. Returns ``(final_plan, history)``.
+    """Iterative critic loop. Runs the critic, and on a non-``ship``
+    verdict re-calls the Director with the critic's findings up to
+    ``CUTMASTER_STORY_CRITIC_REWORK_MAX`` times. Returns
+    ``(final_plan, history)``.
 
-    ``history`` is a list of wrapped envelopes (``{kind, report}``) — one
-    entry on a single-pass build, two entries when rework fired. ``None``
-    when the critic was skipped (flag off, no axes, etc.) so callers can
-    fall back to today's behaviour.
+    Loop exit branches (``story_critic.loop_terminated.reason``):
+
+    - ``shipped`` — a critic pass returned ``verdict="ship"``.
+    - ``max_iterations`` — exhausted ``REWORK_MAX`` reworks without
+      hitting ``ship``, OR a rework critic call failed (we still
+      shipped the rework plan — history records what we have).
+    - ``plateau`` — ``|delta| < MIN_DELTA`` between consecutive iterations.
+    - ``regression`` — ``delta <= -MIN_DELTA`` (the new pass got materially worse).
+    - ``director_failed`` — ``rebuild_fn`` raised; ship the prior plan.
+    - ``token_budget`` — total Gemini tokens this build crossed
+      ``CUTMASTER_STORY_CRITIC_TOKEN_BUDGET``.
+
+    The ship decision goes through ``_pick_shipped_envelope`` — the
+    highest-scoring envelope wins; ties resolve to the latest iteration
+    (matching the in-loop ``second.score >= first.score`` semantic from
+    the previous one-shot rework).
+
+    ``history`` is a list of wrapped envelopes; ``None`` only when the
+    critic was skipped (flag off / no axes / llm error) — preserves the
+    legacy "no coherence_report on the plan" behaviour.
 
     ``rebuild_fn`` is an async callable that takes the critic's feedback
     payload and returns a NEW native plan. Each Director branch wires its
     own (raw_dump → build_cut_plan, etc.) so the helper stays builder-
     agnostic. Failures inside ``rebuild_fn`` are swallowed: the build
-    ships the original plan with v1 history attached, since coherence is
-    advisory and the structural plan is already valid.
+    ships the prior best plan with the history collected so far.
     """
     user_opt_in = settings_dict.get("story_critic_enabled")
+    max_attempts = _rework_max_attempts()
+    min_delta = _rework_min_delta()
+    token_budget = _rework_token_budget()
+
     first = _run_critic_or_skip(
         initial_plan,
         transcript=transcript,
@@ -649,119 +770,133 @@ async def _critic_with_rework(
         # `story_critic.skipped` log are the load-bearing signals.
         return initial_plan, None
 
+    history: list[dict] = [_wrap_coherence(first)]
+    plans: list = [initial_plan]
+    reports: list = [first]
+    tokens_total = _read_token_usage(initial_plan) + _read_token_usage(first)
+
     _emit_iteration(
         run_id,
         iteration_index=0,
         report=first,
         delta_from_prev=None,
+        tokens_spent_iteration=tokens_total,
+        tokens_spent_total=tokens_total,
         axes=axes,
     )
 
-    history: list[dict] = [_wrap_coherence(first)]
+    def _terminate(reason: str, iterations_run: int) -> tuple:
+        _, shipped = _pick_shipped_envelope(history)
+        shipped_score = _envelope_score(shipped)
+        _emit_loop_terminated(
+            run_id,
+            reason=reason,
+            final_score=shipped_score,
+            iterations_run=iterations_run,
+            tokens_spent_total=tokens_total,
+            axes=axes,
+        )
+        ship_idx, _ = _pick_shipped_envelope(history)
+        return plans[ship_idx], history
+
     if not _should_rework(first):
-        _emit_loop_terminated(
-            run_id,
-            reason="shipped",
-            final_score=first.score,
-            iterations_run=1,
-            axes=axes,
-        )
-        return initial_plan, history
-    if _rework_max_attempts() < 1:
+        return _terminate("shipped", 1)
+    if max_attempts < 1:
         # Env disables rework even though the verdict requested one.
-        # Loop hit its iteration ceiling at zero; reuse the same reason
-        # the >0 path emits when REWORK_MAX is exhausted.
-        _emit_loop_terminated(
-            run_id,
-            reason="max_iterations",
-            final_score=first.score,
-            iterations_run=1,
-            axes=axes,
-        )
-        return initial_plan, history
+        return _terminate("max_iterations", 1)
 
     _emit_rework_triggered(run_id, first, axes)
-    try:
-        feedback = _critic_feedback_payload(first)
-        new_plan = await rebuild_fn(feedback)
-    except Exception as exc:
-        log.warning(
-            "story_critic.rework_director_failed run_id=%s err=%s",
-            run_id,
-            exc,
-            extra={
-                "event": "story_critic.rework_director_failed",
-                "run_id": run_id,
-                "error": str(exc),
-                "error_type": type(exc).__name__,
-            },
+
+    for attempt_idx in range(max_attempts):
+        iteration_index = attempt_idx + 1
+
+        # Cost rail: skip the rebuild if we'd cross the budget. Critic
+        # tokens already counted from the prior pass; rebuild + critic
+        # of the new plan are the spend we're guarding against.
+        if tokens_total >= token_budget:
+            return _terminate("token_budget", iteration_index)
+
+        prior_report = reports[-1]
+        feedback = _critic_feedback_payload(prior_report)
+        try:
+            new_plan = await rebuild_fn(feedback)
+        except Exception as exc:
+            log.warning(
+                "story_critic.rework_director_failed run_id=%s err=%s",
+                run_id,
+                exc,
+                extra={
+                    "event": "story_critic.rework_director_failed",
+                    "run_id": run_id,
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                },
+            )
+            return _terminate("director_failed", iteration_index)
+
+        plan_tokens = _read_token_usage(new_plan)
+        tokens_total += plan_tokens
+
+        new_report = _run_critic_or_skip(
+            new_plan,
+            transcript=transcript,
+            takes=takes,
+            axes=axes,
+            run_id=run_id,
+            user_opt_in=user_opt_in,
         )
-        _emit_loop_terminated(
+        if new_report is None:
+            # Critic call failed on the rework plan; ship what we have.
+            # History records the iterations whose critic returned. Use
+            # max_iterations rather than a separate critic_failed reason
+            # so downstream consumers stay on the documented set.
+            return _terminate("max_iterations", iteration_index)
+
+        critic_tokens = _read_token_usage(new_report)
+        tokens_total += critic_tokens
+        plans.append(new_plan)
+        reports.append(new_report)
+        history.append(_wrap_coherence(new_report))
+
+        delta = new_report.score - prior_report.score
+        _emit_iteration(
             run_id,
-            reason="director_failed",
-            final_score=first.score,
-            iterations_run=1,
+            iteration_index=iteration_index,
+            report=new_report,
+            delta_from_prev=delta,
+            tokens_spent_iteration=plan_tokens + critic_tokens,
+            tokens_spent_total=tokens_total,
             axes=axes,
         )
-        return initial_plan, history
 
-    second = _run_critic_or_skip(
-        new_plan,
-        transcript=transcript,
-        takes=takes,
-        axes=axes,
-        run_id=run_id,
-        user_opt_in=user_opt_in,
-    )
-    if second is None:
-        # Second critic call failed; still ship the rework plan since the
-        # Director did honour the feedback. History records v1 only. No
-        # iteration log for the missing pass — telemetry contract is "one
-        # iteration record per critic call that returned a report."
-        _emit_loop_terminated(
-            run_id,
-            reason="max_iterations",
-            final_score=first.score,
-            iterations_run=1,
-            axes=axes,
-        )
-        return new_plan, history
+        # Back-compat: emit the legacy two-pass rework_completed event
+        # the first time we land a rework iteration. Downstream telemetry
+        # consumers (panel chips, log dashboards) still subscribe to it.
+        if iteration_index == 1:
+            kept_pass = "second" if new_report.score >= prior_report.score else "first"
+            crossed = prior_report.verdict != "ship" and new_report.verdict == "ship"
+            _emit_rework_completed(
+                run_id,
+                first=prior_report,
+                second=new_report,
+                axes=axes,
+                crossed_to_ship=crossed,
+                kept_pass=kept_pass,
+            )
 
-    _emit_iteration(
-        run_id,
-        iteration_index=1,
-        report=second,
-        delta_from_prev=second.score - first.score,
-        axes=axes,
-    )
-    history.append(_wrap_coherence(second))
+        if new_report.verdict == "ship":
+            return _terminate("shipped", iteration_index + 1)
+        # MIN_DELTA=0 disables both plateau and regression gates so the
+        # loop runs to MAX_ATTEMPTS regardless of score movement; useful
+        # for tests that need deterministic iteration counts.
+        if min_delta > 0:
+            if delta <= -min_delta:
+                return _terminate("regression", iteration_index + 1)
+            if abs(delta) < min_delta:
+                return _terminate("plateau", iteration_index + 1)
 
-    # Regression guard: if pass 2 scored lower than pass 1, the rework
-    # made things worse. Ship the original plan and the original report.
-    # The history still records both passes so the panel can surface the
-    # regression chip and editors can audit the decision.
-    kept_pass = "second" if second.score >= first.score else "first"
-    crossed = first.verdict != "ship" and second.verdict == "ship"
-    _emit_rework_completed(
-        run_id,
-        first=first,
-        second=second,
-        axes=axes,
-        crossed_to_ship=crossed,
-        kept_pass=kept_pass,
-    )
-    shipped_score = second.score if kept_pass == "second" else first.score
-    terminated_reason = "shipped" if second.verdict == "ship" else "max_iterations"
-    _emit_loop_terminated(
-        run_id,
-        reason=terminated_reason,
-        final_score=shipped_score,
-        iterations_run=2,
-        axes=axes,
-    )
-    if kept_pass == "first":
-        return initial_plan, history
-    return new_plan, history
+    # Exhausted REWORK_MAX without hitting ship / plateau / regression.
+    return _terminate("max_iterations", max_attempts + 1)
 
 
 def _emit_rework_completed(
@@ -1903,7 +2038,8 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         # whichever entry scored highest — when the regression-guard
         # kept pass 1, that's pass 1, not the chronologically-last one.
         run["plan"]["coherence_history"] = coherence_history
-        run["plan"]["coherence_report"] = _pick_shipped_envelope(coherence_history)
+        _, shipped_envelope = _pick_shipped_envelope(coherence_history)
+        run["plan"]["coherence_report"] = shipped_envelope
 
     await _persist_plan(body.run_id, run["plan"])
 

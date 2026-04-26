@@ -167,6 +167,12 @@ def call_structured(
     best_parsed: T | None = None
     best_errors: list[str] = []
     last_errors: list[str] = []
+    # Sum token usage across every retry inside this call_structured
+    # invocation. The iterative-critic-loop reads `_token_usage` off the
+    # returned plan to feed its per-iteration token-budget check, so any
+    # retry that fired must be billed even if its parse was discarded.
+    total_tokens_in = 0
+    total_tokens_out = 0
 
     for attempt in range(1, max_retries + 1):
         retry_prompt = prompt
@@ -213,6 +219,10 @@ def call_structured(
         # because older SDK versions may not populate it.
         tokens_in = _safe_token_count(response, "prompt_token_count")
         tokens_out = _safe_token_count(response, "candidates_token_count")
+        if tokens_in is not None:
+            total_tokens_in += tokens_in
+        if tokens_out is not None:
+            total_tokens_out += tokens_out
         log.info(
             "agent=%s attempt=%d elapsed_ms=%d tokens_in=%s tokens_out=%s",
             agent,
@@ -232,10 +242,12 @@ def call_structured(
         parsed = _parse_response(response, response_schema)
 
         if validate is None:
+            _stash_token_usage(parsed, total_tokens_in, total_tokens_out)
             return parsed
 
         errors = validate(parsed)
         if not errors:
+            _stash_token_usage(parsed, total_tokens_in, total_tokens_out)
             return parsed
 
         log.warning("agent=%s attempt=%d validation_errors=%d", agent, attempt, len(errors))
@@ -255,11 +267,27 @@ def call_structured(
             object.__setattr__(best_parsed, "_validation_errors", best_errors)
         except Exception:
             pass  # Pydantic v2 allows __setattr__ on extra attrs; swallow otherwise
+        _stash_token_usage(best_parsed, total_tokens_in, total_tokens_out)
         return best_parsed
 
     raise AgentError(
         f"{agent} agent failed after {max_retries} retries. Last errors: {last_errors}"
     )
+
+
+def _stash_token_usage(parsed, tokens_in: int, tokens_out: int) -> None:
+    """Attach summed retry-token totals to the returned parsed object.
+
+    The iterative-critic-loop reads ``getattr(plan, "_token_usage", {})``
+    off the returned Director plan and accumulates the totals across
+    iterations to enforce ``CUTMASTER_STORY_CRITIC_TOKEN_BUDGET``.
+    Callers that don't care simply never look at the attribute.
+    Mirrors the existing ``_validation_errors`` stash idiom.
+    """
+    try:
+        object.__setattr__(parsed, "_token_usage", {"in": tokens_in, "out": tokens_out})
+    except Exception:
+        pass
 
 
 def _safe_token_count(response, attr: str) -> int | None:

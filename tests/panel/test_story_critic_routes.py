@@ -936,10 +936,15 @@ def test_loop_telemetry_two_iterations_on_rework(client, monkeypatch, scrubbed_r
 def test_loop_telemetry_max_iterations_when_neither_pass_ships(
     client, monkeypatch, scrubbed_run, caplog
 ):
-    """Pass 1 verdict=rework, pass 2 verdict=rework (or review) →
-    REWORK_MAX=1 exhausted without verdict=ship. Reason=max_iterations
-    even though both critic calls returned reports."""
+    """REWORK_MAX=1: pass 1 verdict=rework, pass 2 verdict=review →
+    one rework fires, neither passes ship, loop exits as max_iterations.
+
+    Pinned to MAX=1 so this test exercises the historical one-shot-rework
+    path explicitly. Phase 2's wider iteration count is covered by
+    `test_loop_runs_to_max_when_improving`.
+    """
     _flag_on(monkeypatch)
+    monkeypatch.setenv("CUTMASTER_STORY_CRITIC_REWORK_MAX", "1")
     _capture_director_calls(monkeypatch)
     pass1 = _rework_report()
     pass2 = story_critic.CoherenceReport(
@@ -1063,10 +1068,11 @@ def test_loop_telemetry_no_log_when_critic_skipped(client, monkeypatch, scrubbed
     assert any(getattr(rec, "event", None) == "story_critic.skipped" for rec in caplog.records)
 
 
-def test_loop_telemetry_phase1_reachable_reasons_only(client, monkeypatch, scrubbed_run, caplog):
-    """Phase 1 must NOT reach plateau / regression / token_budget — those
-    require MAX>=2 (currently capped at MAX=1). Run the rework path and
-    verify the reason is one of the three Phase 1 reachable values."""
+def test_loop_telemetry_reason_in_documented_set(client, monkeypatch, scrubbed_run, caplog):
+    """The full set of reachable termination reasons under Phase 2.
+    Plateau / regression / token_budget are now reachable; the Phase 1
+    bound asserting them unreachable was relaxed when MAX defaulted to 3.
+    """
     _flag_on(monkeypatch)
     _capture_director_calls(monkeypatch)
     _seq_critic(monkeypatch, [_rework_report(), _good_report()])
@@ -1092,5 +1098,335 @@ def test_loop_telemetry_phase1_reachable_reasons_only(client, monkeypatch, scrub
 
     terminated = _terminated_records(caplog)
     assert len(terminated) == 1
-    assert terminated[0].reason in {"shipped", "max_iterations", "director_failed"}
-    assert terminated[0].reason not in {"plateau", "regression", "token_budget"}
+    assert terminated[0].reason in {
+        "shipped",
+        "max_iterations",
+        "director_failed",
+        "plateau",
+        "regression",
+        "token_budget",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — bounded iterative loop, plateau / regression / budget exits
+# ---------------------------------------------------------------------------
+#
+# These tests pin REWORK_MAX explicitly so they stay deterministic when
+# the default changes again. MIN_DELTA defaults to 3; tests pin it when
+# they need a specific threshold.
+
+
+def _report(score: int, verdict: str = "review") -> story_critic.CoherenceReport:
+    return story_critic.CoherenceReport(
+        score=score,
+        hook_strength=score,
+        arc_clarity=score,
+        transitions=score,
+        resolution=score,
+        issues=[
+            story_critic.CoherenceIssue(
+                segment_index=0,
+                severity="warning",
+                category="weak_hook",
+                message="placeholder",
+            )
+        ]
+        if verdict != "ship"
+        else [],
+        summary=f"score={score} verdict={verdict}",
+        verdict=verdict,
+    )
+
+
+def test_loop_runs_to_max_when_improving(client, monkeypatch, scrubbed_run, caplog):
+    """Three increasing scores, none ship, none plateau (deltas above
+    MIN_DELTA). Loop runs to MAX_ATTEMPTS and exits as max_iterations."""
+    _flag_on(monkeypatch)
+    monkeypatch.setenv("CUTMASTER_STORY_CRITIC_REWORK_MAX", "3")
+    monkeypatch.setenv("CUTMASTER_STORY_CRITIC_MIN_DELTA", "3")
+    _capture_director_calls(monkeypatch)
+    _seq_critic(monkeypatch, [_report(50), _report(60), _report(70), _report(78)])
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    _stub_resolver_and_resolve(monkeypatch)
+
+    with caplog.at_level("INFO", logger="cutmaster-ai.http.cutmaster"):
+        r = client.post(
+            "/cutmaster/build-plan",
+            json={
+                "run_id": scrubbed_run["run_id"],
+                "preset": "vlog",
+                "content_type": "vlog",
+                "cut_intent": "narrative",
+                "user_settings": {
+                    "target_length_s": 60,
+                    "themes": [],
+                    "cut_intent": "narrative",
+                },
+            },
+        )
+    assert r.status_code == 200, r.text
+
+    iterations = _iteration_records(caplog)
+    terminated = _terminated_records(caplog)
+    assert [rec.iteration_index for rec in iterations] == [0, 1, 2, 3]
+    assert iterations[1].delta_from_prev == 10
+    assert iterations[2].delta_from_prev == 10
+    assert iterations[3].delta_from_prev == 8
+
+    assert len(terminated) == 1
+    assert terminated[0].reason == "max_iterations"
+    assert terminated[0].iterations_run == 4  # 1 initial + 3 reworks
+    assert terminated[0].final_score == 78
+
+
+def test_loop_exits_on_plateau(client, monkeypatch, scrubbed_run, caplog):
+    """Three flat scores (delta < MIN_DELTA twice in a row) → plateau
+    exit. Loop should fire only one rework before plateau triggers on
+    iteration 1's delta. With reports [60, 61, 60] and MIN_DELTA=3:
+    iter 1 delta=+1 → plateau → exit. Only 1 rework fires (not 3)."""
+    _flag_on(monkeypatch)
+    monkeypatch.setenv("CUTMASTER_STORY_CRITIC_REWORK_MAX", "3")
+    monkeypatch.setenv("CUTMASTER_STORY_CRITIC_MIN_DELTA", "3")
+    director_calls = _capture_director_calls(monkeypatch)
+    _seq_critic(monkeypatch, [_report(60), _report(61), _report(60)])
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    _stub_resolver_and_resolve(monkeypatch)
+
+    with caplog.at_level("INFO", logger="cutmaster-ai.http.cutmaster"):
+        r = client.post(
+            "/cutmaster/build-plan",
+            json={
+                "run_id": scrubbed_run["run_id"],
+                "preset": "vlog",
+                "content_type": "vlog",
+                "cut_intent": "narrative",
+                "user_settings": {
+                    "target_length_s": 60,
+                    "themes": [],
+                    "cut_intent": "narrative",
+                },
+            },
+        )
+    assert r.status_code == 200, r.text
+
+    terminated = _terminated_records(caplog)
+    assert len(terminated) == 1
+    assert terminated[0].reason == "plateau"
+    # 2 director calls = first build + 1 rework, NOT 3 reworks.
+    assert len(director_calls) == 2
+
+
+def test_loop_exits_on_regression(client, monkeypatch, scrubbed_run, caplog):
+    """Pass 1 score=70, pass 2 score=55 (delta=-15 ≤ -MIN_DELTA) →
+    regression exit, shipped envelope is pass 1 (the higher score).
+    Pinned to MAX=3 to prove regression triggers before exhaustion."""
+    _flag_on(monkeypatch)
+    monkeypatch.setenv("CUTMASTER_STORY_CRITIC_REWORK_MAX", "3")
+    monkeypatch.setenv("CUTMASTER_STORY_CRITIC_MIN_DELTA", "3")
+
+    plan_a = DirectorPlan(
+        hook_index=0,
+        selected_clips=[CutSegment(start_s=0.0, end_s=0.95, reason="pass0")],
+        reasoning="pass0",
+    )
+    plan_b = DirectorPlan(
+        hook_index=0,
+        selected_clips=[CutSegment(start_s=0.0, end_s=0.95, reason="pass1")],
+        reasoning="pass1",
+    )
+    counter = {"i": 0}
+
+    def _fake_build(transcript, preset, settings, resolved=None):
+        i = counter["i"]
+        counter["i"] += 1
+        return plan_a if i == 0 else plan_b
+
+    monkeypatch.setattr(routes.build, "build_cut_plan", _fake_build)
+    _seq_critic(monkeypatch, [_report(70), _report(55)])
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    _stub_resolver_and_resolve(monkeypatch)
+
+    with caplog.at_level("INFO", logger="cutmaster-ai.http.cutmaster"):
+        r = client.post(
+            "/cutmaster/build-plan",
+            json={
+                "run_id": scrubbed_run["run_id"],
+                "preset": "vlog",
+                "content_type": "vlog",
+                "cut_intent": "narrative",
+                "user_settings": {
+                    "target_length_s": 60,
+                    "themes": [],
+                    "cut_intent": "narrative",
+                },
+            },
+        )
+    assert r.status_code == 200, r.text
+
+    terminated = _terminated_records(caplog)
+    assert len(terminated) == 1
+    assert terminated[0].reason == "regression"
+    assert terminated[0].final_score == 70  # pass 0 wins
+
+    persisted = state.load(scrubbed_run["run_id"])
+    # Shipped Director plan is pass 0's (higher score).
+    assert persisted["plan"]["director"]["reasoning"] == "pass0"
+
+
+def test_loop_exits_on_token_budget(client, monkeypatch, scrubbed_run, caplog):
+    """Synthetic token usage on each plan exceeds the budget after the
+    first rework. Loop exits with reason=token_budget before spending
+    on a third Director call."""
+    _flag_on(monkeypatch)
+    monkeypatch.setenv("CUTMASTER_STORY_CRITIC_REWORK_MAX", "3")
+    monkeypatch.setenv("CUTMASTER_STORY_CRITIC_MIN_DELTA", "3")
+    monkeypatch.setenv("CUTMASTER_STORY_CRITIC_TOKEN_BUDGET", "200")
+
+    director_calls: list[dict] = []
+    plan_template = DirectorPlan(
+        hook_index=0,
+        selected_clips=[CutSegment(start_s=0.0, end_s=0.95, reason="hook")],
+        reasoning="ok",
+    )
+
+    def _fake_build(transcript, preset, settings, resolved=None):
+        director_calls.append(dict(settings))
+        plan = DirectorPlan(
+            hook_index=plan_template.hook_index,
+            selected_clips=list(plan_template.selected_clips),
+            reasoning=f"call{len(director_calls)}",
+        )
+        # Stash 150 in / 50 out per Director call so a single call already
+        # exceeds the 200-token budget.
+        object.__setattr__(plan, "_token_usage", {"in": 150, "out": 50})
+        return plan
+
+    monkeypatch.setattr(routes.build, "build_cut_plan", _fake_build)
+    _seq_critic(monkeypatch, [_report(50), _report(60), _report(70)])
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    _stub_resolver_and_resolve(monkeypatch)
+
+    with caplog.at_level("INFO", logger="cutmaster-ai.http.cutmaster"):
+        r = client.post(
+            "/cutmaster/build-plan",
+            json={
+                "run_id": scrubbed_run["run_id"],
+                "preset": "vlog",
+                "content_type": "vlog",
+                "cut_intent": "narrative",
+                "user_settings": {
+                    "target_length_s": 60,
+                    "themes": [],
+                    "cut_intent": "narrative",
+                },
+            },
+        )
+    assert r.status_code == 200, r.text
+
+    terminated = _terminated_records(caplog)
+    assert len(terminated) == 1
+    assert terminated[0].reason == "token_budget"
+    # The cost rail must short-circuit BEFORE the third Director call.
+    assert len(director_calls) <= 2
+
+
+def test_rework_max_clamps_to_ceiling(client, monkeypatch, scrubbed_run, caplog):
+    """REWORK_MAX=999 clamps to 5 and emits a warning."""
+    _flag_on(monkeypatch)
+    monkeypatch.setenv("CUTMASTER_STORY_CRITIC_REWORK_MAX", "999")
+    monkeypatch.setenv("CUTMASTER_STORY_CRITIC_MIN_DELTA", "3")
+    _capture_director_calls(monkeypatch)
+    # Strictly increasing scores so neither plateau nor ship triggers
+    # before the iteration ceiling. 6 reports = 1 initial + 5 reworks.
+    _seq_critic(
+        monkeypatch,
+        [_report(40), _report(50), _report(60), _report(70), _report(78), _report(85)],
+    )
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    _stub_resolver_and_resolve(monkeypatch)
+
+    with caplog.at_level("INFO", logger="cutmaster-ai.http.cutmaster"):
+        r = client.post(
+            "/cutmaster/build-plan",
+            json={
+                "run_id": scrubbed_run["run_id"],
+                "preset": "vlog",
+                "content_type": "vlog",
+                "cut_intent": "narrative",
+                "user_settings": {
+                    "target_length_s": 60,
+                    "themes": [],
+                    "cut_intent": "narrative",
+                },
+            },
+        )
+    assert r.status_code == 200, r.text
+
+    iterations = _iteration_records(caplog)
+    # Exactly 6 iteration records: iter 0 + 5 reworks (clamped from 999).
+    assert [rec.iteration_index for rec in iterations] == [0, 1, 2, 3, 4, 5]
+
+    # Ceiling-clamp warning fired
+    assert any(
+        "exceeds ceiling" in rec.getMessage() and "999" in rec.getMessage()
+        for rec in caplog.records
+        if rec.levelname == "WARNING"
+    )
+
+
+def test_pick_shipped_envelope_ties_pick_latest(client, monkeypatch, scrubbed_run, caplog):
+    """Three identical scores → ship the LAST iteration, not the first.
+    Locks the latest-wins-on-ties tie-break against future refactors
+    that revert to plain `max(history, key=...)` (which is first-wins)."""
+    _flag_on(monkeypatch)
+    monkeypatch.setenv("CUTMASTER_STORY_CRITIC_REWORK_MAX", "3")
+    monkeypatch.setenv("CUTMASTER_STORY_CRITIC_MIN_DELTA", "0")  # disable plateau
+
+    plans = [
+        DirectorPlan(
+            hook_index=0,
+            selected_clips=[CutSegment(start_s=0.0, end_s=0.95, reason=f"pass{i}")],
+            reasoning=f"pass{i}",
+        )
+        for i in range(4)
+    ]
+    counter = {"i": 0}
+
+    def _fake_build(transcript, preset, settings, resolved=None):
+        i = counter["i"]
+        counter["i"] += 1
+        return plans[min(i, len(plans) - 1)]
+
+    monkeypatch.setattr(routes.build, "build_cut_plan", _fake_build)
+    # Three identical scores. Verdict review (not ship) so loop continues.
+    _seq_critic(
+        monkeypatch,
+        [_report(65), _report(65), _report(65), _report(65)],
+    )
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    _stub_resolver_and_resolve(monkeypatch)
+
+    with caplog.at_level("INFO", logger="cutmaster-ai.http.cutmaster"):
+        r = client.post(
+            "/cutmaster/build-plan",
+            json={
+                "run_id": scrubbed_run["run_id"],
+                "preset": "vlog",
+                "content_type": "vlog",
+                "cut_intent": "narrative",
+                "user_settings": {
+                    "target_length_s": 60,
+                    "themes": [],
+                    "cut_intent": "narrative",
+                },
+            },
+        )
+    assert r.status_code == 200, r.text
+
+    persisted = state.load(scrubbed_run["run_id"])
+    history = persisted["plan"]["coherence_history"]
+    assert len(history) == 4
+    # All four entries scored 65; latest wins on ties → ship pass 3.
+    assert persisted["plan"]["director"]["reasoning"] == "pass3"
+    assert persisted["plan"]["coherence_report"]["report"]["score"] == 65
