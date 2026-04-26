@@ -33,6 +33,32 @@ const PROVIDER_LABELS: Record<string, string> = {
     deepgram: "Deepgram",
 };
 
+/** Format a duration in seconds as a compact human string. */
+function formatElapsed(s: number): string {
+    if (s < 1) return "<1s";
+    if (s < 60) return `${s.toFixed(s < 10 ? 1 : 0)}s`;
+    const mins = Math.floor(s / 60);
+    const secs = Math.round(s - mins * 60);
+    return `${mins}m ${secs.toString().padStart(2, "0")}s`;
+}
+
+/**
+ * Strip the parenthesised filename out of a stage message and re-render
+ * it as `… · DJI_…0018.MP4` so long source names don't push the row
+ * onto two lines. Returns the short form + the full original for tooltip.
+ */
+function shortenMessage(msg: string): { short: string; full: string } {
+    const m = msg.match(/^(.*?)\s*\(([^()]+\.[A-Za-z0-9]+)\)\s*$/);
+    if (!m) return { short: msg, full: msg };
+    const head = m[1];
+    const fname = m[2];
+    const dot = fname.lastIndexOf(".");
+    const stem = dot > 0 ? fname.slice(0, dot) : fname;
+    const ext = dot > 0 ? fname.slice(dot) : "";
+    const tail = stem.length > 8 ? `${stem.slice(0, 4)}…${stem.slice(-4)}${ext}` : fname;
+    return { short: `${head} · ${tail}`, full: msg };
+}
+
 export default function AnalyzeScreen({
     runId,
     onDone,
@@ -44,13 +70,48 @@ export default function AnalyzeScreen({
     const [cancelling, setCancelling] = useState(false);
     const [cancelled, setCancelled] = useState(false);
 
+    // Per-stage rollup: latest message/data plus the start + last timestamps
+    // so the row can render elapsed time and (for shot_tag) an ETA derived
+    // from items_done / items_total.
     const byStage = useMemo(() => {
-        const m: Record<string, { status: string; message: string; data?: unknown }> = {};
+        const m: Record<
+            string,
+            {
+                status: string;
+                message: string;
+                data?: unknown;
+                tsStart?: number;
+                tsLast?: number;
+                tsEnd?: number;
+            }
+        > = {};
         for (const e of events) {
-            m[e.stage] = { status: e.status, message: e.message, data: e.data };
+            const prev = m[e.stage];
+            const next = {
+                status: e.status,
+                message: e.message,
+                data: e.data,
+                tsStart: prev?.tsStart,
+                tsLast: e.ts,
+                tsEnd: prev?.tsEnd,
+            };
+            if (e.status === "started" && next.tsStart === undefined) {
+                next.tsStart = e.ts;
+            }
+            if (e.status === "complete" || e.status === "failed") {
+                next.tsEnd = e.ts;
+            }
+            m[e.stage] = next;
         }
         return m;
     }, [events]);
+
+    // 1Hz tick so elapsed / ETA on a running stage advances live.
+    const [now, setNow] = useState(() => Date.now() / 1000);
+    useEffect(() => {
+        const id = window.setInterval(() => setNow(Date.now() / 1000), 1000);
+        return () => window.clearInterval(id);
+    }, []);
 
     const failed = terminal === "error" || Object.values(byStage).some((s) => s.status === "failed");
     const done = terminal === "done" && !failed;
@@ -134,20 +195,106 @@ export default function AnalyzeScreen({
                                 : "pending";
                             const isRunningStage = cls === "started";
                             const isFailedStage = cls === "failed";
+
+                            // Per-row elapsed time. While running, count from
+                            // tsStart → now; on terminal events the diff is
+                            // tsEnd - tsStart. Pre-start rows show nothing.
+                            let elapsedLabel: string | null = null;
+                            if (state?.tsStart) {
+                                const end = state.tsEnd ?? (isRunningStage ? now : state.tsLast);
+                                if (end && end >= state.tsStart) {
+                                    elapsedLabel = formatElapsed(end - state.tsStart);
+                                }
+                            }
+
+                            // Shot tagging emits items_done / items_total in
+                            // the data payload — turn it into a determinate
+                            // progress bar + ETA derived from average per-item
+                            // wall time so far.
+                            const data = state?.data as
+                                | { items_done?: number; items_total?: number }
+                                | undefined;
+                            const itemsDone = data?.items_done;
+                            const itemsTotal = data?.items_total;
+                            const showProgress =
+                                isRunningStage &&
+                                typeof itemsDone === "number" &&
+                                typeof itemsTotal === "number" &&
+                                itemsTotal > 0;
+                            let progressPct = 0;
+                            let etaLabel: string | null = null;
+                            if (showProgress) {
+                                progressPct = Math.min(100, Math.round((itemsDone / itemsTotal) * 100));
+                                if (state?.tsStart && itemsDone > 0 && itemsDone < itemsTotal) {
+                                    const elapsedSoFar = now - state.tsStart;
+                                    const perItem = elapsedSoFar / itemsDone;
+                                    const eta = perItem * (itemsTotal - itemsDone);
+                                    if (eta > 0 && Number.isFinite(eta)) {
+                                        etaLabel = `~${formatElapsed(eta)} left`;
+                                    }
+                                }
+                            }
+
+                            const rawMsg = state?.message ?? "…";
+                            const { short: msgShort, full: msgFull } = shortenMessage(rawMsg);
+
                             return (
                                 <div
                                     key={s.key}
-                                    className={`stage-row ${isFailedStage ? "stage-row--failed" : ""}`}
+                                    className={`stage-row ${isFailedStage ? "stage-row--failed" : ""} ${showProgress ? "stage-row--has-progress" : ""}`}
                                 >
-                                    <span className={`stage-icon ${cls}`}>{icon}</span>
-                                    <span className="stage-name">{label}</span>
-                                    <span className="stage-msg">
-                                        {state?.message ?? "…"}
-                                        {isRunningStage && <span className="dots" aria-hidden="true" />}
-                                    </span>
+                                    <div className="stage-row-main">
+                                        <span className={`stage-icon ${cls}`}>{icon}</span>
+                                        <span className="stage-name">{label}</span>
+                                        <span className="stage-msg" title={msgFull !== msgShort ? msgFull : undefined}>
+                                            {msgShort}
+                                            {isRunningStage && !showProgress && (
+                                                <span className="dots" aria-hidden="true" />
+                                            )}
+                                            {etaLabel && <span className="stage-eta"> · {etaLabel}</span>}
+                                        </span>
+                                        <span className="stage-elapsed">{elapsedLabel ?? ""}</span>
+                                    </div>
+                                    {showProgress && (
+                                        <div
+                                            className="stage-progress"
+                                            role="progressbar"
+                                            aria-valuemin={0}
+                                            aria-valuemax={100}
+                                            aria-valuenow={progressPct}
+                                        >
+                                            <div className="stage-progress-bar" style={{ width: `${progressPct}%` }} />
+                                        </div>
+                                    )}
                                 </div>
                             );
                         })}
+
+                        {/* Total elapsed across all stages — earliest start to
+                            latest event timestamp. Sticks below the list so
+                            the editor sees the run-level cost at a glance. */}
+                        {(() => {
+                            const starts = Object.values(byStage)
+                                .map((v) => v.tsStart)
+                                .filter((v): v is number => typeof v === "number");
+                            const lasts = Object.values(byStage)
+                                .map((v) => v.tsEnd ?? v.tsLast)
+                                .filter((v): v is number => typeof v === "number");
+                            if (!starts.length) return null;
+                            const earliest = Math.min(...starts);
+                            const latest = running
+                                ? now
+                                : lasts.length
+                                    ? Math.max(...lasts)
+                                    : now;
+                            const totalS = Math.max(0, latest - earliest);
+                            return (
+                                <div className="stage-total">
+                                    <span className="stage-total-label">Total</span>
+                                    <span className="stage-total-value">{formatElapsed(totalS)}</span>
+                                </div>
+                            );
+                        })()}
                     </div>
 
                     {/* v3-2 mascot — discovery elephant loops while running;

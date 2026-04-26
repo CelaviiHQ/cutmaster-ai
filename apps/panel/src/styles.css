@@ -361,8 +361,8 @@ label {
 
 .stage-row {
     display: flex;
-    align-items: center;
-    gap: var(--s-3);
+    flex-direction: column;
+    gap: 6px;
     padding: 10px 0;
     padding-left: var(--s-2);
     border-bottom: var(--border-thin);
@@ -370,6 +370,12 @@ label {
     transition: border-left-color 120ms, color 120ms;
 }
 .stage-row:last-child { border-bottom: 0; }
+.stage-row-main {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    min-width: 0;
+}
 
 /* v3-2.3 — Failed stages get a red left-border + inline err color so they
    read as alarming next to in-progress rows (same file, same surface). */
@@ -524,8 +530,65 @@ label {
     }
 }
 
-.stage-name { font-weight: 500; width: 160px; }
-.stage-msg { color: var(--text-tertiary); font-size: var(--fs-2); flex: 1; }
+.stage-name { font-weight: 500; width: 160px; flex-shrink: 0; }
+.stage-msg {
+    color: var(--text-tertiary);
+    font-size: var(--fs-2);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.stage-eta { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.stage-elapsed {
+    font-family: var(--font-mono);
+    font-size: var(--fs-1);
+    color: var(--text-tertiary);
+    font-variant-numeric: tabular-nums;
+    min-width: 56px;
+    text-align: right;
+    flex-shrink: 0;
+}
+
+/* Determinate per-stage progress bar — only renders when the stage emits
+   items_done / items_total in its SSE data payload (today: shot_tag). */
+.stage-progress {
+    height: 3px;
+    background: var(--surface-3);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-left: calc(18px + var(--s-3));
+}
+.stage-progress-bar {
+    height: 100%;
+    background: var(--accent-blue);
+    border-radius: 999px;
+    transition: width 240ms ease-out;
+}
+
+/* Run-level total elapsed pinned beneath the stage list. */
+.stage-total {
+    display: flex;
+    justify-content: flex-end;
+    align-items: baseline;
+    gap: var(--s-2);
+    padding-top: var(--s-2);
+    margin-top: var(--s-1);
+    border-top: var(--border-thin);
+}
+.stage-total-label {
+    font-size: var(--fs-1);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-tertiary);
+}
+.stage-total-value {
+    font-family: var(--font-mono);
+    font-size: var(--fs-2);
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+}
 
 .seg-list { font-family: var(--font-mono); font-size: var(--fs-2); }
 .seg {
