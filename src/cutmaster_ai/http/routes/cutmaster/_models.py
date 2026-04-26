@@ -567,6 +567,26 @@ class PaintShotColorsRequest(BaseModel):
     video_track: int = 1
 
 
+class StampShotMetadataRequest(BaseModel):
+    """Stamps per-item markers + (optional) source MediaPoolItem metadata.
+
+    ``touch_media_pool`` defaults True so smart-bin search works out of
+    the box. Editors who don't want their source clip metadata touched
+    pass it as False — only the per-cut TimelineItem markers are
+    written, and they're cleanly removable via /clear-shot-metadata.
+    """
+
+    timeline_name: str
+    add_markers: bool = True
+    touch_media_pool: bool = True
+    video_track: int = 1
+
+
+class ClearShotMetadataRequest(BaseModel):
+    timeline_name: str
+    video_track: int = 1
+
+
 class DeleteRunRequest(BaseModel):
     run_id: str
 

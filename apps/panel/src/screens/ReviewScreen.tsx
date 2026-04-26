@@ -169,6 +169,18 @@ export default function ReviewScreen({
         import("../api").PaintShotColorsResult | null
     >(null);
     const [paintErr, setPaintErr] = useState<string | null>(null);
+    // Shot-metadata stamping — separate from paint because it touches a
+    // different surface (per-item markers + source MediaPoolItem metadata)
+    // and editors may want one without the other.
+    const [stamping, setStamping] = useState(false);
+    const [stampResult, setStampResult] = useState<
+        import("../api").StampShotMetadataResult | null
+    >(null);
+    const [stampErr, setStampErr] = useState<string | null>(null);
+    // When false, only per-cut markers are written; the source MediaPoolItem's
+    // Description/Keywords stay untouched (no smart-bin search payoff, but
+    // also no propagation to other timelines that share the source).
+    const [stampTouchMediaPool, setStampTouchMediaPool] = useState(true);
     const [selectedCandidate, setSelectedCandidate] = useState(0);
     const [replaceExisting, setReplaceExisting] = useState(false);
     const [existingNames, setExistingNames] = useState<Set<string>>(new Set());
@@ -1696,6 +1708,45 @@ export default function ReviewScreen({
                         </p>
                     ) : null}
 
+                    {stampResult ? (
+                        <div className="paint-result">
+                            <p className="paint-result-summary">
+                                Stamped <strong>{stampResult.stamped}</strong> of{" "}
+                                {stampResult.total_items} item(s)
+                                {stampResult.media_pool_writes > 0 && (
+                                    <>
+                                        {" "}· {stampResult.media_pool_writes} smart-bin
+                                        keyword(s) written
+                                    </>
+                                )}
+                                {stampResult.markers_removed > 0 && (
+                                    <>
+                                        {" "}· cleaned {stampResult.markers_removed} prior
+                                        CutMaster marker(s)
+                                    </>
+                                )}
+                                {stampResult.skipped_no_tags > 0 && (
+                                    <>
+                                        {" "}· {stampResult.skipped_no_tags} item(s) had no
+                                        cached tags
+                                    </>
+                                )}
+                            </p>
+                            <p className="paint-legend">
+                                Markers land at frame 0 of each item in{" "}
+                                <strong>{stampResult.marker_color}</strong>; structured
+                                shot data is in <code>customData</code> under{" "}
+                                <code>{stampResult.namespace}</code>. Smart bins can
+                                search by Keyword (e.g. "closeup") to find every
+                                source clip used as that shot type.
+                            </p>
+                        </div>
+                    ) : stampErr ? (
+                        <p className="muted" style={{ color: "var(--err)" }}>
+                            Stamp failed: {stampErr}
+                        </p>
+                    ) : null}
+
                     <div className="row">
                         <button
                             className="secondary"
@@ -1728,6 +1779,79 @@ export default function ReviewScreen({
                         </button>
                         <button
                             className="secondary"
+                            disabled={stamping || deleting}
+                            title={
+                                stampResult
+                                    ? "Re-run; clears prior CutMaster markers and writes fresh ones. Source clip Keywords/Description are overwritten if 'smart bins' is on."
+                                    : "Add per-item shot markers (color: Lavender, namespaced customData) and write Keywords + Description on the source clip so smart bins can search by shot type."
+                            }
+                            onClick={async () => {
+                                setStamping(true);
+                                setStampErr(null);
+                                try {
+                                    const r = await api.stampShotMetadata(
+                                        buildResult.new_timeline_name,
+                                        { touchMediaPool: stampTouchMediaPool },
+                                    );
+                                    setStampResult(r);
+                                } catch (e) {
+                                    setStampErr(String(e));
+                                } finally {
+                                    setStamping(false);
+                                }
+                            }}
+                        >
+                            {stamping
+                                ? "Stamping…"
+                                : stampResult
+                                  ? "Restamp shot metadata"
+                                  : "Stamp shot metadata"}
+                        </button>
+                        <label
+                            className="muted"
+                            style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "var(--s-1)",
+                                fontSize: "var(--fs-2)",
+                                margin: 0,
+                            }}
+                            title="When on, writes Keywords + Description on the source MediaPoolItem so Resolve smart bins can search by shot type. Off: only per-cut markers are written; the source stays untouched."
+                        >
+                            <input
+                                type="checkbox"
+                                checked={stampTouchMediaPool}
+                                onChange={(e) => setStampTouchMediaPool(e.target.checked)}
+                                style={{ width: "auto", height: "auto" }}
+                                disabled={stamping}
+                            />
+                            smart bins
+                        </label>
+                        {stampResult && (
+                            <button
+                                type="button"
+                                className="btn-ghost"
+                                disabled={stamping || deleting}
+                                onClick={async () => {
+                                    setStamping(true);
+                                    setStampErr(null);
+                                    try {
+                                        await api.clearShotMetadata(
+                                            buildResult.new_timeline_name,
+                                        );
+                                        setStampResult(null);
+                                    } catch (e) {
+                                        setStampErr(String(e));
+                                    } finally {
+                                        setStamping(false);
+                                    }
+                                }}
+                            >
+                                Clear markers
+                            </button>
+                        )}
+                        <button
+                            className="secondary"
                             disabled={deleting}
                             onClick={async () => {
                                 if (!confirm(
@@ -1740,6 +1864,8 @@ export default function ReviewScreen({
                                     setBuildResult(null);
                                     setPaintResult(null);
                                     setPaintErr(null);
+                                    setStampResult(null);
+                                    setStampErr(null);
                                     refreshTimelineNames();
                                     refreshHistory();
                                 } catch (e) {
@@ -1766,6 +1892,8 @@ export default function ReviewScreen({
                                     setBuildAllResults([]);
                                     setPaintResult(null);
                                     setPaintErr(null);
+                                    setStampResult(null);
+                                    setStampErr(null);
                                     refreshTimelineNames();
                                     refreshHistory();
                                 } catch (e) {

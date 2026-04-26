@@ -12,10 +12,12 @@ from ....cutmaster.core import state
 from ....cutmaster.core.execute import ExecuteCancelled, ExecuteError, execute_plan
 from ....logging_setup import with_run_id
 from ._models import (
+    ClearShotMetadataRequest,
     DeleteAllCutsRequest,
     DeleteCutRequest,
     ExecuteRequest,
     PaintShotColorsRequest,
+    StampShotMetadataRequest,
 )
 
 log = logging.getLogger("cutmaster-ai.http.cutmaster")
@@ -350,3 +352,45 @@ async def paint_shot_colors(body: PaintShotColorsRequest) -> dict:
     except Exception as exc:
         log.exception("paint_shot_colors crashed for '%s'", body.timeline_name)
         raise HTTPException(status_code=500, detail=f"paint failed: {exc}")
+
+
+@router.post("/stamp-shot-metadata")
+async def stamp_shot_metadata(body: StampShotMetadataRequest) -> dict:
+    """Stamp shot-tag markers + smart-bin metadata on a cut timeline."""
+    from ....cutmaster.analysis.shot_metadata_stamper import (
+        stamp_shot_metadata_on_timeline,
+    )
+
+    try:
+        return await asyncio.to_thread(
+            stamp_shot_metadata_on_timeline,
+            body.timeline_name,
+            add_markers=body.add_markers,
+            touch_media_pool=body.touch_media_pool,
+            video_track=body.video_track,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        log.exception("stamp_shot_metadata crashed for '%s'", body.timeline_name)
+        raise HTTPException(status_code=500, detail=f"stamp failed: {exc}")
+
+
+@router.post("/clear-shot-metadata")
+async def clear_shot_metadata(body: ClearShotMetadataRequest) -> dict:
+    """Remove every CutMaster shot-tag marker from a cut timeline."""
+    from ....cutmaster.analysis.shot_metadata_stamper import (
+        clear_shot_metadata_on_timeline,
+    )
+
+    try:
+        return await asyncio.to_thread(
+            clear_shot_metadata_on_timeline,
+            body.timeline_name,
+            video_track=body.video_track,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        log.exception("clear_shot_metadata crashed for '%s'", body.timeline_name)
+        raise HTTPException(status_code=500, detail=f"clear failed: {exc}")

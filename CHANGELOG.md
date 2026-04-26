@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `POST /cutmaster/stamp-shot-metadata` + `/clear-shot-metadata`
+  endpoints + Review-screen "Stamp shot metadata" button. Two
+  complementary writes:
+  (1) per-cut **TimelineItem markers** at frame 0 (color: Lavender,
+  structured shot record packed into `customData` namespaced as
+  `cutmaster.shot.v1`) — scoped to the cut, idempotent, removable;
+  (2) optional **MediaPoolItem.SetMetadata** writing `Keywords`
+  (e.g. `closeup, speaker_centered, calm`) and a `[CutMaster]…`
+  prefixed `Description` so Resolve smart bins can search by shot
+  type. The "smart bins" toggle on the panel lets editors opt out
+  of the source-clip write when they want per-cut-only stamping
+  with no cross-timeline propagation. Lives in
+  `cutmaster.analysis.shot_metadata_stamper`; covered by 8 hermetic
+  tests. Probe-validated against Resolve 21 — `TimelineItem.SetMetadata`
+  is a phantom (raises on call), `TimelineItem.AddMarker` with
+  `customData` is the only viable per-item persistence surface.
 - `POST /cutmaster/paint-shot-colors` endpoint + Review-screen
   "Paint shot colors" button. After a build succeeds, paints each
   cut-timeline item by its modal cached `shot_type` (closeup → Orange,

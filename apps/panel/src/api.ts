@@ -224,6 +224,32 @@ export const api = {
         ...(opts?.videoTrack ? { video_track: opts.videoTrack } : {}),
       }),
     }),
+
+  stampShotMetadata: (
+    timelineName: string,
+    opts?: { addMarkers?: boolean; touchMediaPool?: boolean; videoTrack?: number },
+  ) =>
+    http<StampShotMetadataResult>("/cutmaster/stamp-shot-metadata", {
+      method: "POST",
+      body: JSON.stringify({
+        timeline_name: timelineName,
+        ...(opts?.addMarkers === false ? { add_markers: false } : {}),
+        ...(opts?.touchMediaPool === false ? { touch_media_pool: false } : {}),
+        ...(opts?.videoTrack ? { video_track: opts.videoTrack } : {}),
+      }),
+    }),
+
+  clearShotMetadata: (timelineName: string, videoTrack?: number) =>
+    http<{ timeline_name: string; markers_removed: number; namespace: string }>(
+      "/cutmaster/clear-shot-metadata",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          timeline_name: timelineName,
+          ...(videoTrack ? { video_track: videoTrack } : {}),
+        }),
+      },
+    ),
 };
 
 export interface ExecuteResult {
@@ -243,6 +269,30 @@ export interface ExecuteResult {
   };
   safe_zones?: { enabled: boolean; added?: number; reason?: string };
   replaced_timelines?: string[];
+}
+
+export interface StampShotMetadataResult {
+  timeline_name: string;
+  total_items: number;
+  stamped: number;
+  skipped_no_tags: number;
+  skipped_unknown: number;
+  markers_removed: number;
+  media_pool_writes: number;
+  rows: Array<{
+    item_index: number;
+    action: "stamped" | "skipped_no_tags" | "skipped_unknown";
+    shot_type?: string | null;
+    framing?: string | null;
+    gesture_intensity?: string | null;
+    notable?: string | null;
+    marker_added?: boolean;
+    media_pool_updated?: boolean;
+    media_pool_clip_name?: string | null;
+  }>;
+  namespace: string;
+  marker_color: string;
+  options: { add_markers: boolean; touch_media_pool: boolean };
 }
 
 export interface PaintShotColorsResult {
