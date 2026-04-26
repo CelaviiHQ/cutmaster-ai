@@ -154,10 +154,11 @@ def _save_cached_tag(source_path: str, ts_s: float, tag: ShotTag) -> None:
 
 
 def _write_manifest(source_path: str, duration_s: float) -> None:
-    """Best-effort manifest — informative only, never read back by the code.
+    """Write a per-source ``manifest.json`` capturing the full source duration.
 
-    Useful when poking around the cache directory; a later schema bump
-    can promote to v2/ without touching this file.
+    The reader (painter / stamper) reads this back to reconstruct the
+    writer-canonical sample grid for cut items that don't span the whole
+    source. See :func:`plan_canonical_read_samples` for the why.
     """
     from datetime import datetime
 
@@ -172,6 +173,35 @@ def _write_manifest(source_path: str, duration_s: float) -> None:
         (cache_dir / "manifest.json").write_text(json.dumps(payload, indent=2))
     except OSError as exc:
         log.debug("manifest write skipped: %s", exc)
+
+
+def _read_manifest(source_path: str) -> dict | None:
+    """Return the persisted manifest dict for ``source_path``, or None."""
+    path = _cache_dir(source_path) / "manifest.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except Exception as exc:
+        log.debug("manifest read failed for %s: %s", path, exc)
+        return None
+
+
+def _resolve_source_duration(source_path: str) -> float | None:
+    """Look up a source clip's full duration in seconds via the manifest.
+
+    Returns None when the cache hasn't been written for this source yet
+    or when the manifest is malformed. Callers fall back to a legacy
+    sampling path when this returns None so older runs without manifests
+    don't break entirely.
+    """
+    manifest = _read_manifest(source_path)
+    if not manifest:
+        return None
+    dur = manifest.get("duration_s")
+    if isinstance(dur, int | float) and dur > 0:
+        return float(dur)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -344,6 +374,147 @@ def plan_samples(spec: VideoItemSpec) -> list[FrameSample]:
         tl_cursor = seg_end_tl
 
     return samples
+
+
+# ---------------------------------------------------------------------------
+# Canonical-read sampling — for painters / stampers that need to look up
+# tags written by an earlier analyze pass on the source timeline.
+# ---------------------------------------------------------------------------
+#
+# The writer's :func:`plan_samples` bakes the cut item's ``in_s`` into the
+# cache key (``source_ts_s = in_s + offset``). On the source timeline every
+# clip starts at ``in_s == 0`` so the cache lands on a clean grid:
+# ``{0.3, 5.0, 10.0, …, source_dur − 0.3}``. On a *cut* timeline, items
+# usually start mid-clip (``in_s != 0``), and naïvely calling
+# :func:`plan_samples` against a cut item produces grid points the writer
+# never visited (``in_s + 0.3``, ``in_s + 5.0``, …). The reader misses
+# every cached frame except for the rare cut item that happens to use the
+# full source.
+#
+# :func:`plan_canonical_read_samples` reconstructs the writer's grid using
+# the source duration recovered from ``manifest.json`` and intersects it
+# with the cut's ``[in_s, out_s]`` window. Each kept sample's
+# ``timeline_ts_s`` is reprojected onto the cut item's timeline offset so
+# downstream consumers (e.g. transcript stitching) keep working.
+
+
+def plan_canonical_read_samples(
+    source_path: str,
+    *,
+    in_s: float,
+    out_s: float,
+    timeline_offset_s: float,
+    source_dur_s: float,
+) -> list[FrameSample]:
+    """Writer-canonical sample grid intersected with ``[in_s, out_s]``.
+
+    Args:
+        source_path: Absolute path to the source media file.
+        in_s: Cut item's source-time in-point (seconds).
+        out_s: Cut item's source-time out-point (seconds).
+        timeline_offset_s: Cut item's timeline-time start (seconds).
+        source_dur_s: Full source clip duration (seconds), recovered
+            from the cache manifest written at analyze time.
+
+    Returns:
+        A list of :class:`FrameSample` whose ``source_ts_s`` matches the
+        writer's cache keys for this source clip and falls inside
+        ``[in_s, out_s]``. Empty list when the window is empty or the
+        canonical grid produces no samples in range.
+    """
+    if source_dur_s <= 0 or out_s <= in_s:
+        return []
+
+    canonical_src_ts: list[float] = []
+    # Start edge — fixed at FRAME_EDGE_OFFSET_S regardless of the cut's
+    # in-point. Always present unless the source is too short.
+    if source_dur_s > FRAME_EDGE_OFFSET_S:
+        canonical_src_ts.append(FRAME_EDGE_OFFSET_S)
+
+    # Strides — at exactly FRAME_STRIDE_S, 2*STRIDE, … up to (source_dur
+    # − edge). These are the frames the writer actually sampled on the
+    # source timeline.
+    t = FRAME_STRIDE_S
+    while t < source_dur_s - FRAME_EDGE_OFFSET_S:
+        canonical_src_ts.append(t)
+        t += FRAME_STRIDE_S
+
+    # End edge — at source_dur − FRAME_EDGE_OFFSET_S, unless that would
+    # collide with the last stride within ``2 * FRAME_EDGE_OFFSET_S``.
+    end_src_ts = source_dur_s - FRAME_EDGE_OFFSET_S
+    if end_src_ts > FRAME_EDGE_OFFSET_S and (
+        not canonical_src_ts or abs(canonical_src_ts[-1] - end_src_ts) > 2 * FRAME_EDGE_OFFSET_S
+    ):
+        canonical_src_ts.append(end_src_ts)
+
+    # Filter to [in_s, out_s] (small epsilon to forgive float drift at
+    # the exact edges) and project onto the cut's timeline frame.
+    eps = 1e-3
+    samples: list[FrameSample] = []
+    for src_ts in canonical_src_ts:
+        if src_ts < in_s - eps or src_ts > out_s + eps:
+            continue
+        samples.append(
+            FrameSample(
+                source_path=source_path,
+                source_ts_s=src_ts,
+                timeline_ts_s=timeline_offset_s + (src_ts - in_s),
+            )
+        )
+    return samples
+
+
+def iter_cached_tags_for_cut_item(
+    spec: VideoItemSpec,
+) -> list[tuple[FrameSample, ShotTag]]:
+    """Walk a cut item's segments and load every cached tag in range.
+
+    For each segment, recovers the source duration from the cache
+    manifest, computes the writer-canonical grid intersected with
+    ``[in_s, out_s]``, and loads every cached tag whose key matches.
+    Cache misses are silently skipped.
+
+    Falls back to the legacy :func:`plan_samples` path when no manifest
+    is present (older runs, or sources that haven't been tagged yet) so
+    behaviour for ``in_s == 0`` cut items is unchanged.
+
+    Returns ``(sample, tag)`` pairs in temporal order.
+    """
+    out: list[tuple[FrameSample, ShotTag]] = []
+    tl_cursor = spec.timeline_offset_s
+
+    for path, in_s, out_s in spec.segments:
+        seg_dur = max(0.0, out_s - in_s)
+        source_dur = _resolve_source_duration(path)
+
+        if source_dur is None:
+            log.debug(
+                "shot-tag manifest missing for %s; falling back to legacy plan_samples",
+                path,
+            )
+            for sample in plan_samples(spec):
+                if sample.source_path != path:
+                    continue
+                cached = _load_cached_tag(sample.source_path, sample.source_ts_s)
+                if cached is not None:
+                    out.append((sample, cached))
+            tl_cursor += seg_dur
+            continue
+
+        for sample in plan_canonical_read_samples(
+            path,
+            in_s=in_s,
+            out_s=out_s,
+            timeline_offset_s=tl_cursor,
+            source_dur_s=source_dur,
+        ):
+            cached = _load_cached_tag(sample.source_path, sample.source_ts_s)
+            if cached is not None:
+                out.append((sample, cached))
+
+        tl_cursor += seg_dur
+
+    return out
 
 
 # ---------------------------------------------------------------------------

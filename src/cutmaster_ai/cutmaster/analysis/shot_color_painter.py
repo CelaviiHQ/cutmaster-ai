@@ -106,13 +106,14 @@ def paint_shot_colors_on_timeline(
             # Generator / unsupported item — silently skip; not surfaced.
             continue
 
-        # Tally cached tags. Misses (no cached frame) are ignored — we
-        # only reason about what the analyze pass actually saw.
-        tags: list[shot_tagger.ShotTag] = []
-        for sample in shot_tagger.plan_samples(spec):
-            cached = shot_tagger._load_cached_tag(sample.source_path, sample.source_ts_s)
-            if cached is not None:
-                tags.append(cached)
+        # Tally cached tags. ``iter_cached_tags_for_cut_item`` reconstructs
+        # the writer-canonical grid from the cache manifest so cuts that
+        # use a non-zero ``in_s`` (the common case) actually hit the
+        # tags written during analyze. See shot_tagger docstring on
+        # plan_canonical_read_samples for the why.
+        tags: list[shot_tagger.ShotTag] = [
+            tag for _sample, tag in shot_tagger.iter_cached_tags_for_cut_item(spec)
+        ]
 
         if not tags:
             rows.append(PaintResult(item_index=idx, action="skipped_no_tags"))

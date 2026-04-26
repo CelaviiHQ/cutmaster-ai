@@ -250,11 +250,12 @@ def stamp_shot_metadata_on_timeline(
         if spec is None:
             continue
 
-        tags: list[shot_tagger.ShotTag] = []
-        for sample in shot_tagger.plan_samples(spec):
-            cached = shot_tagger._load_cached_tag(sample.source_path, sample.source_ts_s)
-            if cached is not None:
-                tags.append(cached)
+        # See shot_tagger.plan_canonical_read_samples — the reader must
+        # walk the writer's grid (origin 0), not the cut item's offset
+        # grid, otherwise non-zero-``in_s`` cuts miss every cached tag.
+        tags: list[shot_tagger.ShotTag] = [
+            tag for _sample, tag in shot_tagger.iter_cached_tags_for_cut_item(spec)
+        ]
 
         if not tags:
             rows.append(StampResult(item_index=idx, action="skipped_no_tags"))

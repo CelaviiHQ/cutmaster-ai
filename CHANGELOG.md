@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Shot-tag cache miss for cut-timeline items with non-zero in-points.
+  The writer (`shot_tagger.plan_samples`) cached at canonical
+  source-time keys `{0.3, 5.0, 10.0, …, src_dur − 0.3}` because every
+  source-timeline clip starts at `in_s == 0`. The reader (paint /
+  stamp on a cut timeline) was naïvely calling the same `plan_samples`
+  against the cut item, producing keys `{in_s + 0.3, in_s + 5.0, …}`
+  the writer never visited. Result: cuts that used mid-clip ranges
+  (the common case) missed every cached tag — a live verification on
+  `Timeline 1_AI_Cut_17` showed 2/9 V1 items hit cache, the only two
+  that happened to start at `in_s == 0`. Fix: new
+  `shot_tagger.plan_canonical_read_samples()` reconstructs the
+  writer-canonical grid from `manifest.json` (now reliably read back
+  via `_resolve_source_duration`) and intersects it with `[in_s,
+  out_s]`. New `iter_cached_tags_for_cut_item()` is the high-level
+  helper the painter and stamper now call. Verified live: same cut
+  goes 2/9 → **9/9 painted**, 9/9 stamped, with `marker_added=True`
+  on every row. Falls back to legacy `plan_samples` when no manifest
+  exists so caches from older runs don't break entirely. Covered by
+  13 new hermetic tests in `test_shot_tagger_canonical_read.py`.
+
 ### Added
 
 - `POST /cutmaster/stamp-shot-metadata` + `/clear-shot-metadata`
