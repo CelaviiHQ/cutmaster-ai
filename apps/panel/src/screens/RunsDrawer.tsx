@@ -73,7 +73,7 @@ export default function RunsDrawer({ onReopen }: Props) {
 
     return (
         <details
-            className="card"
+            className="card card--secondary"
             open={open}
             onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
         >

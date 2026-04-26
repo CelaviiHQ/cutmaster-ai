@@ -280,6 +280,96 @@ kbd {
 .card--advanced[open] > summary { border-bottom: var(--border-thin); border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
 .card--advanced > .card-body { padding: var(--s-3) var(--s-4) var(--s-4); }
 
+/* Secondary tier — recedes; for non-primary toggles ("Previous runs",
+   shot-aware power-user toggle). No border, dimmer fill. */
+.card--secondary {
+    background: rgba(26, 26, 32, 0.5);
+    border: 1px dashed var(--surface-3);
+}
+
+/* ── Segmented control ───────────────────────────────────────────────── */
+.segmented {
+    display: inline-flex;
+    background: var(--surface-3);
+    border: var(--border-thin);
+    border-radius: var(--radius-md);
+    padding: 2px;
+    gap: 2px;
+}
+.segmented .seg-opt {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 0;
+    border-radius: calc(var(--radius-md) - 1px);
+    height: 28px;
+    padding: 0 var(--s-3);
+    font-size: var(--fs-3);
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 120ms, color 120ms;
+}
+.segmented .seg-opt:hover:not(:disabled):not(.is-selected) {
+    color: var(--text-primary);
+}
+.segmented .seg-opt.is-selected {
+    background: var(--accent-blue);
+    color: #fff;
+}
+.segmented .seg-opt:disabled {
+    color: var(--text-tertiary);
+    cursor: not-allowed;
+}
+.segmented .seg-opt.is-ghost { color: var(--text-tertiary); }
+.segmented .seg-opt.is-ghost.is-selected {
+    background: transparent;
+    color: var(--accent-blue);
+    box-shadow: inset 0 0 0 1px var(--accent-blue);
+}
+.segmented--block { display: flex; width: 100%; }
+.segmented--block .seg-opt { flex: 1; }
+
+/* Caption that sits under a segmented control to explain the active option. */
+.seg-caption {
+    color: var(--text-tertiary);
+    font-size: var(--fs-2);
+    margin: var(--s-2) 0 0;
+}
+
+/* Sticky commit footer for screen-level CTAs (Configure → Analyze). */
+.config-footer {
+    position: sticky;
+    bottom: 0;
+    margin: var(--s-5) calc(var(--s-4) * -1) calc(var(--s-4) * -1);
+    padding: var(--s-3) var(--s-4);
+    background: var(--surface-0);
+    border-top: var(--border-thin);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-3);
+    z-index: 5;
+}
+.config-footer .footer-eta {
+    color: var(--text-tertiary);
+    font-size: var(--fs-2);
+    margin-right: var(--s-3);
+}
+.config-footer .footer-meta { color: var(--text-tertiary); font-size: var(--fs-2); }
+
+/* Inline warning row (e.g. "API key missing"). */
+.inline-warn {
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    padding: var(--s-2) var(--s-3);
+    background: rgba(255, 69, 58, 0.08);
+    border: 1px solid rgba(255, 69, 58, 0.30);
+    border-radius: var(--radius-md);
+    color: var(--err);
+    font-size: var(--fs-2);
+    margin-top: var(--s-2);
+}
+
 /* ── Buttons (v3-0.4) ────────────────────────────────────────────────── */
 button {
     background: var(--accent-blue);
@@ -440,6 +530,14 @@ label {
     width: 180px;
     height: 180px;
     margin: 0 auto;
+    /* Subtle breathing keeps the screen feeling alive at 20s+ without
+       being distracting. Suppressed under prefers-reduced-motion below. */
+    animation: mascotBreathe 3.6s ease-in-out infinite;
+    transform-origin: center bottom;
+}
+@keyframes mascotBreathe {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.035); }
 }
 
 /* MascotLoading card — tight vertical stack, no wasted space. */
@@ -447,7 +545,7 @@ label {
     padding: var(--s-5) var(--s-4);
 }
 .mascot-loading-inner {
-    max-width: 440px;
+    max-width: 480px;
     margin: 0 auto;
     text-align: center;
     display: flex;
@@ -459,10 +557,19 @@ label {
     margin: 0;
     font-size: var(--fs-4);
     color: var(--text-primary);
+    text-wrap: balance;
+}
+.mascot-loading-elapsed-inline {
+    color: var(--text-tertiary);
+    font-weight: 400;
+    font-family: var(--font-mono);
+    font-size: var(--fs-2);
+    letter-spacing: 0.02em;
 }
 .mascot-loading-hint {
     margin: calc(-1 * var(--s-2)) 0 0;
     font-size: var(--fs-2);
+    text-wrap: balance;
 }
 .mascot-loading-stages {
     text-align: left;
@@ -472,40 +579,102 @@ label {
     padding-top: 8px;
     padding-bottom: 8px;
 }
-.mascot-loading-elapsed {
-    margin: 0;
-    font-family: var(--font-mono);
-    font-size: var(--fs-2);
-    color: var(--text-tertiary);
-    letter-spacing: 0.02em;
-}
 
-/* Indeterminate progress bar — pulse-scans left→right to reinforce motion
-   while the single HTTP request is in flight. */
+/* Stepped progress bar — one filled chunk per stage. Determinate
+   progress reads as honest at 30s+ where an indeterminate bar erodes
+   trust. Active chunk gets the breathing accent so motion is visible
+   even when the bar hasn't yet flipped to "complete". */
 .mascot-loading-progress {
-    height: 3px;
-    background: var(--surface-3);
+    height: 6px;
+    background: transparent;
     border-radius: 999px;
-    overflow: hidden;
+    overflow: visible;
     position: relative;
 }
-.mascot-loading-progress .bar {
-    position: absolute;
-    top: 0;
-    left: 0;
-    height: 100%;
-    width: 40%;
+.mascot-loading-progress--stepped {
+    display: flex;
+    gap: 3px;
+}
+.mascot-loading-progress--stepped .step {
+    flex: 1;
+    height: 6px;
+    background: var(--surface-3);
+    border-radius: 3px;
+    transition: background 240ms ease-out;
+}
+.mascot-loading-progress--stepped .step.complete {
+    background: var(--accent-blue);
+}
+.mascot-loading-progress--stepped .step.failed {
+    background: var(--err);
+}
+.mascot-loading-progress--stepped .step.started {
     background: linear-gradient(
         90deg,
-        transparent,
-        var(--accent-blue),
-        transparent
+        var(--accent-blue) 0%,
+        var(--accent-blue) 50%,
+        var(--surface-3) 50%,
+        var(--surface-3) 100%
     );
-    animation: scan 1.6s ease-in-out infinite;
+    animation: stepPulse 1.6s ease-in-out infinite;
 }
-@keyframes scan {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(250%); }
+@keyframes stepPulse {
+    0%, 100% { opacity: 0.85; }
+    50%      { opacity: 1; }
+}
+
+.mascot-loading-step-count {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: var(--fs-1);
+    color: var(--text-tertiary);
+    letter-spacing: 0.04em;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--s-2);
+}
+
+.mascot-loading-parallel {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--accent-blue-tint);
+    color: var(--accent-blue);
+    font-size: var(--fs-1);
+    font-family: var(--font-sans, inherit);
+    letter-spacing: 0;
+}
+.mascot-loading-parallel--inline {
+    margin-left: var(--s-2);
+}
+
+.mascot-loading-slow {
+    margin: var(--s-2) 0 0;
+    padding: var(--s-2) var(--s-3);
+    background: rgba(255, 200, 80, 0.06);
+    border: 1px solid rgba(255, 200, 80, 0.20);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    font-size: var(--fs-2);
+    text-align: left;
+}
+.mascot-loading-slow em { color: var(--text-primary); font-style: normal; }
+
+.mascot-loading-footer {
+    margin-top: var(--s-3);
+    padding-top: var(--s-3);
+    border-top: var(--border-thin);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s-3);
+}
+.mascot-loading-next {
+    color: var(--text-tertiary);
+    font-size: var(--fs-2);
 }
 
 @media (max-width: 480px) {
@@ -530,7 +699,7 @@ label {
     }
 }
 
-.stage-name { font-weight: 500; width: 160px; flex-shrink: 0; }
+.stage-name { font-weight: 500; min-width: 220px; flex-shrink: 0; white-space: nowrap; }
 .stage-msg {
     color: var(--text-tertiary);
     font-size: var(--fs-2);

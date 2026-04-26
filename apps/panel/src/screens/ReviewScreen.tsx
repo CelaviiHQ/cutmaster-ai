@@ -439,9 +439,12 @@ export default function ReviewScreen({
     if (loading) {
         return (
             <MascotLoading
-                label="Building plan"
-                hint="Director agent composes the cut; Marker agent picks B-roll cues. Usually 5–15 s."
+                label="Composing your cut"
+                hint="Director picks segments · Marker picks B-roll · running in parallel. Usually 5–15s."
                 stages={buildStages}
+                parallel
+                expectedMaxS={20}
+                nextLabel="Review your cut"
             />
         );
     }
@@ -455,15 +458,21 @@ export default function ReviewScreen({
         // stage rows themselves come from the live build-progress feed.
         return regeneratingWithFeedback ? (
             <MascotLoading
-                label="Regenerating with recommendations"
-                hint="Director rebuilds with the critic's feedback; the iterative loop runs up to 3 reworks. Usually 20–60 s."
+                label="Regenerating with critic feedback"
+                hint="Iterative critic loop runs up to 3 reworks. Usually 20–60s."
                 stages={buildStages}
+                parallel
+                expectedMaxS={75}
+                nextLabel="Review your cut"
             />
         ) : (
             <MascotLoading
-                label="Regenerating plan"
-                hint="Director recomposes the cut with your updated settings; Marker agent re-picks B-roll cues. Usually 5–15 s."
+                label="Regenerating your cut"
+                hint="Director recomposes with your updated settings; Marker re-picks B-roll. Usually 5–15s."
                 stages={buildStages}
+                parallel
+                expectedMaxS={20}
+                nextLabel="Review your cut"
             />
         );
     }

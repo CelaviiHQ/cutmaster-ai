@@ -283,12 +283,14 @@ export default function ConfigureScreen({
     if (loading) {
         return (
             <MascotLoading
-                label="Analysing themes"
-                hint="Reading the transcript and clustering the strongest narrative threads. Usually ~5–10 s."
+                label="Finding narrative threads"
+                hint="Reading the transcript and clustering the strongest themes. Usually 5–10s."
                 stages={[
                     { label: "Cluster transcript into themes", status: "started" },
                     { label: "Rank themes by salience", status: "pending" },
                 ]}
+                expectedMaxS={15}
+                nextLabel="Configure your cut"
             />
         );
     }

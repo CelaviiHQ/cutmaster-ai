@@ -520,51 +520,64 @@ export default function PresetPickScreen({
                 </div>
             </div>
 
-            {/* Speakers on camera — regular card. A semantic decision about
-                the content (who's on screen), not a transcription tuning knob.
-                Stays visible so users don't miss it. */}
+            {/* Speakers on camera — single segmented control reads as
+                "pick one". Long rationale collapsed into the title tooltip. */}
             <div className="card">
-                <h2>Speakers on camera</h2>
-                <p className="muted">
-                    How many people speak in the shoot? Helps the Director /
-                    Marker agents reason about roles and stops Gemini from
-                    inventing phantom speakers on solo content.
-                </p>
-                {/* v3-1.6 — Unsure (ghost) first, then numeric range 1…5+ */}
+                <div className="row between" style={{ alignItems: "baseline" }}>
+                    <h2 style={{ margin: 0 }}>
+                        Speakers on camera{" "}
+                        <span
+                            className="muted"
+                            title="Helps the Director/Marker agents reason about roles and stops Gemini from inventing phantom speakers on solo content."
+                            style={{
+                                fontSize: "var(--fs-2)",
+                                cursor: "help",
+                                marginLeft: 4,
+                            }}
+                        >
+                            (?)
+                        </span>
+                    </h2>
+                </div>
                 <div
-                    className="row"
-                    style={{ gap: "var(--s-2)", flexWrap: "wrap" }}
+                    className="segmented"
+                    role="radiogroup"
+                    aria-label="Number of speakers on camera"
+                    style={{ marginTop: "var(--s-3)" }}
                 >
                     <button
-                        className={expectedSpeakers == null ? "secondary" : "btn-ghost"}
-                        onClick={() => onExpectedSpeakersChange(null)}
-                        style={
-                            expectedSpeakers == null
-                                ? {
-                                      borderColor: "var(--accent-blue)",
-                                      color: "var(--accent-blue)",
-                                  }
-                                : undefined
+                        className={
+                            "seg-opt is-ghost" +
+                            (expectedSpeakers == null ? " is-selected" : "")
                         }
+                        role="radio"
+                        aria-checked={expectedSpeakers == null}
+                        onClick={() => onExpectedSpeakersChange(null)}
                     >
                         Unsure
                     </button>
                     {[1, 2, 3, 4].map((n) => (
                         <button
                             key={n}
-                            className={expectedSpeakers === n ? "" : "secondary"}
+                            className={
+                                "seg-opt" + (expectedSpeakers === n ? " is-selected" : "")
+                            }
+                            role="radio"
+                            aria-checked={expectedSpeakers === n}
                             onClick={() => onExpectedSpeakersChange(n)}
-                            style={{ minWidth: 56 }}
                         >
                             {n === 1 ? "1 (solo)" : `${n}`}
                         </button>
                     ))}
                     <button
                         className={
-                            expectedSpeakers != null && expectedSpeakers > 4
-                                ? ""
-                                : "secondary"
+                            "seg-opt" +
+                            (expectedSpeakers != null && expectedSpeakers > 4
+                                ? " is-selected"
+                                : "")
                         }
+                        role="radio"
+                        aria-checked={expectedSpeakers != null && expectedSpeakers > 4}
                         onClick={() => onExpectedSpeakersChange(5)}
                         title="5 or more — enter a number below"
                     >
@@ -617,87 +630,94 @@ export default function PresetPickScreen({
                 </p>
             </div>
 
-            {/* v3-1.5 (revised) — Transcription details: STT provider + per-clip
-                mode only. Speakers graduated to its own regular card above. */}
-            <details className="card card--advanced">
-                <summary>
-                    <span>
-                        Transcription details
-                        {sttConfigured && (
-                            <>
-                                {" "}
-                                <span className="muted" style={{ fontSize: "var(--fs-2)" }}>
-                                    · {effectiveProvider}
-                                </span>
-                            </>
-                        )}
-                        {perClipStt && (
-                            <>
-                                {" "}
-                                <span className="muted" style={{ fontSize: "var(--fs-2)" }}>
-                                    · per-clip
-                                </span>
-                            </>
-                        )}
-                    </span>
-                </summary>
-                <div className="card-body">
-                    {providers && providers.length > 0 && (
-                        <div style={{ marginBottom: "var(--s-4)" }}>
-                            <label>Transcription service</label>
-                            <p className="muted" style={{ marginBottom: "var(--s-3)" }}>
-                                Gemini is free with a key and fine for ≤ 8 min audio.
-                                Deepgram Nova-3 handles long-form (no word-level cap)
-                                and bundles diarization — recommended for interviews.
-                            </p>
-                            <div
-                                className="row"
-                                style={{
-                                    gap: "var(--s-2)",
-                                    flexWrap: "wrap",
-                                    marginTop: 0,
-                                }}
-                            >
-                                {providers.map((p) => {
-                                    const selected = effectiveProvider === p.key;
-                                    const disabled = !p.configured;
-                                    return (
-                                        <button
-                                            key={p.key}
-                                            className={selected ? "" : "secondary"}
-                                            disabled={disabled}
-                                            onClick={() => onSttProviderChange(p.key)}
-                                            title={
-                                                disabled
-                                                    ? `${p.key.toUpperCase()}_API_KEY not set in .env`
-                                                    : p.label
-                                            }
-                                        >
-                                            {p.label}
-                                            {disabled && " · key missing"}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                            {!sttConfigured && (
-                                <p
-                                    className="muted"
-                                    style={{
-                                        marginTop: "var(--s-3)",
-                                        color: "var(--err)",
-                                        fontSize: "var(--fs-2)",
-                                    }}
-                                >
-                                    No STT key configured. Add either{" "}
-                                    <code>GEMINI_API_KEY</code> or{" "}
-                                    <code>DEEPGRAM_API_KEY</code> to your{" "}
-                                    <code>.env</code> and restart the panel.
-                                </p>
-                            )}
-                        </div>
-                    )}
+            {/* Transcription — primary path, always visible. Segmented
+                provider toggle + dynamic caption, per-clip STT tucked
+                under an Advanced sub-disclosure. */}
+            <div className="card">
+                <div className="row between" style={{ alignItems: "baseline" }}>
+                    <h2 style={{ margin: 0 }}>
+                        Transcription{" "}
+                        <span
+                            className="muted"
+                            title="Gemini is free with a key and fine for ≤ 8 min audio. Deepgram Nova-3 handles long-form and bundles diarization — recommended for interviews."
+                            style={{
+                                fontSize: "var(--fs-2)",
+                                cursor: "help",
+                                marginLeft: 4,
+                            }}
+                        >
+                            (?)
+                        </span>
+                    </h2>
+                </div>
 
-                    <div>
+                {providers && providers.length > 0 && (
+                    <>
+                        <div
+                            className="segmented segmented--block"
+                            role="radiogroup"
+                            aria-label="Transcription service"
+                            style={{ marginTop: "var(--s-3)" }}
+                        >
+                            {providers.map((p) => {
+                                const selected = effectiveProvider === p.key;
+                                const disabled = !p.configured;
+                                return (
+                                    <button
+                                        key={p.key}
+                                        className={
+                                            "seg-opt" + (selected ? " is-selected" : "")
+                                        }
+                                        role="radio"
+                                        aria-checked={selected}
+                                        disabled={disabled}
+                                        onClick={() => onSttProviderChange(p.key)}
+                                        title={
+                                            disabled
+                                                ? `${p.key.toUpperCase()}_API_KEY not set in .env`
+                                                : p.label
+                                        }
+                                    >
+                                        {/* Short label inside segment; full label
+                                            with cost/notes goes in the caption below. */}
+                                        {p.key === "gemini"
+                                            ? "Gemini Flash-Lite"
+                                            : p.key === "deepgram"
+                                              ? "Deepgram Nova-3"
+                                              : p.label}
+                                        {disabled && " · key missing"}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <p className="seg-caption">
+                            {effectiveProvider === "deepgram"
+                                ? "Long-form, diarized · no word-level cap"
+                                : "Free with a Gemini key · ≤ 8 min audio"}
+                        </p>
+                        {!sttConfigured && (
+                            <div className="inline-warn">
+                                No STT key configured. Add either{" "}
+                                <code>GEMINI_API_KEY</code> or{" "}
+                                <code>DEEPGRAM_API_KEY</code> to{" "}
+                                <code>.env</code> and restart the panel.
+                            </div>
+                        )}
+                    </>
+                )}
+
+                <details style={{ marginTop: "var(--s-4)" }}>
+                    <summary
+                        className="muted"
+                        style={{
+                            cursor: "pointer",
+                            fontSize: "var(--fs-2)",
+                            userSelect: "none",
+                        }}
+                    >
+                        Advanced{perClipStt ? " · per-clip on" : ""}
+                    </summary>
+                    <div style={{ marginTop: "var(--s-3)" }}>
                         <label
                             style={{
                                 display: "flex",
@@ -725,80 +745,89 @@ export default function PresetPickScreen({
                             trimmed timeline only re-transcribes the changed takes.
                         </p>
                     </div>
-                </div>
-            </details>
+                </details>
+            </div>
 
-            {/* v4 Phase 4.4 — Shot-aware editing pre-analyze toggle.
-                Fine-grained per-layer overrides live on the Configure
-                screen; this is just the master switch so new runs can
-                opt in before analyze kicks off. */}
-            <details className="card card--advanced">
-                <summary>
-                    <span>
-                        Shot-aware editing
-                        {sensoryMasterEnabled && (
-                            <>
-                                {" "}
-                                <span
-                                    className="muted"
-                                    style={{ fontSize: "var(--fs-2)" }}
-                                >
-                                    · on
-                                </span>
-                            </>
+            {/* Shot-aware editing — power-user toggle, demoted to a
+                secondary card so it doesn't compete with the primary path.
+                Disables itself with an inline warning when GEMINI_API_KEY
+                is missing instead of leaving the user to read prose. */}
+            {(() => {
+                const geminiConfigured = providers
+                    ? providers.find((p) => p.key === "gemini")?.configured ?? false
+                    : true;
+                const checkboxDisabled = !geminiConfigured;
+                return (
+                    <div className="card card--secondary">
+                        <label
+                            style={{
+                                display: "flex",
+                                gap: "var(--s-2)",
+                                alignItems: "center",
+                                margin: 0,
+                                color: checkboxDisabled
+                                    ? "var(--text-tertiary)"
+                                    : "var(--text-primary)",
+                                fontSize: "var(--fs-3)",
+                                cursor: checkboxDisabled ? "not-allowed" : "pointer",
+                            }}
+                        >
+                            <input
+                                type="checkbox"
+                                checked={sensoryMasterEnabled && !checkboxDisabled}
+                                disabled={checkboxDisabled}
+                                onChange={(e) =>
+                                    onSensoryMasterChange(e.target.checked)
+                                }
+                                style={{ width: "auto", height: "auto" }}
+                            />
+                            Shot-aware editing
+                            <span
+                                className="muted"
+                                style={{
+                                    fontSize: "var(--fs-2)",
+                                    marginLeft: "var(--s-2)",
+                                }}
+                                title="Samples frames from each timeline item and asks Gemini for shot tags; validates cut boundaries at build time. Cached after first analyze. Fine-tune layers on the Configure screen."
+                            >
+                                ⓘ Adds 30–60 s on first analyze · cached after
+                            </span>
+                        </label>
+                        {checkboxDisabled && (
+                            <div className="inline-warn">
+                                Needs <code>GEMINI_API_KEY</code> in{" "}
+                                <code>.env</code> to enable shot tagging.
+                            </div>
                         )}
-                    </span>
-                </summary>
-                <div className="card-body">
-                    <label
-                        style={{
-                            display: "flex",
-                            gap: "var(--s-2)",
-                            alignItems: "center",
-                            margin: 0,
-                            color: "var(--text-primary)",
-                            fontSize: "var(--fs-3)",
-                        }}
-                    >
-                        <input
-                            type="checkbox"
-                            checked={sensoryMasterEnabled}
-                            onChange={(e) =>
-                                onSensoryMasterChange(e.target.checked)
-                            }
-                            style={{ width: "auto", height: "auto" }}
-                        />
-                        Enable shot tagging + boundary validation
-                    </label>
-                    <p
-                        className="muted"
-                        style={{ marginTop: "var(--s-2)", fontSize: "var(--fs-2)" }}
-                    >
-                        Samples frames from each timeline item and asks Gemini
-                        for shot tags; validates cut boundaries at build time.
-                        Adds 30–60 s on first analyze; cached after. Needs{" "}
-                        <code>GEMINI_API_KEY</code>. Fine-tune individual
-                        layers on the Configure screen.
-                    </p>
-                </div>
-            </details>
+                    </div>
+                );
+            })()}
 
             <RunsDrawer onReopen={onReopenRun} />
 
             {err && <div className="error-box">{err}</div>}
 
-            <div className="row between">
-                <span className="muted">
+            {/* Sticky commit zone — keeps Analyze visible while the user
+                scrolls long preset/track lists. ETA is a rough first-run
+                estimate so the click feels predictable. */}
+            <div className="config-footer">
+                <span className="footer-meta">
                     Preset: <code>{preset}</code> &nbsp;·&nbsp; Timeline:{" "}
                     <code>{timelineName}</code>
                 </span>
-                <button
-                    disabled={loading || !timelineName.trim()}
-                    onClick={submit}
-                    data-hotkey="primary"
-                >
-                    {loading ? "Starting…" : "Analyze →"}
-                </button>
+                <span style={{ display: "flex", alignItems: "center" }}>
+                    <span className="footer-eta">
+                        ≈ {25 + (sensoryMasterEnabled ? 35 : 0) + (perClipStt ? 10 : 0)}
+                        s · first run
+                    </span>
+                    <button
+                        disabled={loading || !timelineName.trim()}
+                        onClick={submit}
+                        data-hotkey="primary"
+                    >
+                        {loading ? "Starting…" : "Analyze →"}
+                    </button>
+                </span>
             </div>
         </div>
     );

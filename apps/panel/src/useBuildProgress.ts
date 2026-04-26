@@ -28,10 +28,12 @@ export interface BuildStage {
     validationErrors?: number;
 }
 
+// Outcome-language labels — what the editor *gets*, not which agent does
+// the work. Internal stage keys stay as-is so SSE/poll wiring is untouched.
 const ORDERED_STAGES: { key: string; label: string }[] = [
-    { key: "build_director", label: "Director agent (plan the cut)" },
-    { key: "build_marker", label: "Marker agent (B-roll cues)" },
-    { key: "build_frames", label: "Resolve source-frame mapping" },
+    { key: "build_director", label: "Composing the cut" },
+    { key: "build_marker", label: "Picking B-roll moments" },
+    { key: "build_frames", label: "Aligning to source timecode" },
 ];
 
 interface StageData {
