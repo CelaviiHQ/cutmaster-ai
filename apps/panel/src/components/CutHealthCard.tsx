@@ -1,5 +1,5 @@
 import CoherenceReportCard from "./CoherenceReportCard";
-import type { CoherenceReport } from "../types";
+import type { CoherenceReport, Verdict } from "../types";
 
 interface Props {
     /**
@@ -12,6 +12,10 @@ interface Props {
     coherenceReport: CoherenceReport | null;
     /** Pre-rework report when the auto-rework loop fired. */
     previousReport?: CoherenceReport | null;
+    /** Stepped lift ladder: one entry per critic iteration. */
+    ladderSteps?: { score: number; verdict: Verdict }[];
+    shippedPassIndex?: number;
+    onPassClick?: (passIndex: number) => void;
     /** Optional context (e.g. "Candidate 2 of 5"). */
     contextLabel?: string;
     /** Empty-state copy when ``coherenceReport`` is null. */
@@ -37,6 +41,9 @@ export default function CutHealthCard({
     planWarnings,
     coherenceReport,
     previousReport = null,
+    ladderSteps,
+    shippedPassIndex,
+    onPassClick,
     contextLabel,
     emptyMessage,
     onIssueClick,
@@ -93,6 +100,9 @@ export default function CutHealthCard({
                 <CoherenceReportCard
                     report={coherenceReport!}
                     previousReport={previousReport}
+                    ladderSteps={ladderSteps}
+                    shippedPassIndex={shippedPassIndex}
+                    onPassClick={onPassClick}
                     contextLabel={contextLabel}
                     onIssueClick={onIssueClick}
                     onRecritique={onRecritique}

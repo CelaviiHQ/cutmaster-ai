@@ -2299,6 +2299,78 @@ code {
     opacity: 0.85;
 }
 
+/* Stepped lift ladder — one chip per critic iteration with arrow
+   glyphs in between. Replaces the legacy two-pass lift chip when the
+   iterative critic loop fires (history >= 2). */
+.coherence-lift-ladder {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: var(--surface-3);
+    cursor: help;
+}
+.coherence-lift-ladder > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.coherence-lift-step {
+    display: inline-flex;
+    align-items: center;
+    min-width: 28px;
+    padding: 1px 8px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: var(--surface-2);
+    color: var(--text);
+    font-size: var(--fs-1);
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 80ms ease;
+}
+button.coherence-lift-step {
+    appearance: none;
+    border: 1px solid transparent;
+    font: inherit;
+}
+.coherence-lift-step:hover {
+    border-color: var(--accent, #4ea1ff);
+}
+.coherence-lift-step--ship {
+    background: rgba(231, 184, 88, 0.22);
+    color: #e7b858;
+}
+.coherence-lift-step--rework {
+    color: #ff453a;
+}
+.coherence-lift-step--review {
+    color: #e7b858;
+}
+.coherence-lift-step--ship.coherence-lift-step--ship {
+    /* keep gold tint when verdict is ship AND it's the kept envelope */
+    color: #e7b858;
+}
+.coherence-lift-ship-marker {
+    margin-left: 2px;
+    color: #e7b858;
+    font-weight: 700;
+}
+.coherence-lift-arrow {
+    font-size: var(--fs-1);
+    line-height: 1;
+}
+.coherence-lift-arrow--up {
+    color: #67d97a;
+}
+.coherence-lift-arrow--down {
+    color: #ff453a;
+}
+.coherence-lift-arrow--flat {
+    color: var(--text-muted, #7a7a85);
+}
+
 .coherence-rework-prompt {
     margin-left: var(--s-2);
     font-size: var(--fs-2);

@@ -140,6 +140,91 @@ function IssueRow({ issue, fixed, onToggleFixed, onJump }: IssueRowProps) {
     );
 }
 
+interface LadderStep {
+    score: number;
+    verdict: Verdict;
+}
+
+interface LiftLadderProps {
+    steps: LadderStep[];
+    shippedIndex: number;
+    onPassClick?: (passIndex: number) => void;
+}
+
+function LiftLadder({ steps, shippedIndex, onPassClick }: LiftLadderProps) {
+    // Glyph between consecutive chips reflects the delta direction.
+    // Threshold matches the backend's MIN_DELTA default (3); we don't
+    // import it at runtime since the backend is the source of truth and
+    // this is purely cosmetic.
+    const MIN_DELTA = 3;
+    const arrow = (delta: number): { glyph: string; cls: string } => {
+        if (delta <= -MIN_DELTA) return { glyph: "↘", cls: "down" };
+        if (delta >= MIN_DELTA) return { glyph: "↗", cls: "up" };
+        return { glyph: "→", cls: "flat" };
+    };
+    return (
+        <span
+            className="coherence-lift-ladder"
+            title="Critic score per iteration. ↗ improvement, → plateau, ↘ regression. * marks the shipped pass."
+        >
+            {steps.map((step, i) => {
+                const isShipped = i === shippedIndex;
+                const passLabel = `Pass ${i + 1}`;
+                const stepCls = `coherence-lift-step coherence-lift-step--${step.verdict}${
+                    isShipped ? " coherence-lift-step--ship" : ""
+                }`;
+                const Inner = onPassClick ? (
+                    <button
+                        type="button"
+                        className={stepCls}
+                        onClick={() => onPassClick(i)}
+                        title={`${passLabel} (${VERDICT_LABEL[step.verdict]}) — click to view this iteration's prompt`}
+                    >
+                        {step.score}
+                        {isShipped && (
+                            <span
+                                className="coherence-lift-ship-marker"
+                                aria-label="shipped"
+                            >
+                                *
+                            </span>
+                        )}
+                    </button>
+                ) : (
+                    <span
+                        className={stepCls}
+                        title={`${passLabel} (${VERDICT_LABEL[step.verdict]})`}
+                    >
+                        {step.score}
+                        {isShipped && (
+                            <span
+                                className="coherence-lift-ship-marker"
+                                aria-label="shipped"
+                            >
+                                *
+                            </span>
+                        )}
+                    </span>
+                );
+                if (i === 0) return <span key={i}>{Inner}</span>;
+                const prev = steps[i - 1];
+                const a = arrow(step.score - prev.score);
+                return (
+                    <span key={i}>
+                        <span
+                            className={`coherence-lift-arrow coherence-lift-arrow--${a.cls}`}
+                            aria-hidden
+                        >
+                            {a.glyph}
+                        </span>
+                        {Inner}
+                    </span>
+                );
+            })}
+        </span>
+    );
+}
+
 interface Props {
     report: CoherenceReport;
     onIssueClick: (segmentIndex: number) => void;
@@ -148,12 +233,23 @@ interface Props {
     recritiqueBusy?: boolean;
     recritiqueError?: string | null;
     /**
-     * Optional pre-rework report. Renders a delta chip in the header.
-     * When delta is negative, the chip is red — flagging that pass 2
-     * regressed and the regression-guard kept pass 1's output.
+     * Pre-rework single-pass report. Used by the legacy two-pass lift
+     * chip when no ``ladderSteps`` is provided. Ignored when ``ladderSteps``
+     * has ≥ 2 entries — the stepped ladder subsumes it.
      */
     previousReport?: CoherenceReport | null;
     onViewReworkPrompt?: () => void;
+    /**
+     * Stepped lift ladder: one chip per critic iteration. When provided
+     * and length ≥ 2, the card renders the ladder instead of the
+     * legacy two-pass lift chip. ``shippedPassIndex`` (0-based) marks
+     * which step won the regression-guard. ``onPassClick`` opens that
+     * pass's Director prompt; falls back to ``onViewReworkPrompt`` when
+     * unset.
+     */
+    ladderSteps?: { score: number; verdict: Verdict }[];
+    shippedPassIndex?: number;
+    onPassClick?: (passIndex: number) => void;
     /**
      * When ``true``, the Re-critique button is disabled with a tooltip
      * explaining why. Host owns the gate so different builds (assembled,
@@ -174,6 +270,9 @@ export default function CoherenceReportCard({
     recritiqueError = null,
     previousReport = null,
     onViewReworkPrompt,
+    ladderSteps,
+    shippedPassIndex,
+    onPassClick,
     recritiqueDisabled = false,
     recritiqueDisabledReason,
     sectionLabel,
@@ -202,6 +301,15 @@ export default function CoherenceReportCard({
                 ? "down"
                 : "flat";
 
+    // Phase 5 stepped ladder. Renders one chip per iteration plus the
+    // delta glyph between consecutive chips so the editor can read the
+    // loop's shape at a glance:
+    //   ↗ (up) — improvement worth iterating for
+    //   → (flat) — plateau, no movement
+    //   ↘ (down) — regression, the new pass got worse
+    //   * — terminal marker on the shipped step (latest-wins on ties)
+    const showLadder = !!ladderSteps && ladderSteps.length >= 2;
+
     return (
         <div className="coherence-card">
             {sectionLabel && (
@@ -224,23 +332,32 @@ export default function CoherenceReportCard({
                     >
                         {VERDICT_LABEL[report.verdict]}
                     </span>
-                    {previousReport !== null && lift !== null && (
-                        <span
-                            className={`coherence-lift coherence-lift--${liftDirection}`}
-                            title={
-                                liftDirection === "down"
-                                    ? `Auto-rework regressed: pass 1 scored ${previousReport.score} (${VERDICT_LABEL[previousReport.verdict]}); pass 2 scored ${report.score}. The regression-guard kept whichever score was higher.`
-                                    : `Auto-rework: pass 1 scored ${previousReport.score} (${VERDICT_LABEL[previousReport.verdict]}); pass 2 scored ${report.score}.`
-                            }
-                        >
-                            {liftDirection === "down" ? "Regressed " : "Lift "}
-                            {previousReport.score} → {report.score}
-                            <span className="coherence-lift-delta">
-                                {" "}
-                                ({lift >= 0 ? "+" : ""}
-                                {lift})
+                    {showLadder ? (
+                        <LiftLadder
+                            steps={ladderSteps!}
+                            shippedIndex={shippedPassIndex ?? ladderSteps!.length - 1}
+                            onPassClick={onPassClick}
+                        />
+                    ) : (
+                        previousReport !== null &&
+                        lift !== null && (
+                            <span
+                                className={`coherence-lift coherence-lift--${liftDirection}`}
+                                title={
+                                    liftDirection === "down"
+                                        ? `Auto-rework regressed: pass 1 scored ${previousReport.score} (${VERDICT_LABEL[previousReport.verdict]}); pass 2 scored ${report.score}. The regression-guard kept whichever score was higher.`
+                                        : `Auto-rework: pass 1 scored ${previousReport.score} (${VERDICT_LABEL[previousReport.verdict]}); pass 2 scored ${report.score}.`
+                                }
+                            >
+                                {liftDirection === "down" ? "Regressed " : "Lift "}
+                                {previousReport.score} → {report.score}
+                                <span className="coherence-lift-delta">
+                                    {" "}
+                                    ({lift >= 0 ? "+" : ""}
+                                    {lift})
+                                </span>
                             </span>
-                        </span>
+                        )
                     )}
                     {contextLabel && (
                         <span className="coherence-context muted">

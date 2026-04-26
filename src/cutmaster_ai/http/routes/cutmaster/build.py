@@ -843,7 +843,7 @@ async def _critic_with_rework(
         # top-level fields of the feedback dict.
         feedback = _critic_feedback_payload(prior_report, prior_snapshots=snapshots[:-1])
         try:
-            new_plan = await rebuild_fn(feedback)
+            new_plan = await rebuild_fn(feedback, iteration_index=iteration_index)
         except Exception as exc:
             log.warning(
                 "story_critic.rework_director_failed run_id=%s err=%s",
@@ -1749,7 +1749,7 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         # Re-call the matching builder with critic feedback in settings.
         # On rework, re-expand to a flat DirectorPlan so marker + resolve
         # downstream consume the corrected segments.
-        async def _rebuild_curated_or_rough(feedback: dict):
+        async def _rebuild_curated_or_rough(feedback: dict, *, iteration_index: int):
             eff = {**settings_dict, "_critic_feedback": feedback}
             if mode == "rough_cut":
                 builder = build_rough_cut_plan
@@ -1763,7 +1763,7 @@ async def build_plan(body: BuildPlanRequest) -> dict:
                 prompt_text = director_mod._curated_prompt(
                     preset, takes, eff, resolved=resolved_axes
                 )
-            _dump_director_prompt(body.run_id, prompt_text, suffix="rework")
+            _dump_director_prompt(body.run_id, prompt_text, pass_index=iteration_index)
             return await with_timeout(
                 asyncio.to_thread(builder, *args, resolved=resolved_axes),
                 DIRECTOR_TIMEOUT_S,
@@ -1852,12 +1852,12 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         # AssembledDirectorPlan adapter knows about ordered selections +
         # word-index spans so the critic grades the native shape, not the
         # synthesised flat DirectorPlan.
-        async def _rebuild_assembled(feedback: dict):
+        async def _rebuild_assembled(feedback: dict, *, iteration_index: int):
             eff = {**settings_dict, "_critic_feedback": feedback}
             _dump_director_prompt(
                 body.run_id,
                 director_mod._assembled_prompt(preset, takes, eff, resolved=resolved_axes),
-                suffix="rework",
+                pass_index=iteration_index,
             )
             return await with_timeout(
                 asyncio.to_thread(
@@ -1948,15 +1948,17 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         # we're about to discard. assembled / curated / tightener still
         # use the catch-all single-pass critic at the bottom of this
         # handler — wired in a follow-up bite.
-        async def _rebuild_raw_dump(feedback: dict):
+        async def _rebuild_raw_dump(feedback: dict, *, iteration_index: int):
             eff = {**settings_dict, "_critic_feedback": feedback}
             # Dump the augmented prompt so editors can review what the
-            # model was told to fix on the rework pass. Lands at
-            # ``<run_id>.director_prompt.rework.txt`` next to the v1 dump.
+            # model was told to fix on this iteration. Lands at
+            # ``<run_id>.director_prompt.<N>.txt`` next to the first-pass
+            # dump; iteration 1 also writes a ``.rework.txt`` alias for
+            # back-compat with persisted runs.
             _dump_director_prompt(
                 body.run_id,
                 director_mod._prompt(preset, scrubbed, eff),
-                suffix="rework",
+                pass_index=iteration_index,
             )
             new_plan, _ = await _director_or_validated(
                 mode=mode,

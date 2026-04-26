@@ -89,3 +89,63 @@ def test_director_prompt_unknown_pass_rejected_with_400(client: TestClient) -> N
     r = client.get("/cutmaster/debug/prompt/anything?pass=garbage")
     assert r.status_code == 400
     assert "garbage" in r.json()["detail"]
+
+
+def test_director_prompt_numbered_pass_serves_per_iteration_dump(client: TestClient) -> None:
+    """`?pass=N` serves the iterative-loop's per-iteration dump."""
+    state.RUN_ROOT.mkdir(parents=True, exist_ok=True)
+    run_id = "iterative"
+    pass1 = "iteration 1 prompt"
+    pass2 = "iteration 2 prompt"
+    pass3 = "iteration 3 prompt"
+    (state.RUN_ROOT / f"{run_id}.director_prompt.1.txt").write_text(pass1, encoding="utf-8")
+    (state.RUN_ROOT / f"{run_id}.director_prompt.2.txt").write_text(pass2, encoding="utf-8")
+    (state.RUN_ROOT / f"{run_id}.director_prompt.3.txt").write_text(pass3, encoding="utf-8")
+
+    for n, expected in [(1, pass1), (2, pass2), (3, pass3)]:
+        r = client.get(f"/cutmaster/debug/prompt/{run_id}?pass={n}")
+        assert r.status_code == 200, r.text
+        assert r.text == expected
+
+
+def test_director_prompt_pass_rework_aliases_pass_1(client: TestClient) -> None:
+    """`?pass=rework` resolves to the numbered pass=1 dump for back-compat."""
+    state.RUN_ROOT.mkdir(parents=True, exist_ok=True)
+    run_id = "alias"
+    body = "iteration 1 prompt"
+    (state.RUN_ROOT / f"{run_id}.director_prompt.1.txt").write_text(body, encoding="utf-8")
+
+    r = client.get(f"/cutmaster/debug/prompt/{run_id}?pass=rework")
+    assert r.status_code == 200
+    assert r.text == body
+
+
+def test_director_prompt_pass_1_falls_back_to_legacy_rework_dump(client: TestClient) -> None:
+    """For runs persisted before the numbered convention, `?pass=1` reads
+    the legacy ``.rework.txt`` sidecar."""
+    state.RUN_ROOT.mkdir(parents=True, exist_ok=True)
+    run_id = "legacy"
+    body = "legacy rework dump"
+    (state.RUN_ROOT / f"{run_id}.director_prompt.rework.txt").write_text(body, encoding="utf-8")
+
+    r = client.get(f"/cutmaster/debug/prompt/{run_id}?pass=1")
+    assert r.status_code == 200
+    assert r.text == body
+
+
+def test_director_prompt_numbered_pass_404_when_iteration_didnt_fire(
+    client: TestClient,
+) -> None:
+    state.RUN_ROOT.mkdir(parents=True, exist_ok=True)
+    run_id = "two-passes"
+    (state.RUN_ROOT / f"{run_id}.director_prompt.1.txt").write_text("p1", encoding="utf-8")
+
+    r = client.get(f"/cutmaster/debug/prompt/{run_id}?pass=3")
+    assert r.status_code == 404
+    assert "pass=3" in r.json()["detail"]
+
+
+def test_director_prompt_pass_zero_rejected(client: TestClient) -> None:
+    r = client.get("/cutmaster/debug/prompt/x?pass=0")
+    assert r.status_code == 400
+    assert "≥ 1" in r.json()["detail"]

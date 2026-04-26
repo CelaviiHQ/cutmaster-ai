@@ -206,17 +206,23 @@ export default function ReviewScreen({
         }
     };
 
-    const openPrompt = async (opts?: { pass?: "rework" }) => {
+    const openPrompt = async (opts?: { pass?: "rework" | number }) => {
         const pass = opts?.pass;
         // Reset modal state for whichever pass we're loading. Both v1
-        // and rework dumps share the modal — switching back loads from
-        // disk again, simpler than two caches.
+        // and per-iteration dumps share the modal — switching back
+        // loads from disk again, simpler than caching every pass.
         setPromptOpen(true);
         setPromptLoading(true);
         setPromptErr(null);
         setPromptText(null);
-        const url = pass
-            ? `/cutmaster/debug/prompt/${runId}?pass=${pass}`
+        const passQuery =
+            pass === undefined
+                ? null
+                : typeof pass === "number"
+                  ? String(pass)
+                  : pass;
+        const url = passQuery
+            ? `/cutmaster/debug/prompt/${runId}?pass=${passQuery}`
             : `/cutmaster/debug/prompt/${runId}`;
         try {
             const res = await fetch(url);
@@ -859,26 +865,44 @@ export default function ReviewScreen({
                         "Story-critic did not run for this build (flag off, no resolved axes, or the critic call failed).";
                 }
 
-                // Lift / regression chip: when coherence_history carries
-                // two single-cut entries the auto-rework loop fired. The
-                // first entry is pass 1; we surface it next to pass 2's
-                // badge so the editor sees the delta. With the
-                // regression-guard the surfaced ``report`` may BE pass 1
-                // when pass 2 scored lower — in that case the lift chip
-                // direction flips to "down" / red.
+                // The iterative critic loop persists every pass to
+                // ``coherence_history``. With ≥ 2 entries we render a
+                // stepped ladder (one chip per iteration); with exactly
+                // 2 entries the legacy two-pass lift chip is also
+                // populated for back-compat with the ladder-disabled
+                // path. ``shippedPassIndex`` reflects the latest-wins
+                // tie-break so the right chip carries the * marker.
                 const history = plan.coherence_history ?? [];
+                const singleHistory = history.filter(
+                    (env): env is { kind: "single"; report: CoherenceReport } =>
+                        env.kind === "single",
+                );
+                const ladderSteps =
+                    singleHistory.length >= 2
+                        ? singleHistory.map((env) => ({
+                              score: env.report.score,
+                              verdict: env.report.verdict,
+                          }))
+                        : undefined;
+                let shippedPassIndex: number | undefined;
+                if (ladderSteps && report !== null) {
+                    // Latest-wins tie-break: scan in reverse for the
+                    // first entry whose score equals the shipped report.
+                    for (let i = ladderSteps.length - 1; i >= 0; i--) {
+                        if (ladderSteps[i].score === report.score) {
+                            shippedPassIndex = i;
+                            break;
+                        }
+                    }
+                }
                 let previousReport: CoherenceReport | null = null;
                 if (
-                    history.length >= 2 &&
-                    history[0].kind === "single" &&
-                    history[1].kind === "single" &&
+                    !ladderSteps &&
+                    singleHistory.length === 2 &&
                     report !== null
                 ) {
-                    const v1 = history[0].report;
-                    const v2 = history[1].report;
-                    // The shipped report is whichever scored higher.
-                    // Whichever isn't the shipped one is the "previous"
-                    // we render in the chip.
+                    const v1 = singleHistory[0].report;
+                    const v2 = singleHistory[1].report;
                     if (report.score === v2.score) {
                         previousReport = v1;
                     } else if (report.score === v1.score) {
@@ -901,6 +925,17 @@ export default function ReviewScreen({
                 const handleViewReworkPrompt = previousReport
                     ? () => openPrompt({ pass: "rework" })
                     : undefined;
+                const handlePassClick = ladderSteps
+                    ? (passIndex: number) => {
+                          // Pass 0 (first iteration) is the original
+                          // dump; passes 1..N are the rework dumps.
+                          if (passIndex === 0) {
+                              void openPrompt();
+                          } else {
+                              void openPrompt({ pass: passIndex });
+                          }
+                      }
+                    : undefined;
 
                 // Re-critique is only meaningful when the verdict is
                 // mid-band — for "ship" cuts it's redundant, for
@@ -914,10 +949,7 @@ export default function ReviewScreen({
                         recritiqueDisabled = true;
                         recritiqueDisabledReason =
                             "Already passing — modify the plan and rebuild to invalidate.";
-                    } else if (
-                        history.length >= 2 &&
-                        !recritiqueErr
-                    ) {
+                    } else if (history.length >= 2 && !recritiqueErr) {
                         recritiqueDisabled = true;
                         recritiqueDisabledReason =
                             "Auto-rework already ran. Rebuild the plan to grade a new cut.";
@@ -929,6 +961,9 @@ export default function ReviewScreen({
                         planWarnings={plan.plan_warnings}
                         coherenceReport={report}
                         previousReport={previousReport}
+                        ladderSteps={ladderSteps}
+                        shippedPassIndex={shippedPassIndex}
+                        onPassClick={handlePassClick}
                         contextLabel={contextLabel}
                         emptyMessage={emptyMessage}
                         onIssueClick={handleIssueClick}

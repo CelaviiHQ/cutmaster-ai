@@ -25,28 +25,53 @@ def _require_scrubbed(run_id: str) -> tuple[dict, list[dict]]:
     return run, scrubbed
 
 
-def _dump_director_prompt(run_id: str, prompt_text: str, *, suffix: str | None = None) -> str:
+def _dump_director_prompt(
+    run_id: str,
+    prompt_text: str,
+    *,
+    suffix: str | None = None,
+    pass_index: int | None = None,
+) -> str:
     """Write the Director prompt to disk + log the path for debugging.
 
-    Lands at ``~/.cutmaster/cutmaster/<run_id>.director_prompt.txt`` (first
-    pass) or ``<run_id>.director_prompt.<suffix>.txt`` when ``suffix`` is
-    set (e.g. ``"rework"`` for the story-critic Phase 6 rework pass).
-    Overwritten on each Build / rework. Gives you a ground-truth look at
-    the exact text Gemini will see (including every optional block).
-    Returns the path as a string so the caller can surface it in the
-    response if it wants.
+    Filename layout — three forms, all serve the same content:
+
+    - ``<run_id>.director_prompt.txt`` — first pass, no kwargs.
+    - ``<run_id>.director_prompt.<N>.txt`` — pass N (0 = first, 1+ rework)
+      when ``pass_index`` is set. The numbered form is what the panel's
+      stepped lift-ladder reads via ``GET /debug/prompt/<id>?pass=N``.
+    - ``<run_id>.director_prompt.<suffix>.txt`` — legacy named form
+      (``suffix="rework"`` is the only one in use today). Kept for
+      back-compat with already-persisted runs the panel may still link to.
+
+    The numbered form is also written to the legacy ``.rework.txt``
+    sidecar when ``pass_index == 1`` so previously-persisted runs keep
+    resolving without a panel update. Overwritten on each call.
     """
-    name = f"{run_id}.director_prompt"
-    if suffix:
-        name += f".{suffix}"
-    name += ".txt"
+    base = f"{run_id}.director_prompt"
+    suffix_token: str | None
+    if pass_index is not None:
+        suffix_token = str(pass_index)
+    elif suffix:
+        suffix_token = suffix
+    else:
+        suffix_token = None
+
+    name = base + (f".{suffix_token}.txt" if suffix_token else ".txt")
     path = state.RUN_ROOT / name
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(prompt_text, encoding="utf-8")
     log.info(
         "Director prompt%s (%d chars) written to %s",
-        f" [{suffix}]" if suffix else "",
+        f" [{suffix_token}]" if suffix_token else "",
         len(prompt_text),
         path,
     )
+
+    # Numbered form aliases the legacy ``.rework.txt`` for pass 1 so the
+    # panel's earlier convention keeps working without a redeploy.
+    if pass_index == 1:
+        legacy = state.RUN_ROOT / f"{base}.rework.txt"
+        legacy.write_text(prompt_text, encoding="utf-8")
+
     return str(path)
