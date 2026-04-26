@@ -445,8 +445,13 @@ export default function ReviewScreen({
         );
     }
 
-    if (regeneratingWithFeedback) {
-        return (
+    if (regenerating) {
+        // Both regenerate paths (Tune-the-cut "Regenerate plan" and
+        // Cut-health "Regenerate with recommendations") block on a
+        // /build-plan round-trip; surface the same MascotLoading the
+        // initial mount uses so the editor sees something is happening
+        // instead of a frozen panel. Copy varies by which path fired.
+        return regeneratingWithFeedback ? (
             <MascotLoading
                 label="Regenerating with recommendations"
                 hint="Director rebuilds with the critic's feedback; the iterative loop runs up to 3 reworks. Usually 20–60 s."
@@ -454,6 +459,16 @@ export default function ReviewScreen({
                     { label: "Director agent (rework with feedback)", status: "started" },
                     { label: "Story-critic loop (iterate while improving)", status: "started" },
                     { label: "Marker agent (B-roll cues)", status: "pending" },
+                ]}
+            />
+        ) : (
+            <MascotLoading
+                label="Regenerating plan"
+                hint="Director recomposes the cut with your updated settings; Marker agent re-picks B-roll cues. Usually 5–15 s."
+                stages={[
+                    { label: "Director agent (recompose the cut)", status: "started" },
+                    { label: "Marker agent (B-roll cues)", status: "started" },
+                    { label: "Resolve source-frame mapping", status: "pending" },
                 ]}
             />
         );
