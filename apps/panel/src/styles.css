@@ -1242,8 +1242,28 @@ code {
     border: var(--border-thin);
     border-radius: var(--radius-md);
     overflow: hidden;
+    transition: background 120ms, border-color 120ms;
 }
 .seg-card--hook { background: var(--accent-blue-tint); }
+/* Whole-row click affordance — editors expand the transcript by
+   clicking anywhere on the segment, not just the tiny ▸ caret. The
+   caret rotates as the visual indicator. */
+.seg-card--clickable {
+    cursor: pointer;
+}
+.seg-card--clickable:hover {
+    background: var(--surface-3);
+}
+.seg-card--clickable.seg-card--hook:hover {
+    background: var(--accent-blue-tint-strong, rgba(74, 158, 255, 0.18));
+}
+.seg-card--clickable:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 2px;
+}
+.seg-card--open {
+    background: var(--surface-3);
+}
 .seg-card-stripe {
     width: 4px;
     flex-shrink: 0;
@@ -1278,18 +1298,16 @@ code {
 /* Left-side disclosure caret on a segment card — replaces the right-aligned
    "Show transcript" ghost button. */
 .seg-card-disc {
-    background: transparent;
-    border: 0;
-    padding: 0;
+    display: inline-block;
     width: 18px;
     height: 18px;
     color: var(--text-tertiary);
     font-size: var(--fs-2);
-    cursor: pointer;
     transition: transform 120ms, color 120ms;
     line-height: 1;
+    pointer-events: none;
 }
-.seg-card-disc:hover { color: var(--text-primary); }
+.seg-card--clickable:hover .seg-card-disc { color: var(--text-primary); }
 .seg-card-disc.is-open { transform: rotate(90deg); color: var(--accent-blue); }
 .seg-card-tc {
     font-family: var(--font-mono);

@@ -1122,27 +1122,50 @@ export default function ReviewScreen({
                             : [];
                         const badge = isHook ? "HOOK" : role;
                         const colour = roleColor(role, isHook);
+                        // Whole-row click to expand — editors were
+                        // hunting for the tiny ▸ disc when the obvious
+                        // affordance is "click anywhere on the segment".
+                        // Disc stays as a visual indicator; keyboard
+                        // users get role/tabIndex/Enter+Space handling.
+                        const toggle = () =>
+                            setExpandedSegment(isExpanded ? null : i);
                         return (
                             <div
                                 key={i}
                                 id={`seg-${i}`}
-                                className={`seg-card ${isHook ? "seg-card--hook" : ""}`}
+                                className={`seg-card ${isHook ? "seg-card--hook" : ""} ${canExpand ? "seg-card--clickable" : ""} ${isExpanded ? "seg-card--open" : ""}`}
+                                role={canExpand ? "button" : undefined}
+                                tabIndex={canExpand ? 0 : undefined}
+                                aria-expanded={canExpand ? isExpanded : undefined}
+                                aria-label={
+                                    canExpand
+                                        ? isExpanded
+                                            ? "Hide transcript"
+                                            : "Show transcript"
+                                        : undefined
+                                }
+                                onClick={canExpand ? toggle : undefined}
+                                onKeyDown={
+                                    canExpand
+                                        ? (e) => {
+                                              if (e.key === "Enter" || e.key === " ") {
+                                                  e.preventDefault();
+                                                  toggle();
+                                              }
+                                          }
+                                        : undefined
+                                }
                             >
                                 <div className="seg-card-stripe" style={{ background: colour }} />
                                 <div className="seg-card-body">
                                     <div className="seg-card-head">
                                         {canExpand && (
-                                            <button
-                                                type="button"
-                                                aria-label={isExpanded ? "Hide transcript" : "Show transcript"}
-                                                aria-expanded={isExpanded}
+                                            <span
                                                 className={`seg-card-disc ${isExpanded ? "is-open" : ""}`}
-                                                onClick={() =>
-                                                    setExpandedSegment(isExpanded ? null : i)
-                                                }
+                                                aria-hidden
                                             >
                                                 ▸
-                                            </button>
+                                            </span>
                                         )}
                                         {badge && (
                                             <span
