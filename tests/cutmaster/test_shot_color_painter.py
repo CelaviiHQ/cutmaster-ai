@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from cutmaster_ai.cutmaster.analysis import shot_color_painter, shot_tagger
+from cutmaster_ai.cutmaster.analysis import shot_tagger
 from cutmaster_ai.cutmaster.analysis.shot_color_painter import (
     COLOR_BY_SHOT_TYPE,
     paint_shot_colors_on_timeline,
@@ -82,16 +82,13 @@ def _patch_world(
     tags_by_sample: dict[tuple[str, float], shot_tagger.ShotTag | None],
 ) -> None:
     """Wire up the four seams the painter calls into."""
-    # _boilerplate → (resolve, project, media_pool); only ``project`` gets used.
-    monkeypatch.setattr(
-        shot_color_painter,
-        "_boilerplate",
-        lambda: (None, object(), None),
-        raising=False,
-    )
-    # Resolve the named timeline straight to our fake.
+    # Painter does lazy imports inside the function, so patch at the
+    # source modules — patching ``shot_color_painter._boilerplate`` would
+    # never be looked up.
+    from cutmaster_ai import resolve as resolve_mod
     from cutmaster_ai.cutmaster.core import pipeline as pipeline_mod
 
+    monkeypatch.setattr(resolve_mod, "_boilerplate", lambda: (None, object(), None))
     monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda project, name: timeline)
     # Specs come from shot_tagger.
     monkeypatch.setattr(
@@ -253,14 +250,10 @@ def test_legend_in_response(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_timeline_not_found_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        shot_color_painter,
-        "_boilerplate",
-        lambda: (None, object(), None),
-        raising=False,
-    )
+    from cutmaster_ai import resolve as resolve_mod
     from cutmaster_ai.cutmaster.core import pipeline as pipeline_mod
 
+    monkeypatch.setattr(resolve_mod, "_boilerplate", lambda: (None, object(), None))
     monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda *a, **k: None)
 
     with pytest.raises(ValueError, match="not found"):
