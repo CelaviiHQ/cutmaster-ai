@@ -542,23 +542,18 @@ async def _scrub_stage(words: list[dict], params: ScrubParams, run, emit) -> lis
     return result.kept
 
 
-async def _shot_tag_stage(
-    tl, scrubbed_words: list[dict], run, emit, *, video_track: int | None = None
-) -> list[dict]:
-    """v4 Layer C — tag each timeline video item with Gemini vision.
+async def _shot_tag_collect(tl, run, emit, *, video_track: int | None = None):
+    """v4 Layer C — vision-tag every video item, return raw frames.
 
-    Annotates every scrubbed word with a ``shot_tag`` dict and persists
-    both the per-item ``tagged_frames`` list (for Review-screen display
-    in a future phase) and the annotated transcript + scrubbed arrays.
-
-    Best-effort: if frame extraction / the vision call fails entirely,
-    the stage emits ``failed`` but returns the unmodified scrubbed words
-    so downstream stages (Director in 4.1+) keep working. No cliff on
-    missing GEMINI_API_KEY — ``call_structured`` raises and we catch.
+    Split off from the merge step so the collect phase can run in
+    parallel with the audio_extract → STT → speakers → scrub chain.
+    Returns ``(tagged_all, stats)`` on success, or ``None`` when the
+    stage emits ``failed`` / ``complete`` without producing tags (no
+    items, enumerate failure, vision crash). Callers that get ``None``
+    must skip the attach step and keep their pre-shot-tag transcript.
     """
     from ..analysis.shot_tagger import (
         TaggedFrame,
-        attach_tags_to_transcript,
         build_video_item_specs,
         tag_video_items,
     )
@@ -580,7 +575,7 @@ async def _shot_tag_stage(
             status="failed",
             message=f"could not enumerate video items: {exc}",
         )
-        return scrubbed_words
+        return None
 
     if not specs:
         await emit(
@@ -590,7 +585,7 @@ async def _shot_tag_stage(
             message="no taggable video items on V1 — skipping",
             data={"items_total": 0},
         )
-        return scrubbed_words
+        return None
 
     async def _on_item(idx: int, spec, tagged: list[TaggedFrame]) -> None:
         # Intermediate progress event — lets the panel tick per item
@@ -620,7 +615,28 @@ async def _shot_tag_stage(
             status="failed",
             message=f"shot tagging failed: {exc}",
         )
-        return scrubbed_words
+        return None
+
+    return tagged_all, stats
+
+
+async def _shot_tag_attach(
+    tagged_all,
+    stats: dict,
+    scrubbed_words: list[dict],
+    run,
+    emit,
+) -> list[dict]:
+    """Merge collected tags into transcript + scrubbed, persist, emit.
+
+    Pure follow-up to :func:`_shot_tag_collect`. Runs after the STT
+    chain so the freshly-scrubbed words are the source of truth for the
+    annotated copy. Single owner of ``run["shot_tags"]``,
+    ``run["transcript"]`` (when re-annotated), and ``run["scrubbed"]``
+    for the duration of the call so the parallel STT branch can't race
+    on those keys.
+    """
+    from ..analysis.shot_tagger import attach_tags_to_transcript
 
     # Persist raw tagged frames — small, useful for Review + debugging.
     run["shot_tags"] = [
@@ -635,7 +651,7 @@ async def _shot_tag_stage(
     ]
 
     # Attach tags to BOTH the raw transcript and the scrubbed copy so the
-    # Director prompt (4.1) and any downstream consumer sees them.
+    # Director prompt and any downstream consumer sees them.
     if run.get("transcript"):
         run["transcript"] = attach_tags_to_transcript(run["transcript"], tagged_all)
     annotated_scrubbed = attach_tags_to_transcript(scrubbed_words, tagged_all)
@@ -653,10 +669,10 @@ async def _shot_tag_stage(
         ),
         data=stats,
     )
-    # v4 Phase 4.5.4 — structured stage-metric line. The SSE ``emit``
-    # payload already carries data for the UI; this duplicate goes to
-    # logs with allowlisted keys so aggregators can trend frame cost +
-    # cache-hit ratio across runs without scraping event JSON.
+    # Structured stage-metric line. The SSE ``emit`` payload already
+    # carries data for the UI; this duplicate goes to logs with
+    # allowlisted keys so aggregators can trend frame cost + cache-hit
+    # ratio across runs without scraping event JSON.
     log.info(
         "shot_tag stage complete",
         extra={
@@ -800,6 +816,10 @@ async def run_analyze(
     run["status"] = "running"
     state.save(run)
 
+    # Hoisted out of the try so the cancel/exception handlers can reach
+    # it even if cancellation fires before the parallel kick-off line.
+    shot_tag_task: asyncio.Task | None = None
+
     try:
         # Lazy import Resolve bridge — avoids import-time Resolve dependency for tests
         from ...resolve import _boilerplate  # noqa: PLC0415
@@ -883,6 +903,28 @@ async def run_analyze(
 
         state.raise_if_cancelled(run_id)
 
+        # Phase A — kick shot_tag off in the background the moment VFR
+        # passes so its 13-call vision batch overlaps with audio_extract
+        # → STT → speakers → scrub. Collect-only here; the merge into
+        # transcript/scrubbed happens after scrub finishes so the
+        # annotated arrays are built off the post-scrub words.
+        if layer_c_enabled:
+            shot_tag_task = asyncio.create_task(
+                _shot_tag_collect(tl, run, state.emit, video_track=picked_video),
+                name=f"shot_tag:{run_id}",
+            )
+
+        # Helper closure — bail out cleanly when the STT chain fails, and
+        # cancel the parallel shot_tag task so it doesn't keep burning
+        # Gemini calls on a doomed run.
+        async def _abort_chain(error_key: str, msg: str) -> None:
+            run["status"] = "failed"
+            run["error"] = error_key
+            state.save(run)
+            if shot_tag_task is not None and not shot_tag_task.done():
+                shot_tag_task.cancel()
+            await state.emit(run, stage="done", status="failed", message=msg)
+
         if per_clip_stt:
             # v2-6: skip the global concat, run STT per timeline item, and
             # attach clip_index + clip_metadata to every word.
@@ -894,12 +936,7 @@ async def run_analyze(
                 audio_track=picked_audio,
             )
             if words is None:
-                run["status"] = "failed"
-                run["error"] = "per_clip_stt_failed"
-                state.save(run)
-                await state.emit(
-                    run, stage="done", status="failed", message="halted on per-clip STT"
-                )
+                await _abort_chain("per_clip_stt_failed", "halted on per-clip STT")
                 return
             state.raise_if_cancelled(run_id)
             # Cross-clip speaker reconciliation — only runs when the user
@@ -915,12 +952,7 @@ async def run_analyze(
         else:
             audio_result = await _extract_audio(tl, run, state.emit, audio_track=picked_audio)
             if audio_result is None:
-                run["status"] = "failed"
-                run["error"] = "audio_extract_failed"
-                state.save(run)
-                await state.emit(
-                    run, stage="done", status="failed", message="halted on audio extract"
-                )
+                await _abort_chain("audio_extract_failed", "halted on audio extract")
                 return
             wav_path, audio_duration_s = audio_result
 
@@ -934,10 +966,7 @@ async def run_analyze(
                 stt_provider=stt_provider,
             )
             if words is None:
-                run["status"] = "failed"
-                run["error"] = "stt_failed"
-                state.save(run)
-                await state.emit(run, stage="done", status="failed", message="halted on STT")
+                await _abort_chain("stt_failed", "halted on STT")
                 return
             # Solo-speaker collapse works for concat STT too: Gemini
             # sometimes invents S2/S3 on single-speaker content. Multi-
@@ -954,11 +983,21 @@ async def run_analyze(
 
         scrubbed = await _scrub_stage(words, scrub_params or ScrubParams(), run, state.emit)
 
-        if layer_c_enabled:
+        # Phase A — join the parallel shot_tag work. ``_shot_tag_collect``
+        # already emitted started/progress/failed events; we only need to
+        # await the result and run the merge synchronously so the
+        # transcript / scrubbed mutations don't race anything.
+        if shot_tag_task is not None:
             state.raise_if_cancelled(run_id)
-            scrubbed = await _shot_tag_stage(
-                tl, scrubbed, run, state.emit, video_track=picked_video
-            )
+            try:
+                collected = await shot_tag_task
+            except asyncio.CancelledError:
+                # Outer cancel is propagating — let it through the same
+                # except block as before.
+                raise
+            if collected is not None:
+                tagged_all, stats = collected
+                scrubbed = await _shot_tag_attach(tagged_all, stats, scrubbed, run, state.emit)
 
         if layer_audio_enabled:
             state.raise_if_cancelled(run_id)
@@ -981,6 +1020,8 @@ async def run_analyze(
         # queue.put raced with their subscribe. emit() is idempotent
         # enough — it appends to events and persists under the lock.
         log.info("Pipeline cancelled for run %s", run_id)
+        if shot_tag_task is not None and not shot_tag_task.done():
+            shot_tag_task.cancel()
         try:
             await state.emit(
                 run,
@@ -993,6 +1034,8 @@ async def run_analyze(
         raise
     except Exception as exc:
         log.exception("Pipeline crashed")
+        if shot_tag_task is not None and not shot_tag_task.done():
+            shot_tag_task.cancel()
         run["status"] = "failed"
         run["error"] = str(exc)
         state.save(run)
