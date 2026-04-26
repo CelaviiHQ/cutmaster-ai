@@ -202,6 +202,7 @@ def test_dispatch_routes_to_deepgram_when_selected(tmp_path, monkeypatch):
 def test_dispatch_falls_back_to_env_var(tmp_path, monkeypatch):
     audio = tmp_path / "a.wav"
     audio.write_bytes(b"x")
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key-for-dispatch-init")
     monkeypatch.setenv("CUTMASTER_STT_PROVIDER", "deepgram")
     # Reload module-level DEFAULT_PROVIDER reflects the new env var only
     # if we patch it directly; the module reads it at import time.
