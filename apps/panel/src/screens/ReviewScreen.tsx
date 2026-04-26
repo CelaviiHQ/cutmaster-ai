@@ -4,6 +4,7 @@ import type { ExecuteResult } from "../api";
 import MascotLoading from "./MascotLoading";
 import CutHealthCard from "../components/CutHealthCard";
 import { formatRelativeTime } from "../persist";
+import { useBuildProgress } from "../useBuildProgress";
 import type {
     BuildPlanResult,
     CoherenceReport,
@@ -140,6 +141,11 @@ export default function ReviewScreen({
 }: Props) {
     const [analysis, setAnalysis] = useState<StoryAnalysis | null>(null);
     const [regenerating, setRegenerating] = useState(false);
+    const [loading, setLoading] = useState(true);
+    // Live build telemetry — Director attempts, Marker progress, frame
+    // mapping. The poller only ticks while a build is in flight so the
+    // Review-screen idle state doesn't burn /state/{runId} requests.
+    const buildStages = useBuildProgress(runId, loading || regenerating);
     // Tracks "regenerate with recommendations" specifically — the
     // critic-fed-rebuild path is a 20–60s round-trip with the auto-rework
     // loop on top, so we surface the same MascotLoading screen as the
@@ -148,7 +154,6 @@ export default function ReviewScreen({
     const [regeneratingWithFeedback, setRegeneratingWithFeedback] = useState(false);
     const [plan, setPlan] = useState<BuildPlanResult | null>(null);
     const [bundle, setBundle] = useState<PresetBundle | null>(null);
-    const [loading, setLoading] = useState(true);
     const [err, setErr] = useState<string | null>(null);
     const [building, setBuilding] = useState(false);
     const [buildProgress, setBuildProgress] = useState<string | null>(null);
@@ -436,11 +441,7 @@ export default function ReviewScreen({
             <MascotLoading
                 label="Building plan"
                 hint="Director agent composes the cut; Marker agent picks B-roll cues. Usually 5–15 s."
-                stages={[
-                    { label: "Director agent (plan the cut)", status: "started" },
-                    { label: "Marker agent (B-roll cues)", status: "started" },
-                    { label: "Resolve source-frame mapping", status: "pending" },
-                ]}
+                stages={buildStages}
             />
         );
     }
@@ -450,26 +451,19 @@ export default function ReviewScreen({
         // Cut-health "Regenerate with recommendations") block on a
         // /build-plan round-trip; surface the same MascotLoading the
         // initial mount uses so the editor sees something is happening
-        // instead of a frozen panel. Copy varies by which path fired.
+        // instead of a frozen panel. Copy varies by which path fired;
+        // stage rows themselves come from the live build-progress feed.
         return regeneratingWithFeedback ? (
             <MascotLoading
                 label="Regenerating with recommendations"
                 hint="Director rebuilds with the critic's feedback; the iterative loop runs up to 3 reworks. Usually 20–60 s."
-                stages={[
-                    { label: "Director agent (rework with feedback)", status: "started" },
-                    { label: "Story-critic loop (iterate while improving)", status: "started" },
-                    { label: "Marker agent (B-roll cues)", status: "pending" },
-                ]}
+                stages={buildStages}
             />
         ) : (
             <MascotLoading
                 label="Regenerating plan"
                 hint="Director recomposes the cut with your updated settings; Marker agent re-picks B-roll cues. Usually 5–15 s."
-                stages={[
-                    { label: "Director agent (recompose the cut)", status: "started" },
-                    { label: "Marker agent (B-roll cues)", status: "started" },
-                    { label: "Resolve source-frame mapping", status: "pending" },
-                ]}
+                stages={buildStages}
             />
         );
     }
@@ -1223,7 +1217,7 @@ export default function ReviewScreen({
                 };
 
                 return (
-                <details className="card card--advanced" open={willChange}>
+                <details className="card card--advanced">
                     <summary>
                         <span>Tune the cut</span>
                         <span className="muted" style={{ marginLeft: 8, fontSize: "var(--fs-2)" }}>

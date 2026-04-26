@@ -14,7 +14,15 @@ import { useEffect, useState } from "react";
 
 interface Stage {
     label: string;
-    status?: "pending" | "started" | "complete";
+    status?: "pending" | "started" | "complete" | "failed";
+    /** Optional message — overrides the default "in progress" / "done" copy. */
+    message?: string;
+    /** Wall-clock seconds since started (running) or total duration (complete). */
+    elapsedS?: number;
+    /** LLM retry attempts the agent burned (Director / Marker only). */
+    attempts?: number;
+    /** Residual validator errors after best-effort fallback. */
+    validationErrors?: number;
 }
 
 interface Props {
@@ -66,25 +74,55 @@ export default function MascotLoading({ label, hint, stages }: Props) {
                         const iconChar =
                             status === "complete"
                                 ? "✓"
-                                : status === "pending"
-                                    ? " "
-                                    : "●";
+                                : status === "failed"
+                                    ? "✕"
+                                    : status === "pending"
+                                        ? " "
+                                        : "●";
+                        // Build the right-hand status line. Default copy
+                        // ("in progress…", "done", "…") still fires when no
+                        // explicit message is provided so existing callers
+                        // keep their look. When the build-progress poller
+                        // supplies a message + telemetry, render that
+                        // instead so the editor can see "Plan built · 5
+                        // attempt(s) · 2 unresolved issue(s)".
+                        const showAttempts = typeof s.attempts === "number" && s.attempts > 1;
+                        const showIssues =
+                            typeof s.validationErrors === "number" && s.validationErrors > 0;
                         return (
-                            <div key={i} className="stage-row">
-                                <span className={`stage-icon ${status}`}>{iconChar}</span>
-                                <span className="stage-name">{s.label}</span>
-                                <span className="stage-msg">
-                                    {status === "started" ? (
-                                        <>
-                                            in progress
-                                            <span className="dots" aria-hidden="true" />
-                                        </>
-                                    ) : status === "complete" ? (
-                                        "done"
-                                    ) : (
-                                        "…"
+                            <div
+                                key={i}
+                                className={`stage-row ${status === "failed" ? "stage-row--failed" : ""}`}
+                            >
+                                <div className="stage-row-main">
+                                    <span className={`stage-icon ${status}`}>{iconChar}</span>
+                                    <span className="stage-name">{s.label}</span>
+                                    <span className="stage-msg" title={s.message}>
+                                        {s.message ? (
+                                            s.message
+                                        ) : status === "started" ? (
+                                            <>
+                                                in progress
+                                                <span className="dots" aria-hidden="true" />
+                                            </>
+                                        ) : status === "complete" ? (
+                                            "done"
+                                        ) : status === "failed" ? (
+                                            "failed"
+                                        ) : (
+                                            "…"
+                                        )}
+                                        {(showAttempts || showIssues) && (
+                                            <span className="stage-eta">
+                                                {showAttempts && ` · ${s.attempts} attempt${s.attempts === 1 ? "" : "s"}`}
+                                                {showIssues && ` · ${s.validationErrors} issue${s.validationErrors === 1 ? "" : "s"}`}
+                                            </span>
+                                        )}
+                                    </span>
+                                    {typeof s.elapsedS === "number" && (
+                                        <span className="stage-elapsed">{formatStageElapsed(s.elapsedS)}</span>
                                     )}
-                                </span>
+                                </div>
                             </div>
                         );
                     })}
@@ -103,4 +141,13 @@ function formatElapsed(s: number): string {
     const min = Math.floor(s / 60);
     const sec = Math.floor(s % 60);
     return `${min}m ${sec.toString().padStart(2, "0")}s`;
+}
+
+/** Per-stage elapsed — same shape as Analyze rows (mono, tabular). */
+function formatStageElapsed(s: number): string {
+    if (s < 1) return "<1s";
+    if (s < 60) return `${s.toFixed(s < 10 ? 1 : 0)}s`;
+    const mins = Math.floor(s / 60);
+    const secs = Math.round(s - mins * 60);
+    return `${mins}m ${secs.toString().padStart(2, "0")}s`;
 }

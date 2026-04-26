@@ -138,6 +138,81 @@ def test_build_plan_accepts_and_persists_v2_10_format_fields(
     assert saved["safe_zones_enabled"] is True
 
 
+def test_build_plan_emits_per_stage_progress_events(
+    client,
+    monkeypatch,
+    scrubbed_run,
+):
+    """The Building-plan UI polls /state/{run_id} for build_director /
+    build_marker / build_frames events. The route must emit started +
+    complete for each so the panel can render dynamic stage rows
+    instead of three perpetually-spinning placeholders."""
+    plan = DirectorPlan(
+        hook_index=0,
+        selected_clips=[CutSegment(start_s=0.0, end_s=0.95, reason="hook")],
+        reasoning="ok",
+    )
+    # Stash retry residue on the plan so the emit's data payload should
+    # carry attempts=3 + validation_errors=2 — the editor needs to see
+    # when the validator burned its budget instead of converging.
+    object.__setattr__(plan, "_attempt_history", [{"attempt": i, "errors": []} for i in (1, 2)])
+    object.__setattr__(plan, "_validation_errors", ["err1", "err2"])
+
+    monkeypatch.setattr(routes.build, "build_cut_plan", lambda *_a, **_k: plan)
+    monkeypatch.setattr(
+        routes.build,
+        "suggest_markers",
+        lambda *_a, **_k: MarkerPlan(markers=[]),
+    )
+
+    fake_tl = MagicMock()
+    fake_tl.GetSetting.return_value = "24"
+
+    def fake_boilerplate():
+        return MagicMock(), MagicMock(), MagicMock()
+
+    import cutmaster_ai.cutmaster.core.pipeline as pipeline_mod
+    import cutmaster_ai.resolve as resolve_mod
+
+    monkeypatch.setattr(resolve_mod, "_boilerplate", fake_boilerplate)
+    monkeypatch.setattr(pipeline_mod, "_find_timeline_by_name", lambda _p, _n: fake_tl)
+    monkeypatch.setattr(routes.build, "resolve_segments", lambda _tl, _segs, **_kw: [])
+
+    r = client.post(
+        "/cutmaster/build-plan",
+        json={
+            "run_id": scrubbed_run["run_id"],
+            "preset": "vlog",
+            "user_settings": {"target_length_s": 60, "themes": []},
+        },
+    )
+    assert r.status_code == 200, r.text
+
+    events = state.load(scrubbed_run["run_id"]).get("events", [])
+    by_stage: dict[str, list[dict]] = {}
+    for e in events:
+        stage = e.get("stage", "")
+        if stage.startswith("build_"):
+            by_stage.setdefault(stage, []).append(e)
+
+    # Each of the three stages emits started + complete (in order).
+    for stage in ("build_director", "build_marker", "build_frames"):
+        statuses = [e.get("status") for e in by_stage.get(stage, [])]
+        assert statuses == ["started", "complete"], (
+            f"{stage} should emit started → complete, got {statuses}"
+        )
+
+    # Director's complete event surfaces retry telemetry — without it the
+    # UI can't distinguish "happy path" from "validator-loop runaway".
+    director_complete = by_stage["build_director"][-1]
+    data = director_complete.get("data") or {}
+    assert data.get("attempts") == 3  # 2 prior history entries + 1 final
+    assert data.get("validation_errors") == 2
+    # Plus the human-readable message the row renders verbatim.
+    assert "3 attempt" in director_complete["message"]
+    assert "2 unresolved issue" in director_complete["message"]
+
+
 def test_build_plan_assembled_mode_uses_assembled_director(
     client,
     monkeypatch,

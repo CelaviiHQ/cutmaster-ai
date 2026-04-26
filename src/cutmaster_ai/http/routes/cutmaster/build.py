@@ -976,6 +976,30 @@ async def _persist_plan(run_id: str, plan: dict) -> None:
     await state.update(run_id, _apply)
 
 
+def _attempt_telemetry(plan_obj) -> dict:
+    """Pull retry/validation residue off a returned LLM plan for SSE emit.
+
+    ``llm.call_structured`` stashes ``_attempt_history`` and
+    ``_validation_errors`` on the parsed object via ``object.__setattr__``
+    when the validator burned at least one retry. Returns a small dict
+    with attempt count + final residual error count + token cost so the
+    Building-plan UI can show "Director (3 attempts, 0 issues, 14k tok)"
+    instead of just "complete".
+    """
+    history = getattr(plan_obj, "_attempt_history", None) or []
+    residual = getattr(plan_obj, "_validation_errors", None) or []
+    tokens = getattr(plan_obj, "_token_usage", None) or {}
+    # First successful attempt = retries+1; fully-validated first call has
+    # no history at all so attempts=1 covers the happy path.
+    attempts = (len(history) + 1) if history else 1
+    return {
+        "attempts": attempts,
+        "validation_errors": len(residual),
+        "tokens_in": tokens.get("in"),
+        "tokens_out": tokens.get("out"),
+    }
+
+
 @router.post("/build-plan")
 async def build_plan(body: BuildPlanRequest) -> dict:
     """Run Director → Marker → resolve source frames. Dry-run: no Resolve mutation.
@@ -984,6 +1008,16 @@ async def build_plan(body: BuildPlanRequest) -> dict:
     will load the same state and actually build the timeline.
     """
     run, scrubbed = _require_scrubbed(body.run_id)
+    # Emit a started event so the panel's Building-plan poller can show
+    # something is in flight before any LLM call returns. The matching
+    # complete event fires just before /build-plan returns its dict; the
+    # except branches emit failed so the row never gets stuck.
+    await state.emit(
+        run,
+        stage="build_director",
+        status="started",
+        message="Director composing the cut",
+    )
     if body.preset not in PRESETS:
         raise HTTPException(status_code=400, detail=f"unknown preset '{body.preset}'")
     preset = get_preset(body.preset)
@@ -2002,7 +2036,32 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         )
         _critic_native_plan = plan
 
+    # Director phase complete — emit telemetry the Building-plan UI surfaces
+    # as "Director (N attempts, M issues)" so the editor can see when the
+    # validator loop went all the way to best-effort instead of converging.
+    director_telemetry = _attempt_telemetry(plan)
+    await state.emit(
+        run,
+        stage="build_director",
+        status="complete",
+        message=(
+            f"Plan built · {director_telemetry['attempts']} attempt(s)"
+            + (
+                f" · {director_telemetry['validation_errors']} unresolved issue(s)"
+                if director_telemetry["validation_errors"]
+                else ""
+            )
+        ),
+        data=director_telemetry,
+    )
+
     # Marker agent runs against the flat CutSegment list in both modes.
+    await state.emit(
+        run,
+        stage="build_marker",
+        status="started",
+        message="Marker agent picking B-roll cues",
+    )
     try:
         markers: MarkerPlan = await with_timeout(
             asyncio.to_thread(suggest_markers, plan, scrubbed, preset, settings_dict),
@@ -2011,15 +2070,51 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         )
     except Exception as exc:
         log.exception("Marker agent failed for run %s", body.run_id)
+        await state.emit(
+            run,
+            stage="build_marker",
+            status="failed",
+            message=f"Marker agent failed: {exc}",
+        )
         raise HTTPException(status_code=500, detail=f"Marker agent failed: {exc}")
+    marker_telemetry = _attempt_telemetry(markers)
+    await state.emit(
+        run,
+        stage="build_marker",
+        status="complete",
+        message=(
+            f"{len(markers.markers)} marker(s) suggested · "
+            f"{marker_telemetry['attempts']} attempt(s)"
+        ),
+        data={**marker_telemetry, "marker_count": len(markers.markers)},
+    )
 
     # Resolve source frames — identical in both modes.
+    await state.emit(
+        run,
+        stage="build_frames",
+        status="started",
+        message="Mapping segments to Resolve source frames",
+    )
     try:
         resolved = await asyncio.to_thread(
             resolve_segments, tl, plan.selected_clips, video_track=video_track_idx
         )
     except ValueError as exc:
+        await state.emit(
+            run,
+            stage="build_frames",
+            status="failed",
+            message=f"source-frame mapping failed: {exc}",
+        )
         raise HTTPException(status_code=400, detail=f"source-frame mapping failed: {exc}")
+    await state.emit(
+        run,
+        stage="build_frames",
+        status="complete",
+        message=f"Resolved {len(resolved)} segment(s) to source frames",
+        data={"segment_count": len(resolved)},
+    )
 
     run["plan"] = {
         "preset": body.preset,
