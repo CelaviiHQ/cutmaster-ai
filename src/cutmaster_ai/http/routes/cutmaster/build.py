@@ -599,15 +599,30 @@ def _should_rework(report) -> bool:
     return any(iss.severity == "error" for iss in report.issues)
 
 
-def _critic_feedback_payload(report) -> dict:
-    """Serialise a CoherenceReport into the dict the Director's
-    ``_critic_feedback_block`` consumes between passes."""
+def _critic_feedback_snapshot(report) -> dict:
+    """Compact dict shape for one critic pass — used both as the
+    'current' feedback and as each entry in ``history``."""
     return {
         "score": report.score,
         "verdict": report.verdict,
         "summary": report.summary,
         "issues": [iss.model_dump() for iss in report.issues],
     }
+
+
+def _critic_feedback_payload(report, prior_snapshots: list[dict] | None = None) -> dict:
+    """Serialise a CoherenceReport into the dict the Director's
+    ``_critic_feedback_block`` consumes between passes.
+
+    Top-level fields describe the most recent critic pass (the one the
+    next Director call must address). ``history`` carries the snapshots
+    of every prior pass in this build, oldest first, so iteration N's
+    prompt sees what passes 1..N-1 already tried. Empty / missing on
+    the first rework.
+    """
+    snapshot = _critic_feedback_snapshot(report)
+    snapshot["history"] = list(prior_snapshots) if prior_snapshots else []
+    return snapshot
 
 
 def _emit_iteration(
@@ -773,6 +788,11 @@ async def _critic_with_rework(
     history: list[dict] = [_wrap_coherence(first)]
     plans: list = [initial_plan]
     reports: list = [first]
+    # `snapshots` mirrors `reports` in feedback-block shape so each rework
+    # call sees the full prior-attempt list (Phase 3 of the proposal —
+    # without it the model thrashes on issues an earlier pass already
+    # fixed).
+    snapshots: list[dict] = [_critic_feedback_snapshot(first)]
     tokens_total = _read_token_usage(initial_plan) + _read_token_usage(first)
 
     _emit_iteration(
@@ -817,7 +837,11 @@ async def _critic_with_rework(
             return _terminate("token_budget", iteration_index)
 
         prior_report = reports[-1]
-        feedback = _critic_feedback_payload(prior_report)
+        # `prior_snapshots` is everything BEFORE the snapshot we treat as
+        # "current" — that's snapshots[:-1]. The most recent snapshot is
+        # the one being addressed by this rework call, surfaced as the
+        # top-level fields of the feedback dict.
+        feedback = _critic_feedback_payload(prior_report, prior_snapshots=snapshots[:-1])
         try:
             new_plan = await rebuild_fn(feedback)
         except Exception as exc:
@@ -856,6 +880,7 @@ async def _critic_with_rework(
         tokens_total += critic_tokens
         plans.append(new_plan)
         reports.append(new_report)
+        snapshots.append(_critic_feedback_snapshot(new_report))
         history.append(_wrap_coherence(new_report))
 
         delta = new_report.score - prior_report.score

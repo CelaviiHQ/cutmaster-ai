@@ -1091,9 +1091,16 @@ def _boundary_rejections_block(user_settings: dict | None) -> str:
 
 
 def _critic_feedback_block(user_settings: dict | None) -> str:
-    """Render PREVIOUS ATTEMPT — REWORK NEEDED when the story-critic
-    flagged the prior pass and the build path is re-invoking the Director
-    for an auto-rework pass (Phase 6 of story-critic.md).
+    """Render the prior-attempt context the story-critic produced when
+    the build path is re-invoking the Director for an auto-rework pass.
+
+    On the first rework (no prior history) the block reads as
+    ``PREVIOUS ATTEMPT — REWORK NEEDED`` with a single set of issues.
+    On the second and subsequent reworks (history non-empty) it widens
+    to ``PREVIOUS ATTEMPTS — DO NOT REPEAT THESE FAILURES`` with a
+    compact one-line-per-pass summary plus the latest pass's full issue
+    list. The prior-pass summaries cap at the top three issues each so
+    a 5-iteration prompt stays well under context-window pressure.
 
     Wire contract: same idiom as ``_boundary_rejections_block`` — the
     build helper writes ``user_settings["_critic_feedback"]`` between
@@ -1101,7 +1108,7 @@ def _critic_feedback_block(user_settings: dict | None) -> str:
     underscore-prefixed keys so it never leaks into the USER SETTINGS
     summary.
 
-    Payload shape (dict, all fields optional):
+    Current-pass payload shape (top-level fields):
         {
             "score": int (0–100),
             "verdict": "rework" | "review",
@@ -1110,12 +1117,13 @@ def _critic_feedback_block(user_settings: dict | None) -> str:
                 {
                     "segment_index": int,        # -1 = whole-cut
                     "severity": "info" | "warning" | "error",
-                    "category": str,             # e.g. "weak_hook"
+                    "category": str,
                     "message": str,
                     "suggestion": str | None,
                 },
                 ...
             ],
+            "history": [<earlier-pass snapshots in the same shape>, ...],
         }
 
     Empty / missing → empty block (first pass + critic-disabled runs).
@@ -1132,7 +1140,14 @@ def _critic_feedback_block(user_settings: dict | None) -> str:
     score = feedback.get("score")
     verdict = feedback.get("verdict")
     summary = (feedback.get("summary") or "").strip()
+    prior = feedback.get("history") or []
 
+    if prior:
+        return _render_multi_pass_feedback(prior, score, verdict, summary, issues)
+    return _render_single_pass_feedback(score, verdict, summary, issues)
+
+
+def _render_single_pass_feedback(score, verdict, summary: str, issues: list[dict]) -> str:
     header_bits: list[str] = ["PREVIOUS ATTEMPT — REWORK NEEDED:"]
     score_line: list[str] = []
     if score is not None:
@@ -1147,6 +1162,65 @@ def _critic_feedback_block(user_settings: dict | None) -> str:
     header_bits.append("Issues to address — fix each one in your re-pick:")
 
     lines = list(header_bits)
+    lines.extend(_format_issue_lines(issues))
+
+    lines.append("")
+    lines.append(
+        "Re-pick a NEW set of segments that resolves the issues above. Same "
+        "constraints (target length, hook rule, pacing, sentence-edge "
+        "boundaries, coverage) apply. Don't return the same plan — the "
+        "critic will flag it again."
+    )
+    return "\n".join(lines)
+
+
+def _render_multi_pass_feedback(
+    prior: list[dict],
+    cur_score,
+    cur_verdict,
+    cur_summary: str,
+    cur_issues: list[dict],
+) -> str:
+    """Stepped history block — pass N sees passes 1..N-1 distilled."""
+    lines: list[str] = ["PREVIOUS ATTEMPTS — DO NOT REPEAT THESE FAILURES:"]
+
+    # Compact one-line-per-pass header for every prior attempt. Cap at
+    # the first three issue categories so a 5-pass prompt doesn't bloat.
+    for idx, pass_snap in enumerate(prior, start=1):
+        score = pass_snap.get("score")
+        verdict = pass_snap.get("verdict")
+        pass_issues = pass_snap.get("issues") or []
+        cats = [iss.get("category", "issue") for iss in pass_issues[:3]]
+        cat_str = ("; ".join(cats)) if cats else "no issues flagged"
+        if len(pass_issues) > 3:
+            cat_str += f"; +{len(pass_issues) - 3} more"
+        score_part = f"score {score}" if score is not None else "score —"
+        verdict_part = verdict or "—"
+        lines.append(f"  Pass {idx} ({score_part}, {verdict_part}): {cat_str}")
+
+    # Latest pass — the one this rework is addressing — gets a full
+    # listing so the model sees actionable detail, not just categories.
+    cur_idx = len(prior) + 1
+    score_part = f"score {cur_score}" if cur_score is not None else "score —"
+    verdict_part = cur_verdict or "—"
+    lines.append(f"  Pass {cur_idx} (latest, {score_part}, {verdict_part}) — issues to fix below:")
+    if cur_summary:
+        lines.append(f"  Critic summary: {cur_summary}")
+    lines.append("")
+    lines.extend(_format_issue_lines(cur_issues))
+
+    lines.append("")
+    lines.append(
+        "Re-pick a NEW set of segments that resolves the latest pass's issues "
+        "WITHOUT regressing on earlier passes. Same constraints (target "
+        "length, hook rule, pacing, sentence-edge boundaries, coverage) "
+        "apply. Don't return any plan that earlier passes already tried."
+    )
+    return "\n".join(lines)
+
+
+def _format_issue_lines(issues: list[dict]) -> list[str]:
+    out: list[str] = []
     for iss in issues:
         seg_ix = iss.get("segment_index", -1)
         target = "whole cut" if seg_ix is None or seg_ix < 0 else f"segment[{seg_ix}]"
@@ -1157,16 +1231,8 @@ def _critic_feedback_block(user_settings: dict | None) -> str:
         line = f"- [{sev}] {target}: {cat} — {msg}"
         if suggestion:
             line += f" SUGGESTION: {suggestion}"
-        lines.append(line)
-
-    lines.append("")
-    lines.append(
-        "Re-pick a NEW set of segments that resolves the issues above. Same "
-        "constraints (target length, hook rule, pacing, sentence-edge "
-        "boundaries, coverage) apply. Don't return the same plan — the "
-        "critic will flag it again."
-    )
-    return "\n".join(lines)
+        out.append(line)
+    return out
 
 
 def _shape_takes_for_prompt(

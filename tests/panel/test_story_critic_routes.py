@@ -1430,3 +1430,217 @@ def test_pick_shipped_envelope_ties_pick_latest(client, monkeypatch, scrubbed_ru
     # All four entries scored 65; latest wins on ties → ship pass 3.
     assert persisted["plan"]["director"]["reasoning"] == "pass3"
     assert persisted["plan"]["coherence_report"]["report"]["score"] == 65
+
+
+def test_rework_prompt_carries_prior_passes_history(client, monkeypatch, scrubbed_run, caplog):
+    """Phase 3: by iteration N, the Director prompt must summarise the
+    issues from passes 1..N-1 so the model doesn't re-break what an
+    earlier pass already fixed. We verify by capturing each rework
+    Director call's settings dict and asserting:
+
+    - Iteration 1 (first rework): no `history` (it's the first prior pass).
+    - Iteration 2: history has 1 prior snapshot.
+    - Iteration 3: history has 2 prior snapshots.
+    - The last snapshot in history is iteration N-2's issue category.
+
+    This covers sub-steps 3.1 + 3.3 — the wire payload — without
+    coupling to the prompt's exact rendered text (which 3.4 is too
+    brittle to assert without the dump file).
+    """
+    _flag_on(monkeypatch)
+    monkeypatch.setenv("CUTMASTER_STORY_CRITIC_REWORK_MAX", "3")
+    monkeypatch.setenv("CUTMASTER_STORY_CRITIC_MIN_DELTA", "0")  # disable plateau
+
+    director_calls = _capture_director_calls(monkeypatch)
+
+    p1 = story_critic.CoherenceReport(
+        score=50,
+        hook_strength=50,
+        arc_clarity=50,
+        transitions=50,
+        resolution=50,
+        issues=[
+            story_critic.CoherenceIssue(
+                segment_index=0,
+                severity="error",
+                category="weak_hook",
+                message="opener doesn't pull",
+            )
+        ],
+        summary="hook is weak",
+        verdict="rework",
+    )
+    p2 = story_critic.CoherenceReport(
+        score=58,
+        hook_strength=60,
+        arc_clarity=55,
+        transitions=55,
+        resolution=58,
+        issues=[
+            story_critic.CoherenceIssue(
+                segment_index=2,
+                severity="warning",
+                category="abrupt_transition",
+                message="seg 1 to 2 jumps",
+            )
+        ],
+        summary="hook better; transitions rough",
+        verdict="review",
+    )
+    p3 = story_critic.CoherenceReport(
+        score=66,
+        hook_strength=68,
+        arc_clarity=64,
+        transitions=58,
+        resolution=70,
+        issues=[
+            story_critic.CoherenceIssue(
+                segment_index=3,
+                severity="warning",
+                category="non_sequitur",
+                message="seg 3 doesn't follow",
+            )
+        ],
+        summary="closer but seg 3 dangles",
+        verdict="review",
+    )
+    p4 = story_critic.CoherenceReport(
+        score=75,
+        hook_strength=78,
+        arc_clarity=70,
+        transitions=72,
+        resolution=78,
+        issues=[],
+        summary="reads well",
+        verdict="ship",
+    )
+    _seq_critic(monkeypatch, [p1, p2, p3, p4])
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    _stub_resolver_and_resolve(monkeypatch)
+
+    r = client.post(
+        "/cutmaster/build-plan",
+        json={
+            "run_id": scrubbed_run["run_id"],
+            "preset": "vlog",
+            "content_type": "vlog",
+            "cut_intent": "narrative",
+            "user_settings": {
+                "target_length_s": 60,
+                "themes": [],
+                "cut_intent": "narrative",
+            },
+        },
+    )
+    assert r.status_code == 200, r.text
+
+    # 4 director calls: initial + 3 reworks.
+    assert len(director_calls) == 4
+    assert "_critic_feedback" not in director_calls[0]
+
+    fb1 = director_calls[1]["_critic_feedback"]
+    assert fb1["score"] == 50
+    assert fb1["history"] == []  # iteration 1 has no prior history yet
+
+    fb2 = director_calls[2]["_critic_feedback"]
+    assert fb2["score"] == 58
+    assert len(fb2["history"]) == 1
+    assert fb2["history"][0]["score"] == 50
+    assert fb2["history"][0]["issues"][0]["category"] == "weak_hook"
+
+    fb3 = director_calls[3]["_critic_feedback"]
+    assert fb3["score"] == 66
+    assert len(fb3["history"]) == 2
+    assert [snap["score"] for snap in fb3["history"]] == [50, 58]
+    assert fb3["history"][1]["issues"][0]["category"] == "abrupt_transition"
+
+
+def test_rework_prompt_block_renders_multi_pass_when_history_present(monkeypatch):
+    """Phase 3.4: the Director's prompt-block helper switches to the
+    PREVIOUS ATTEMPTS multi-pass header once history is non-empty, and
+    falls back to PREVIOUS ATTEMPT singular when history is empty.
+    Asserts the contract directly on the helper so we don't need to
+    diff a full prompt dump.
+    """
+    from cutmaster_ai.cutmaster.core.director import _critic_feedback_block
+
+    # No history → singular header.
+    single = _critic_feedback_block(
+        {
+            "_critic_feedback": {
+                "score": 60,
+                "verdict": "rework",
+                "summary": "hook weak",
+                "issues": [
+                    {
+                        "segment_index": 0,
+                        "severity": "error",
+                        "category": "weak_hook",
+                        "message": "opener doesn't pull",
+                    }
+                ],
+                "history": [],
+            }
+        }
+    )
+    assert "PREVIOUS ATTEMPT — REWORK NEEDED" in single
+    assert "PREVIOUS ATTEMPTS" not in single
+    assert "Pass 1" not in single
+
+    # 2-entry history → plural header + Pass 1 / Pass 2 / Pass 3 markers.
+    multi = _critic_feedback_block(
+        {
+            "_critic_feedback": {
+                "score": 66,
+                "verdict": "review",
+                "summary": "closer but seg 3 dangles",
+                "issues": [
+                    {
+                        "segment_index": 3,
+                        "severity": "warning",
+                        "category": "non_sequitur",
+                        "message": "seg 3 doesn't follow",
+                    }
+                ],
+                "history": [
+                    {
+                        "score": 50,
+                        "verdict": "rework",
+                        "summary": "hook is weak",
+                        "issues": [{"category": "weak_hook"}],
+                    },
+                    {
+                        "score": 58,
+                        "verdict": "review",
+                        "summary": "transitions rough",
+                        "issues": [{"category": "abrupt_transition"}],
+                    },
+                ],
+            }
+        }
+    )
+    assert "PREVIOUS ATTEMPTS — DO NOT REPEAT THESE FAILURES" in multi
+    assert "Pass 1" in multi
+    assert "Pass 2" in multi
+    assert "Pass 3" in multi  # current pass is iteration N = len(history)+1 = 3
+    assert "weak_hook" in multi
+    assert "abrupt_transition" in multi
+    assert "non_sequitur" in multi
+    # Caps at 3 issue categories per prior pass — many-issues case
+    many = _critic_feedback_block(
+        {
+            "_critic_feedback": {
+                "score": 60,
+                "verdict": "rework",
+                "issues": [{"category": "x"}],
+                "history": [
+                    {
+                        "score": 40,
+                        "verdict": "rework",
+                        "issues": [{"category": f"cat_{i}"} for i in range(7)],
+                    }
+                ],
+            }
+        }
+    )
+    assert "+4 more" in many  # 7 - 3 capped
