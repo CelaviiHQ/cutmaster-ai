@@ -117,6 +117,7 @@ def call_structured(
     validate: Callable[[T], list[str]] | None = None,
     accept_best_effort: bool = False,
     images: Sequence[ImagePart] | None = None,
+    summarise_attempt: Callable[[T], str] | None = None,
 ) -> T:
     """Call Gemini with ``response_schema`` enforcement + optional validator.
 
@@ -126,6 +127,15 @@ def call_structured(
         validation errors (caller surfaces the remaining errors as warnings
         rather than failing the request).
       - ``accept_best_effort=False`` (default): raise :class:`AgentError`.
+
+    Retry feedback is cumulative: every prior attempt's errors (plus its
+    optional summary) are rendered into a ``PREVIOUS ATTEMPTS`` block so
+    the model can see what it already tried instead of getting only the
+    most recent failure. Without this, multi-constraint validators
+    (e.g. Director coverage + duration + boundaries) can random-walk —
+    the model fixes constraint A on attempt 2, breaks constraint B,
+    then re-introduces A's failure on attempt 3 because it has no memory
+    of the trade-off it made.
 
     Args:
         agent: Logical agent name — used to pick the model via env override.
@@ -147,6 +157,14 @@ def call_structured(
             (shot tagging) and Layer A (boundary validator) use this to
             inject sampled frames. All vision calls go through here so
             cost telemetry + retry logic stay in one place.
+        summarise_attempt: Optional callback that turns a parsed (but
+            invalid) attempt into a one-line summary. Rendered above the
+            attempt's error list in the cumulative feedback block so the
+            model can distinguish "I tried 11 segments at 261s" from
+            "I tried 10 segments at 165s" — different shapes, different
+            failure modes. Receives the same parsed object the validator
+            saw; should not raise (raises are caught and the summary is
+            simply skipped).
     """
     client = get_gemini_client()
     if client is None:
@@ -166,7 +184,10 @@ def call_structured(
 
     best_parsed: T | None = None
     best_errors: list[str] = []
-    last_errors: list[str] = []
+    # Cumulative attempt history — every prior attempt's errors and
+    # optional summary, rendered into the next retry's prompt so the
+    # model sees the full trade-off space, not just the last failure.
+    attempt_history: list[dict] = []
     # Sum token usage across every retry inside this call_structured
     # invocation. The iterative-critic-loop reads `_token_usage` off the
     # returned plan to feed its per-iteration token-budget check, so any
@@ -175,13 +196,7 @@ def call_structured(
     total_tokens_out = 0
 
     for attempt in range(1, max_retries + 1):
-        retry_prompt = prompt
-        if last_errors:
-            retry_prompt += (
-                "\n\nYour previous response failed validation with these errors. "
-                "Fix them and return a corrected response:\n"
-                + "\n".join(f"- {e}" for e in last_errors)
-            )
+        retry_prompt = prompt + _build_retry_block(attempt_history)
 
         contents: list = [retry_prompt, *image_parts] if image_parts else [retry_prompt]
 
@@ -254,7 +269,21 @@ def call_structured(
         if best_parsed is None or len(errors) < len(best_errors):
             best_parsed = parsed
             best_errors = errors
-        last_errors = errors
+
+        entry: dict = {"attempt": attempt, "errors": errors}
+        if summarise_attempt is not None:
+            try:
+                summary = summarise_attempt(parsed)
+            except Exception as exc:  # noqa: BLE001 — never let a summary helper kill a retry
+                log.warning(
+                    "agent=%s summarise_attempt raised %s; rendering attempt without summary",
+                    agent,
+                    exc,
+                )
+            else:
+                if summary:
+                    entry["summary"] = summary
+        attempt_history.append(entry)
 
     if accept_best_effort and best_parsed is not None:
         log.warning(
@@ -265,14 +294,56 @@ def call_structured(
         )
         try:
             object.__setattr__(best_parsed, "_validation_errors", best_errors)
+            object.__setattr__(best_parsed, "_attempt_history", attempt_history)
         except Exception:
             pass  # Pydantic v2 allows __setattr__ on extra attrs; swallow otherwise
         _stash_token_usage(best_parsed, total_tokens_in, total_tokens_out)
         return best_parsed
 
     raise AgentError(
-        f"{agent} agent failed after {max_retries} retries. Last errors: {last_errors}"
+        f"{agent} agent failed after {max_retries} retries. "
+        f"Last errors: {attempt_history[-1]['errors'] if attempt_history else []}"
     )
+
+
+def _build_retry_block(history: list[dict]) -> str:
+    """Render the cumulative ``PREVIOUS ATTEMPTS`` block for the next retry.
+
+    Returns the empty string for the first attempt (no history yet).
+    Each prior attempt is rendered as ``Attempt N: <summary>`` followed
+    by an indented bullet list of the validation errors that fired on
+    that attempt. The model gets the full trade-off picture instead of
+    only the last failure, which is what stops the random-walk between
+    "fix coverage by adding clip X" → "now duration is over" → "drop X
+    again" cycles.
+
+    Token cost: roughly 30-80 tokens per attempt (1 summary line + 2-5
+    error lines). Five attempts add ~300 tokens to the prompt — cheap
+    next to the retry's regenerate cost.
+    """
+    if not history:
+        return ""
+    lines: list[str] = [
+        "",
+        "PREVIOUS ATTEMPTS — these failed validation. Do not repeat the same",
+        "approach; produce something materially different that satisfies",
+        "every constraint listed in the rules above.",
+        "",
+    ]
+    for entry in history:
+        n = entry["attempt"]
+        summary = entry.get("summary")
+        errs = entry.get("errors") or []
+        header = f"Attempt {n}: {summary}" if summary else f"Attempt {n}:"
+        lines.append(header)
+        for err in errs:
+            lines.append(f"  - {err}")
+        lines.append("")
+    lines.append(
+        "Now produce a plan that avoids every failure mode above and satisfies "
+        "every constraint in the rules section."
+    )
+    return "\n".join(lines)
 
 
 def _stash_token_usage(parsed, tokens_in: int, tokens_out: int) -> None:

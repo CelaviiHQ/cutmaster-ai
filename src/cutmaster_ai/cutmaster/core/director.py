@@ -172,6 +172,36 @@ or skipped the field — the panel renders no badge in that case.
 """
 
 
+def _summarise_director_attempt(plan) -> str:
+    """One-line digest of a Director plan for the cumulative retry block.
+
+    Rendered above the attempt's error list so the model can tell which
+    knobs it has already tried — "11 segments at 261s with coverage 8/11"
+    is a different shape from "9 segments at 165s with coverage 6/11"
+    even when the validation errors look superficially similar.
+
+    Coverage is omitted because computing it requires the transcript;
+    the segment count + total duration alone are enough to disambiguate
+    most attempts and have no extra dependency.
+    """
+    segs = getattr(plan, "selected_clips", None) or getattr(plan, "selections", None) or []
+    if not segs:
+        return "empty plan"
+    n = len(segs)
+    total_s = 0.0
+    for c in segs:
+        # Three plan shapes use start_s/end_s; the assembled plan uses
+        # word indices and has no direct duration. Fall back to the
+        # count-only summary in that case.
+        start = getattr(c, "start_s", None)
+        end = getattr(c, "end_s", None)
+        if start is not None and end is not None:
+            total_s += float(end) - float(start)
+    if total_s > 0:
+        return f"{n} segments · {total_s:.1f}s"
+    return f"{n} selections"
+
+
 class CutSegment(BaseModel):
     start_s: float
     end_s: float
@@ -1642,6 +1672,7 @@ def build_cut_plan(
         temperature=0.4,
         max_retries=5,
         accept_best_effort=True,
+        summarise_attempt=_summarise_director_attempt,
     )
 
 
@@ -1899,6 +1930,7 @@ def build_assembled_cut_plan(
         temperature=0.4,
         max_retries=5,
         accept_best_effort=True,
+        summarise_attempt=_summarise_director_attempt,
     )
 
 
@@ -2156,6 +2188,7 @@ def build_clip_hunter_plan(
         temperature=0.5,
         max_retries=5,
         accept_best_effort=True,
+        summarise_attempt=_summarise_director_attempt,
     )
 
 
@@ -2462,6 +2495,7 @@ def build_short_generator_plan(
         temperature=0.5,
         max_retries=5,
         accept_best_effort=True,
+        summarise_attempt=_summarise_director_attempt,
     )
 
 
@@ -2667,6 +2701,7 @@ def build_curated_cut_plan(
         temperature=0.4,
         max_retries=5,
         accept_best_effort=True,
+        summarise_attempt=_summarise_director_attempt,
     )
 
 
@@ -2913,4 +2948,5 @@ def build_rough_cut_plan(
         temperature=0.4,
         max_retries=5,
         accept_best_effort=True,
+        summarise_attempt=_summarise_director_attempt,
     )

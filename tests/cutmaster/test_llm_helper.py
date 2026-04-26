@@ -177,3 +177,115 @@ def test_shot_tagger_has_model_default():
     assert llm.DEFAULTS["shot_tagger"]
     assert llm.DEFAULTS["boundary_validator"]
     assert llm.model_for("shot_tagger") == llm.DEFAULTS["shot_tagger"]
+
+
+# ---------------------------------------------------------------------------
+# Cumulative retry-feedback tests — fix for the random-walking director loop
+# (per-clip coverage flapping 73% → 82% → 64% → 82% across 5 retries).
+# ---------------------------------------------------------------------------
+
+
+def test_retry_prompt_accumulates_all_prior_attempts(fake_client):
+    """Attempt N's prompt must include every prior attempt's errors."""
+    fake_client.models.generate_content.side_effect = [
+        _canned(parsed=DummyPlan(value=10)),
+        _canned(parsed=DummyPlan(value=20)),
+        _canned(parsed=DummyPlan(value=99)),
+    ]
+    seen: list[int] = []
+
+    def validate(p: DummyPlan) -> list[str]:
+        seen.append(p.value)
+        if p.value == 10:
+            return ["coverage 60% below 70% threshold"]
+        if p.value == 20:
+            return ["total duration 150s below target 200s ± 25%"]
+        return []
+
+    llm.call_structured("director", "base prompt", DummyPlan, validate=validate)
+
+    third_prompt = fake_client.models.generate_content.call_args_list[2].kwargs["contents"][0]
+    assert "PREVIOUS ATTEMPTS" in third_prompt
+    assert "Attempt 1" in third_prompt
+    assert "coverage 60% below 70% threshold" in third_prompt
+    assert "Attempt 2" in third_prompt
+    assert "total duration 150s below target 200s ± 25%" in third_prompt
+    # The closing "now produce a plan that avoids" hint must be present so
+    # the model knows the block is the constraint, not part of the rules.
+    assert "avoids every failure mode above" in third_prompt
+
+
+def test_retry_prompt_renders_summary_when_provided(fake_client):
+    fake_client.models.generate_content.side_effect = [
+        _canned(parsed=DummyPlan(value=1)),
+        _canned(parsed=DummyPlan(value=99)),
+    ]
+    llm.call_structured(
+        "director",
+        "base",
+        DummyPlan,
+        validate=lambda p: [] if p.value == 99 else ["bad"],
+        summarise_attempt=lambda p: f"value={p.value}",
+    )
+    second_prompt = fake_client.models.generate_content.call_args_list[1].kwargs["contents"][0]
+    assert "Attempt 1: value=1" in second_prompt
+
+
+def test_summarise_callback_exception_does_not_kill_retry(fake_client):
+    """A buggy summary helper must never abort the retry loop itself."""
+    fake_client.models.generate_content.side_effect = [
+        _canned(parsed=DummyPlan(value=1)),
+        _canned(parsed=DummyPlan(value=99)),
+    ]
+
+    def buggy_summary(_: DummyPlan) -> str:
+        raise RuntimeError("kaboom")
+
+    result = llm.call_structured(
+        "director",
+        "base",
+        DummyPlan,
+        validate=lambda p: [] if p.value == 99 else ["bad"],
+        summarise_attempt=buggy_summary,
+    )
+    assert result.value == 99
+    second_prompt = fake_client.models.generate_content.call_args_list[1].kwargs["contents"][0]
+    # No summary on the line, but the attempt + errors still rendered.
+    assert "Attempt 1" in second_prompt
+    assert "bad" in second_prompt
+    # Must NOT contain the failed call's "value=" sentinel.
+    assert "value=" not in second_prompt
+
+
+def test_best_effort_stashes_attempt_history_on_returned_plan(fake_client):
+    fake_client.models.generate_content.side_effect = [
+        _canned(parsed=DummyPlan(value=v)) for v in (1, 2, 3, 4, 5)
+    ]
+    result = llm.call_structured(
+        "director",
+        "base",
+        DummyPlan,
+        validate=lambda p: [f"err for v={p.value}"],
+        max_retries=5,
+        accept_best_effort=True,
+        summarise_attempt=lambda p: f"v={p.value}",
+    )
+    history = getattr(result, "_attempt_history", None)
+    assert history is not None
+    assert len(history) == 5
+    assert [h["attempt"] for h in history] == [1, 2, 3, 4, 5]
+    assert history[2]["summary"] == "v=3"
+    assert history[4]["errors"] == ["err for v=5"]
+
+
+def test_first_attempt_has_no_previous_attempts_block(fake_client):
+    fake_client.models.generate_content.return_value = _canned(parsed=DummyPlan(value=99))
+    llm.call_structured(
+        "director",
+        "base prompt",
+        DummyPlan,
+        validate=lambda p: [],
+    )
+    first_prompt = fake_client.models.generate_content.call_args.kwargs["contents"][0]
+    assert "PREVIOUS ATTEMPTS" not in first_prompt
+    assert first_prompt == "base prompt"
