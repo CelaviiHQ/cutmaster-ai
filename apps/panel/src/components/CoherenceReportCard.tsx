@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type {
     CoherenceCategory,
     CoherenceIssue,
@@ -6,8 +7,6 @@ import type {
     Verdict,
 } from "../types";
 
-// Verdict copy is the editor-facing label; the tone is set by the badge
-// background colour (CSS), not the word.
 const VERDICT_LABEL: Record<Verdict, string> = {
     ship: "Ship",
     review: "Review",
@@ -20,8 +19,6 @@ const SEVERITY_LABEL: Record<CoherenceSeverity, string> = {
     error: "Block",
 };
 
-// Editor-readable category names. The Pydantic Literal uses snake_case
-// for stability; this map is the only place the human form lives.
 const CATEGORY_LABEL: Record<CoherenceCategory, string> = {
     non_sequitur: "Non-sequitur",
     weak_hook: "Weak hook",
@@ -66,10 +63,18 @@ function SubScore({ label, value }: SubScoreProps) {
 
 interface IssueRowProps {
     issue: CoherenceIssue;
-    onClick: (segmentIndex: number) => void;
+    fixed: boolean;
+    onToggleFixed: () => void;
+    onJump: (segmentIndex: number) => void;
 }
 
-function IssueRow({ issue, onClick }: IssueRowProps) {
+/**
+ * Stacked, three-line issue row. Each row owns its own grid so long
+ * messages can never push siblings out of place. Mark-fixed is a local
+ * triage tool — strikes through and dims the row but doesn't persist
+ * server-side (the plan still surfaces the issue on rebuild).
+ */
+function IssueRow({ issue, fixed, onToggleFixed, onJump }: IssueRowProps) {
     const isWholeCut = issue.segment_index < 0;
     const segLabel = isWholeCut ? "whole cut" : `seg ${issue.segment_index + 1}`;
     const pairSuffix =
@@ -77,88 +82,89 @@ function IssueRow({ issue, onClick }: IssueRowProps) {
             ? ` → ${issue.pair_index + 2}`
             : "";
     return (
-        <button
-            type="button"
-            className={`coherence-issue coherence-issue--${issue.severity}`}
-            onClick={() => onClick(issue.segment_index)}
-            disabled={isWholeCut}
-            title={
-                isWholeCut
-                    ? "Whole-cut observation — no segment to scroll to"
-                    : `Jump to segment ${issue.segment_index + 1}`
-            }
+        <div
+            className={`coherence-issue coherence-issue--${issue.severity}${
+                fixed ? " coherence-issue--fixed" : ""
+            }`}
         >
-            <span
-                className={`coherence-issue-dot coherence-issue-dot--${issue.severity}`}
-                aria-hidden
-            />
-            <span className="coherence-issue-severity">
-                {SEVERITY_LABEL[issue.severity]}
-            </span>
-            <span className="coherence-issue-category">
-                {CATEGORY_LABEL[issue.category] ?? issue.category}
-            </span>
-            <span className="coherence-issue-target">
-                {segLabel}
-                {pairSuffix}
-            </span>
-            <span className="coherence-issue-message">{issue.message}</span>
-            {issue.suggestion && (
-                <span className="coherence-issue-suggestion">
-                    → {issue.suggestion}
+            <div className="coherence-issue-meta">
+                <span
+                    className={`coherence-issue-dot coherence-issue-dot--${issue.severity}`}
+                    aria-hidden
+                />
+                <span className="coherence-issue-severity">
+                    {SEVERITY_LABEL[issue.severity]}
                 </span>
+                <span className="coherence-issue-category">
+                    {CATEGORY_LABEL[issue.category] ?? issue.category}
+                </span>
+                <button
+                    type="button"
+                    className="coherence-issue-target"
+                    onClick={() =>
+                        !isWholeCut && onJump(issue.segment_index)
+                    }
+                    disabled={isWholeCut}
+                    title={
+                        isWholeCut
+                            ? "Whole-cut observation — no segment to scroll to"
+                            : `Jump to segment ${issue.segment_index + 1}`
+                    }
+                >
+                    {segLabel}
+                    {pairSuffix}
+                </button>
+                <button
+                    type="button"
+                    className={`coherence-issue-fix${
+                        fixed ? " coherence-issue-fix--on" : ""
+                    }`}
+                    onClick={onToggleFixed}
+                    title={
+                        fixed
+                            ? "Mark as not fixed"
+                            : "Mark as fixed (does not persist)"
+                    }
+                    aria-pressed={fixed}
+                >
+                    {fixed ? "✓ Fixed" : "Mark fixed"}
+                </button>
+            </div>
+            <p className="coherence-issue-message">{issue.message}</p>
+            {issue.suggestion && (
+                <p className="coherence-issue-suggestion">
+                    → {issue.suggestion}
+                </p>
             )}
-        </button>
+        </div>
     );
 }
 
 interface Props {
     report: CoherenceReport;
-    /**
-     * Called when an issue is clicked — receives the issue's
-     * `segment_index`. The host wires this to its expanded-segment state
-     * + scroll-into-view of `seg-${i}`.
-     */
     onIssueClick: (segmentIndex: number) => void;
-    /**
-     * Optional context label for per-candidate reports — e.g. "Candidate
-     * 2 of 5". Renders next to the verdict badge.
-     */
     contextLabel?: string;
-    /**
-     * Optional re-critique handler. When provided, renders a "Re-critique"
-     * button that fires the retroactive endpoint. Host owns the debounce
-     * + busy state so multiple cards can share it.
-     */
     onRecritique?: () => void;
-    /** Disables the Re-critique button while a request is in flight. */
     recritiqueBusy?: boolean;
-    /** Surfaced under the issue list when the last re-critique failed. */
     recritiqueError?: string | null;
     /**
-     * Story-critic Phase 6 — when the auto-rework loop fired, this is the
-     * v1 (pre-rework) report. Renders a small chip in the header showing
-     * "Pass 1: 58 → 82" so editors see the lift at a glance.
+     * Optional pre-rework report. Renders a delta chip in the header.
+     * When delta is negative, the chip is red — flagging that pass 2
+     * regressed and the regression-guard kept pass 1's output.
      */
     previousReport?: CoherenceReport | null;
-    /**
-     * Optional handler to open the rework-pass Director prompt
-     * (``GET /cutmaster/debug/prompt/{run_id}?pass=rework``). Renders a
-     * small "View rework prompt" link next to the Re-critique button when
-     * present (i.e. only when ``previousReport`` is set).
-     */
     onViewReworkPrompt?: () => void;
+    /**
+     * When ``true``, the Re-critique button is disabled with a tooltip
+     * explaining why. Host owns the gate so different builds (assembled,
+     * raw_dump, etc.) can apply different rules.
+     */
+    recritiqueDisabled?: boolean;
+    recritiqueDisabledReason?: string;
+    /** Optional prefix shown at the top of the card (e.g. "Story coherence"). */
+    sectionLabel?: string;
 }
 
-/**
- * Story-critic verdict card. Renders above the segments list on the
- * Review screen so editors can scan the cut's coherence at a glance and
- * jump to specific issues.
- *
- * Empty-state (when no report is available — flag off, LLM failed, no
- * resolved_axes) is handled by the host, not this component. The card
- * always renders a real report.
- */
 export default function CoherenceReportCard({
     report,
     onIssueClick,
@@ -168,11 +174,41 @@ export default function CoherenceReportCard({
     recritiqueError = null,
     previousReport = null,
     onViewReworkPrompt,
+    recritiqueDisabled = false,
+    recritiqueDisabledReason,
+    sectionLabel,
 }: Props) {
+    const [fixedSet, setFixedSet] = useState<Set<number>>(new Set());
+    const toggleFixed = (i: number) => {
+        setFixedSet((prev) => {
+            const next = new Set(prev);
+            if (next.has(i)) next.delete(i);
+            else next.add(i);
+            return next;
+        });
+    };
+
     const lift =
         previousReport !== null ? report.score - previousReport.score : null;
+    // When the regression-guard kept pass 1, ``report`` IS pass 1 and
+    // ``previousReport`` is the lower-scoring rework. The chip flips:
+    // negative-direction means the loop tried and failed.
+    const liftDirection: "up" | "down" | "flat" =
+        lift === null
+            ? "flat"
+            : lift > 0
+              ? "up"
+              : lift < 0
+                ? "down"
+                : "flat";
+
     return (
-        <div className="card coherence-card">
+        <div className="coherence-card">
+            {sectionLabel && (
+                <div className="coherence-section-label muted">
+                    {sectionLabel}
+                </div>
+            )}
             <div className="coherence-head">
                 <div className="coherence-score-block">
                     <span
@@ -190,12 +226,15 @@ export default function CoherenceReportCard({
                     </span>
                     {previousReport !== null && lift !== null && (
                         <span
-                            className={`coherence-lift coherence-lift--${
-                                lift >= 0 ? "up" : "down"
-                            }`}
-                            title={`Auto-rework: pass 1 scored ${previousReport.score} (${VERDICT_LABEL[previousReport.verdict]}); pass 2 scored ${report.score}`}
+                            className={`coherence-lift coherence-lift--${liftDirection}`}
+                            title={
+                                liftDirection === "down"
+                                    ? `Auto-rework regressed: pass 1 scored ${previousReport.score} (${VERDICT_LABEL[previousReport.verdict]}); pass 2 scored ${report.score}. The regression-guard kept whichever score was higher.`
+                                    : `Auto-rework: pass 1 scored ${previousReport.score} (${VERDICT_LABEL[previousReport.verdict]}); pass 2 scored ${report.score}.`
+                            }
                         >
-                            Pass 1: {previousReport.score} → {report.score}
+                            {liftDirection === "down" ? "Regressed " : "Lift "}
+                            {previousReport.score} → {report.score}
                             <span className="coherence-lift-delta">
                                 {" "}
                                 ({lift >= 0 ? "+" : ""}
@@ -209,34 +248,34 @@ export default function CoherenceReportCard({
                         </span>
                     )}
                 </div>
-                {onRecritique && (
-                    <button
-                        type="button"
-                        className="link-button coherence-recritique"
-                        onClick={onRecritique}
-                        disabled={recritiqueBusy}
-                        title="Re-run the story-critic against this plan"
-                    >
-                        {recritiqueBusy ? "Re-critiquing…" : "Re-critique"}
-                    </button>
-                )}
-                {onViewReworkPrompt && previousReport !== null && (
-                    <button
-                        type="button"
-                        className="link-button coherence-rework-prompt"
-                        onClick={onViewReworkPrompt}
-                        title="Open the prompt the Director was given on the rework pass"
-                    >
-                        View rework prompt
-                    </button>
-                )}
-            </div>
-
-            <div className="coherence-subscores">
-                <SubScore label="Hook" value={report.hook_strength} />
-                <SubScore label="Arc" value={report.arc_clarity} />
-                <SubScore label="Transitions" value={report.transitions} />
-                <SubScore label="Resolution" value={report.resolution} />
+                <div className="coherence-actions">
+                    {onRecritique && (
+                        <button
+                            type="button"
+                            className="link-button coherence-recritique"
+                            onClick={onRecritique}
+                            disabled={recritiqueBusy || recritiqueDisabled}
+                            title={
+                                recritiqueDisabled
+                                    ? (recritiqueDisabledReason ??
+                                      "Re-critique unavailable")
+                                    : "Re-run the story-critic against this plan"
+                            }
+                        >
+                            {recritiqueBusy ? "Re-critiquing…" : "Re-critique"}
+                        </button>
+                    )}
+                    {onViewReworkPrompt && previousReport !== null && (
+                        <button
+                            type="button"
+                            className="link-button coherence-rework-prompt"
+                            onClick={onViewReworkPrompt}
+                            title="Open the prompt the Director was given on the rework pass"
+                        >
+                            View rework prompt
+                        </button>
+                    )}
+                </div>
             </div>
 
             {report.summary && (
@@ -244,18 +283,32 @@ export default function CoherenceReportCard({
             )}
 
             {report.issues.length > 0 ? (
-                <ul className="coherence-issue-list">
+                <div className="coherence-issue-list">
                     {report.issues.map((iss, i) => (
-                        <li key={i}>
-                            <IssueRow issue={iss} onClick={onIssueClick} />
-                        </li>
+                        <IssueRow
+                            key={i}
+                            issue={iss}
+                            fixed={fixedSet.has(i)}
+                            onToggleFixed={() => toggleFixed(i)}
+                            onJump={onIssueClick}
+                        />
                     ))}
-                </ul>
+                </div>
             ) : (
                 <p className="coherence-issue-list-empty muted">
                     No issues flagged.
                 </p>
             )}
+
+            <details className="coherence-subscores-details">
+                <summary>Sub-scores</summary>
+                <div className="coherence-subscores">
+                    <SubScore label="Hook" value={report.hook_strength} />
+                    <SubScore label="Arc" value={report.arc_clarity} />
+                    <SubScore label="Transitions" value={report.transitions} />
+                    <SubScore label="Resolution" value={report.resolution} />
+                </div>
+            </details>
 
             {recritiqueError && (
                 <p className="coherence-recritique-err">

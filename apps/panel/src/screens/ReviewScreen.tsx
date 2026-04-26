@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { ExecuteResult } from "../api";
 import MascotLoading from "./MascotLoading";
-import CoherenceReportCard from "../components/CoherenceReportCard";
+import CutHealthCard from "../components/CutHealthCard";
 import { formatRelativeTime } from "../persist";
 import type {
     BuildPlanResult,
@@ -667,27 +667,6 @@ export default function ReviewScreen({
                         {plan.director.reasoning && (
                             <p className="muted cut-reasoning">{plan.director.reasoning}</p>
                         )}
-                        {plan.plan_warnings && plan.plan_warnings.length > 0 && (
-                            <div className="plan-warning" role="alert">
-                                <div className="plan-warning-head">
-                                    <span aria-hidden>⚠</span>
-                                    <strong>The Director couldn't fully honour your plan</strong>
-                                    <span className="muted">
-                                        · best-effort fallback after retry exhaustion
-                                    </span>
-                                </div>
-                                <ul className="plan-warning-list">
-                                    {plan.plan_warnings.map((w, i) => (
-                                        <li key={i}>{w}</li>
-                                    ))}
-                                </ul>
-                                <p className="muted plan-warning-foot">
-                                    Try Regenerate (the model is non-deterministic), pick a longer
-                                    or clearer hook quote, or relax the target length.
-                                </p>
-                            </div>
-                        )}
-
                         <div className="plan-bar-wrap">
                             {/* Always-visible marker labels above the bar.
                                 Two-row layout: a label whose centre falls
@@ -709,8 +688,17 @@ export default function ReviewScreen({
                                     placed.push({ idx: i, pct, row });
                                 });
                                 void lastRow1Pct;
+                                if (placed.length === 0) {
+                                    return null;
+                                }
                                 return (
                                     <div className="plan-bar-labels">
+                                        <span
+                                            className="plan-bar-labels-anchor"
+                                            aria-hidden
+                                        >
+                                            Markers
+                                        </span>
                                         {placed.map(({ idx, pct, row }) => {
                                             const m = markers[idx];
                                             return (
@@ -836,74 +824,119 @@ export default function ReviewScreen({
                 );
             })()}
 
-            {/* Story-critic verdict — Phase 3 of story-critic.md.
-                Renders only when the build attached a coherence_report
-                (flag on AND axes resolved AND LLM succeeded). Empty-state
-                is a small muted note rather than the full card so the
-                Review screen doesn't lie about why the report is missing. */}
+            {/* Combined Cut-health surface. Subsumes the Director
+                best-effort warning (formerly inside the cut card) and
+                the story-critic verdict so editors see one ready-or-not
+                summary. */}
             {(() => {
                 const env = plan.coherence_report;
-                if (!env) {
-                    return (
-                        <div className="coherence-empty muted">
-                            Story-critic did not run for this build (flag off,
-                            no resolved axes, or the critic call failed).
-                        </div>
-                    );
-                }
-                let report: CoherenceReport;
+                let report: CoherenceReport | null = null;
                 let contextLabel: string | undefined;
-                if (env.kind === "per_candidate") {
-                    const cands = env.report.candidates;
-                    if (cands.length === 0) {
-                        return (
-                            <div className="coherence-empty muted">
-                                Story-critic returned no candidates for this build.
-                            </div>
-                        );
+                let emptyMessage: string | undefined;
+                if (env) {
+                    if (env.kind === "per_candidate") {
+                        const cands = env.report.candidates;
+                        if (cands.length === 0) {
+                            emptyMessage =
+                                "Story-critic returned no candidates for this build.";
+                        } else {
+                            const idx = Math.min(
+                                selectedCandidate,
+                                cands.length - 1,
+                            );
+                            report = cands[idx];
+                            const isBest =
+                                idx === env.report.best_candidate_index;
+                            contextLabel = `Candidate ${idx + 1} of ${cands.length}${
+                                isBest ? " · top pick" : ""
+                            }`;
+                        }
+                    } else {
+                        report = env.report;
                     }
-                    const idx = Math.min(selectedCandidate, cands.length - 1);
-                    report = cands[idx];
-                    const isBest = idx === env.report.best_candidate_index;
-                    contextLabel = `Candidate ${idx + 1} of ${cands.length}${
-                        isBest ? " · top pick" : ""
-                    }`;
                 } else {
-                    report = env.report;
+                    emptyMessage =
+                        "Story-critic did not run for this build (flag off, no resolved axes, or the critic call failed).";
                 }
 
-                // Phase 6 lift chip: when coherence_history has 2 entries
-                // the auto-rework loop fired. The first single-cut entry
-                // is v1; we render its score + verdict next to v2's badge.
+                // Lift / regression chip: when coherence_history carries
+                // two single-cut entries the auto-rework loop fired. The
+                // first entry is pass 1; we surface it next to pass 2's
+                // badge so the editor sees the delta. With the
+                // regression-guard the surfaced ``report`` may BE pass 1
+                // when pass 2 scored lower — in that case the lift chip
+                // direction flips to "down" / red.
                 const history = plan.coherence_history ?? [];
                 let previousReport: CoherenceReport | null = null;
-                if (history.length >= 2 && env.kind === "single") {
-                    const v1 = history[0];
-                    if (v1.kind === "single") previousReport = v1.report;
+                if (
+                    history.length >= 2 &&
+                    history[0].kind === "single" &&
+                    history[1].kind === "single" &&
+                    report !== null
+                ) {
+                    const v1 = history[0].report;
+                    const v2 = history[1].report;
+                    // The shipped report is whichever scored higher.
+                    // Whichever isn't the shipped one is the "previous"
+                    // we render in the chip.
+                    if (report.score === v2.score) {
+                        previousReport = v1;
+                    } else if (report.score === v1.score) {
+                        previousReport = v2;
+                    }
                 }
+
                 const handleIssueClick = (segIdx: number) => {
                     if (segIdx < 0) return;
                     setExpandedSegment(segIdx);
-                    // defer scroll to next paint so the row's expanded
-                    // state has a chance to mount before we scroll to it.
                     requestAnimationFrame(() => {
                         document
                             .getElementById(`seg-${segIdx}`)
-                            ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                            ?.scrollIntoView({
+                                behavior: "smooth",
+                                block: "center",
+                            });
                     });
                 };
                 const handleViewReworkPrompt = previousReport
                     ? () => openPrompt({ pass: "rework" })
                     : undefined;
+
+                // Re-critique is only meaningful when the verdict is
+                // mid-band — for "ship" cuts it's redundant, for
+                // "rework" cuts the editor should regenerate the plan
+                // instead. We keep the button enabled but explain what
+                // we'd expect to happen.
+                let recritiqueDisabled = false;
+                let recritiqueDisabledReason: string | undefined;
+                if (report) {
+                    if (report.verdict === "ship" && !recritiqueErr) {
+                        recritiqueDisabled = true;
+                        recritiqueDisabledReason =
+                            "Already passing — modify the plan and rebuild to invalidate.";
+                    } else if (
+                        history.length >= 2 &&
+                        !recritiqueErr
+                    ) {
+                        recritiqueDisabled = true;
+                        recritiqueDisabledReason =
+                            "Auto-rework already ran. Rebuild the plan to grade a new cut.";
+                    }
+                }
+
                 return (
-                    <CoherenceReportCard
-                        report={report}
-                        onIssueClick={handleIssueClick}
+                    <CutHealthCard
+                        planWarnings={plan.plan_warnings}
+                        coherenceReport={report}
+                        previousReport={previousReport}
                         contextLabel={contextLabel}
+                        emptyMessage={emptyMessage}
+                        onIssueClick={handleIssueClick}
                         onRecritique={recritique}
                         recritiqueBusy={recritiqueBusy}
                         recritiqueError={recritiqueErr}
-                        previousReport={previousReport}
+                        recritiqueDisabled={recritiqueDisabled}
+                        recritiqueDisabledReason={recritiqueDisabledReason}
                         onViewReworkPrompt={handleViewReworkPrompt}
                     />
                 );
