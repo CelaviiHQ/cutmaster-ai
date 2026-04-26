@@ -139,6 +139,8 @@ def test_build_plan_accepts_and_persists_v2_10_format_fields(
 
 
 def test_humanise_validator_warning_low_confidence_hook():
+    """When the offending segment IS the hook (matches plan.hook_index),
+    the warning gets the hook-specific framing + Configure-jump action."""
     from cutmaster_ai.http.routes.cutmaster.build import _humanise_validator_warning
 
     raw = (
@@ -146,15 +148,53 @@ def test_humanise_validator_warning_low_confidence_hook():
         "(conf 0.56 < 0.60). Move the start to the next "
         "crisply-transcribed word boundary."
     )
-    out = _humanise_validator_warning(raw)
+    # Director picked segment 2 (0-based) as the hook → hook framing wins.
+    out = _humanise_validator_warning(raw, hook_index=2)
     assert out["kind"] == "low_confidence_hook"
     # 1-based segment index for vlogger sanity (raw uses 0-based).
-    assert "Segment 3" in out["detail"]
+    assert "segment 3" in out["detail"].lower()
     assert "“This”" in out["detail"]
+    assert "hook" in out["detail"].lower()
     # No "conf 0.56" or "< 0.60" jargon should leak.
     assert "0.56" not in out["detail"]
     assert "0.60" not in out["detail"]
     assert out["action"]["kind"] == "configure_hook"
+
+
+def test_humanise_validator_warning_low_confidence_start_not_hook():
+    """Non-hook segments with fuzzy boundaries get the neutral
+    "A segment starts mid-word" copy + Regenerate action — not the
+    misleading "Your hook starts mid-word" + Configure-hook button."""
+    from cutmaster_ai.http.routes.cutmaster.build import _humanise_validator_warning
+
+    raw = (
+        "segment[8]: starts on low-confidence word 'So' "
+        "(conf 0.55 < 0.60). Move the start to the next "
+        "crisply-transcribed word boundary."
+    )
+    # Director picked segment 0 as the hook; segment 8 is a body segment.
+    out = _humanise_validator_warning(raw, hook_index=0)
+    assert out["kind"] == "low_confidence_start"
+    assert "Segment 9" in out["detail"]  # 0-based 8 → 1-based 9
+    assert "“So”" in out["detail"]
+    # Critical: must NOT call this "your hook" — it isn't.
+    assert "hook" not in out["title"].lower()
+    assert "hook" not in out["detail"].lower()
+    # Action degrades to Regenerate (no segment-specific edit available
+    # from Configure for body segments).
+    assert out["action"]["kind"] == "regenerate"
+
+
+def test_humanise_validator_warning_low_confidence_start_no_hook_index():
+    """When hook_index is unknown (None), default to the neutral
+    non-hook framing rather than guessing — better to undersell than
+    mislabel a body segment as the hook."""
+    from cutmaster_ai.http.routes.cutmaster.build import _humanise_validator_warning
+
+    raw = "segment[2]: starts on low-confidence word 'This' (conf 0.56 < 0.60)."
+    out = _humanise_validator_warning(raw)  # no hook_index supplied
+    assert out["kind"] == "low_confidence_start"
+    assert out["action"]["kind"] == "regenerate"
 
 
 def test_humanise_validator_warning_low_coverage():
@@ -194,6 +234,9 @@ def test_plan_warnings_dedupes_and_returns_structured_records():
         pass
 
     p = _Plan()
+    # hook_index=1 (0-based) so segment[1]'s low-confidence-start gets
+    # the hook framing — Director marked it as the hook.
+    p.hook_index = 1
     object.__setattr__(
         p,
         "_validation_errors",

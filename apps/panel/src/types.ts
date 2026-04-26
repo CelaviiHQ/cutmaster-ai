@@ -326,6 +326,7 @@ export interface PlanWarningAction {
 
 export type PlanWarningKind =
   | "low_confidence_hook"
+  | "low_confidence_start"
   | "low_confidence_end"
   | "low_coverage"
   | "segment_too_short"

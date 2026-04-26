@@ -264,11 +264,17 @@ def _plan_warnings(*plans) -> list[dict]:
         if p is None:
             continue
         errors = getattr(p, "_validation_errors", None) or []
+        # DirectorPlan / AssembledDirectorPlan / CuratedDirectorPlan all
+        # carry ``hook_index`` (0-based int into ``selected_clips`` /
+        # ``selections``). Other plan shapes don't — getattr returns
+        # None and the humaniser stays neutral. Per-plan lookup so a
+        # multi-plan call (Director + Marker) doesn't conflate hooks.
+        hook_idx = getattr(p, "hook_index", None)
         for e in errors:
             if e in seen:
                 continue
             seen.add(e)
-            out.append(_humanise_validator_warning(e))
+            out.append(_humanise_validator_warning(e, hook_index=hook_idx))
     return out
 
 
@@ -289,7 +295,7 @@ _RE_DUPLICATE_TAKES = re.compile(
 )
 
 
-def _humanise_validator_warning(raw: str) -> dict:
+def _humanise_validator_warning(raw: str, *, hook_index: int | None = None) -> dict:
     """Map a raw validator string to a structured panel warning.
 
     Returns ``{kind, title, detail, action?}`` where:
@@ -303,24 +309,48 @@ def _humanise_validator_warning(raw: str) -> dict:
           - ``regenerate`` — trigger a fresh build (cheap nudge for
             non-deterministic situations)
 
+    ``hook_index`` (0-based) lets the helper distinguish "the hook
+    starts on a fuzzy word" (actionable: pick a different hook) from
+    "some body segment starts on a fuzzy word" (only action is
+    Regenerate). Without this, both cases render with the misleading
+    "Your hook starts mid-word" title because the validator strings
+    only carry the segment index.
+
     Always returns a record. Unknown shapes fall through to
     ``{kind: "other", title: "Heads up", detail: <raw>}`` so the editor
     still sees the validator's words rather than an empty alert.
     """
     if m := _RE_LOW_CONF_START.search(raw):
-        seg_one_based = int(m.group(1)) + 1
+        seg_zero_based = int(m.group(1))
+        seg_one_based = seg_zero_based + 1
         word = m.group(2)
+        is_hook = hook_index is not None and seg_zero_based == hook_index
+        if is_hook:
+            return {
+                "kind": "low_confidence_hook",
+                "title": "Your hook starts mid-word",
+                "detail": (
+                    f"The hook (segment {seg_one_based}) begins on the word "
+                    f"“{word}” — the AI wasn't fully sure where that word "
+                    "started, so the cut may begin a beat later than you intended."
+                ),
+                "action": {
+                    "label": "Pick a different hook moment",
+                    "kind": "configure_hook",
+                },
+                "raw": raw,
+            }
         return {
-            "kind": "low_confidence_hook",
-            "title": "Your hook starts mid-word",
+            "kind": "low_confidence_start",
+            "title": "A segment starts mid-word",
             "detail": (
                 f"Segment {seg_one_based} begins on the word “{word}” "
-                "— the AI wasn't fully sure where that word started, so the "
-                "cut may begin a beat later than you intended."
+                "— the transcription was unclear here, so the segment "
+                "may start a beat later than expected."
             ),
             "action": {
-                "label": "Pick a different hook moment",
-                "kind": "configure_hook",
+                "label": "Try Regenerate",
+                "kind": "regenerate",
             },
             "raw": raw,
         }
