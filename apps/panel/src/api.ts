@@ -134,6 +134,12 @@ export const api = {
     preset: string,
     userSettings: UserSettings,
     contentType?: string | null,
+    /**
+     * Optional story-critic feedback from a prior build, surfaced into
+     * the Director's first call as a rework prompt. Used by the panel's
+     * "Regenerate with recommendations" button on the Cut-health card.
+     */
+    criticFeedback?: Record<string, unknown> | null,
   ) =>
     http<BuildPlanResult>("/cutmaster/build-plan", {
       method: "POST",
@@ -146,6 +152,7 @@ export const api = {
         // pre-three-axis clients stay wire-compatible.
         ...(contentType ? { content_type: contentType } : {}),
         user_settings: userSettings,
+        ...(criticFeedback ? { critic_feedback: criticFeedback } : {}),
       }),
     }),
 

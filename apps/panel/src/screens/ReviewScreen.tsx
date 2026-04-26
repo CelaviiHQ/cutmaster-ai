@@ -350,7 +350,10 @@ export default function ReviewScreen({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [runId]);
 
-    const regenerate = async (next: UserSettings) => {
+    const regenerate = async (
+        next: UserSettings,
+        opts?: { criticFeedback?: Record<string, unknown> | null },
+    ) => {
         setRegenerating(true);
         setErr(null);
         try {
@@ -366,7 +369,13 @@ export default function ReviewScreen({
             const contentType = CONTENT_TYPE_PRESETS_REVIEW.has(effectivePreset)
                 ? effectivePreset
                 : null;
-            const p = await api.buildPlan(runId, effectivePreset, next, contentType);
+            const p = await api.buildPlan(
+                runId,
+                effectivePreset,
+                next,
+                contentType,
+                opts?.criticFeedback ?? null,
+            );
             setPlan(p);
             onSettingsChange?.(next);
             // Reset any build attempt tied to the prior plan.
@@ -377,6 +386,34 @@ export default function ReviewScreen({
         } finally {
             setRegenerating(false);
         }
+    };
+
+    /**
+     * "Regenerate with recommendations" — feeds the current build's
+     * coherence_report into a fresh /build-plan call as the critic
+     * feedback the Director must address. Different from the plain
+     * Regenerate button (no feedback, fresh start) and from Re-critique
+     * (re-grades the SAME plan). Only meaningful when the critic flagged
+     * something actionable; the host gates the button accordingly.
+     */
+    const regenerateWithCriticFeedback = async (
+        report: CoherenceReport,
+    ): Promise<void> => {
+        await regenerate(settings, {
+            criticFeedback: {
+                score: report.score,
+                verdict: report.verdict,
+                summary: report.summary,
+                issues: report.issues.map((iss) => ({
+                    segment_index: iss.segment_index,
+                    severity: iss.severity,
+                    category: iss.category,
+                    message: iss.message,
+                    suggestion: iss.suggestion,
+                })),
+                history: [],
+            },
+        });
     };
 
     if (loading) {
@@ -956,6 +993,11 @@ export default function ReviewScreen({
                     }
                 }
 
+                const handleRegenerateWithFeedback =
+                    report && report.verdict !== "ship"
+                        ? () => regenerateWithCriticFeedback(report)
+                        : undefined;
+
                 return (
                     <CutHealthCard
                         planWarnings={plan.plan_warnings}
@@ -973,6 +1015,8 @@ export default function ReviewScreen({
                         recritiqueDisabled={recritiqueDisabled}
                         recritiqueDisabledReason={recritiqueDisabledReason}
                         onViewReworkPrompt={handleViewReworkPrompt}
+                        onRegenerateWithFeedback={handleRegenerateWithFeedback}
+                        regenerateWithFeedbackBusy={regenerating}
                     />
                 );
             })()}

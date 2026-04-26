@@ -233,6 +233,14 @@ interface Props {
     recritiqueBusy?: boolean;
     recritiqueError?: string | null;
     /**
+     * "Regenerate with recommendations" — fires a fresh build seeded
+     * with this report as the Director's rework feedback. Different
+     * from ``onRecritique`` (re-grade the SAME plan) and the host's
+     * plain Regenerate (no feedback). Hidden when not provided.
+     */
+    onRegenerateWithFeedback?: () => void;
+    regenerateWithFeedbackBusy?: boolean;
+    /**
      * Pre-rework single-pass report. Used by the legacy two-pass lift
      * chip when no ``ladderSteps`` is provided. Ignored when ``ladderSteps``
      * has ≥ 2 entries — the stepped ladder subsumes it.
@@ -268,6 +276,8 @@ export default function CoherenceReportCard({
     onRecritique,
     recritiqueBusy = false,
     recritiqueError = null,
+    onRegenerateWithFeedback,
+    regenerateWithFeedbackBusy = false,
     previousReport = null,
     onViewReworkPrompt,
     ladderSteps,
@@ -366,6 +376,19 @@ export default function CoherenceReportCard({
                     )}
                 </div>
                 <div className="coherence-actions">
+                    {onRegenerateWithFeedback && report.verdict !== "ship" && (
+                        <button
+                            type="button"
+                            className="coherence-regenerate-with-feedback"
+                            onClick={onRegenerateWithFeedback}
+                            disabled={regenerateWithFeedbackBusy}
+                            title="Build a new plan with the Director addressing every issue flagged above"
+                        >
+                            {regenerateWithFeedbackBusy
+                                ? "Regenerating…"
+                                : "Regenerate with recommendations"}
+                        </button>
+                    )}
                     {onRecritique && (
                         <button
                             type="button"

@@ -496,6 +496,19 @@ class BuildPlanRequest(BaseModel):
         ),
     )
     user_settings: UserSettings = Field(default_factory=UserSettings)
+    critic_feedback: dict | None = Field(
+        default=None,
+        description=(
+            "Optional story-critic report from a prior build, fed into "
+            "the Director's first call as a rework prompt. Editor-driven "
+            "regenerate-with-recommendations: the panel sends the previous "
+            "build's coherence_report so the Director addresses its issues "
+            "instead of starting blind. The auto-rework loop runs on top "
+            "as normal. Shape matches the dict produced by "
+            "``_critic_feedback_payload`` (score / verdict / summary / "
+            "issues / history)."
+        ),
+    )
 
     @model_validator(mode="after")
     def _apply_legacy_alias(self) -> BuildPlanRequest:

@@ -27,6 +27,8 @@ interface Props {
     recritiqueDisabled?: boolean;
     recritiqueDisabledReason?: string;
     onViewReworkPrompt?: () => void;
+    onRegenerateWithFeedback?: () => void;
+    regenerateWithFeedbackBusy?: boolean;
 }
 
 /**
@@ -53,6 +55,8 @@ export default function CutHealthCard({
     recritiqueDisabled = false,
     recritiqueDisabledReason,
     onViewReworkPrompt,
+    onRegenerateWithFeedback,
+    regenerateWithFeedbackBusy = false,
 }: Props) {
     const hasWarnings = (planWarnings?.length ?? 0) > 0;
     const hasCritic = coherenceReport !== null;
@@ -111,6 +115,8 @@ export default function CutHealthCard({
                     recritiqueDisabled={recritiqueDisabled}
                     recritiqueDisabledReason={recritiqueDisabledReason}
                     onViewReworkPrompt={onViewReworkPrompt}
+                    onRegenerateWithFeedback={onRegenerateWithFeedback}
+                    regenerateWithFeedbackBusy={regenerateWithFeedbackBusy}
                     sectionLabel={hasWarnings ? "Story coherence" : undefined}
                 />
             )}

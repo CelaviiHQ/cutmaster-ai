@@ -2371,6 +2371,30 @@ button.coherence-lift-step {
     color: var(--text-muted, #7a7a85);
 }
 
+/* Editor-driven "Regenerate with recommendations" — primary action on
+   the Cut-health card when the critic flagged actionable issues.
+   Visually distinct from the link-style Re-critique / View prompt
+   buttons because it actually rebuilds the cut. */
+.coherence-regenerate-with-feedback {
+    appearance: none;
+    padding: 6px 12px;
+    border: 1px solid var(--accent, #4ea1ff);
+    border-radius: 6px;
+    background: rgba(78, 161, 255, 0.12);
+    color: var(--accent, #4ea1ff);
+    font-size: var(--fs-2);
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 80ms ease, border-color 80ms ease;
+}
+.coherence-regenerate-with-feedback:hover:not(:disabled) {
+    background: rgba(78, 161, 255, 0.2);
+}
+.coherence-regenerate-with-feedback:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
 .coherence-rework-prompt {
     margin-left: var(--s-2);
     font-size: var(--fs-2);

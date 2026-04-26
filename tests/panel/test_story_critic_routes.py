@@ -1644,3 +1644,97 @@ def test_rework_prompt_block_renders_multi_pass_when_history_present(monkeypatch
         }
     )
     assert "+4 more" in many  # 7 - 3 capped
+
+
+def test_build_plan_request_critic_feedback_seeds_first_director_call(
+    client, monkeypatch, scrubbed_run, caplog
+):
+    """Editor-driven "Regenerate with recommendations" path: when the
+    request body carries ``critic_feedback``, the FIRST Director call
+    sees it as the rework prompt — exactly as if the auto-rework loop
+    had already fired one iteration. The auto-rework loop then runs on
+    top normally.
+    """
+    _flag_on(monkeypatch)
+    monkeypatch.setenv("CUTMASTER_STORY_CRITIC_REWORK_MAX", "0")
+
+    director_calls = _capture_director_calls(monkeypatch)
+    _seq_critic(monkeypatch, [_good_report()])
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    _stub_resolver_and_resolve(monkeypatch)
+
+    feedback_payload = {
+        "score": 55,
+        "verdict": "rework",
+        "summary": "hook is weak",
+        "issues": [
+            {
+                "segment_index": 0,
+                "severity": "error",
+                "category": "weak_hook",
+                "message": "opener doesn't pull",
+                "suggestion": "lead with the question",
+            }
+        ],
+        "history": [],
+    }
+
+    r = client.post(
+        "/cutmaster/build-plan",
+        json={
+            "run_id": scrubbed_run["run_id"],
+            "preset": "vlog",
+            "content_type": "vlog",
+            "cut_intent": "narrative",
+            "user_settings": {
+                "target_length_s": 60,
+                "themes": [],
+                "cut_intent": "narrative",
+            },
+            "critic_feedback": feedback_payload,
+        },
+    )
+    assert r.status_code == 200, r.text
+
+    # Director was called exactly once (REWORK_MAX=0 disables the auto
+    # loop). That single call MUST carry the editor-supplied feedback
+    # so the prompt block renders the PREVIOUS ATTEMPT header.
+    assert len(director_calls) == 1
+    fb = director_calls[0].get("_critic_feedback")
+    assert fb is not None
+    assert fb["score"] == 55
+    assert fb["verdict"] == "rework"
+    assert fb["issues"][0]["category"] == "weak_hook"
+
+
+def test_build_plan_request_no_critic_feedback_first_call_clean(client, monkeypatch, scrubbed_run):
+    """Without ``critic_feedback`` in the request, the first Director
+    call sees no rework block — the regenerate-with-feedback button is
+    additive, not a regression to today's plain Regenerate.
+    """
+    _flag_on(monkeypatch)
+    monkeypatch.setenv("CUTMASTER_STORY_CRITIC_REWORK_MAX", "0")
+
+    director_calls = _capture_director_calls(monkeypatch)
+    _seq_critic(monkeypatch, [_good_report()])
+    monkeypatch.setattr(routes.build, "suggest_markers", lambda *_a, **_k: MarkerPlan(markers=[]))
+    _stub_resolver_and_resolve(monkeypatch)
+
+    r = client.post(
+        "/cutmaster/build-plan",
+        json={
+            "run_id": scrubbed_run["run_id"],
+            "preset": "vlog",
+            "content_type": "vlog",
+            "cut_intent": "narrative",
+            "user_settings": {
+                "target_length_s": 60,
+                "themes": [],
+                "cut_intent": "narrative",
+            },
+        },
+    )
+    assert r.status_code == 200, r.text
+
+    assert len(director_calls) == 1
+    assert "_critic_feedback" not in director_calls[0]

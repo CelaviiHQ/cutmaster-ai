@@ -988,6 +988,15 @@ async def build_plan(body: BuildPlanRequest) -> dict:
         raise HTTPException(status_code=400, detail=f"unknown preset '{body.preset}'")
     preset = get_preset(body.preset)
     settings_dict = body.user_settings.model_dump()
+    # Editor-driven "Regenerate with recommendations": the panel passes a
+    # prior build's critic report as ``critic_feedback`` so this build's
+    # Director sees it as the rework prompt block on its FIRST call. The
+    # auto-rework loop then runs on top as normal. The underscore prefix
+    # is the same idiom every internal rebuild_fn uses; ``_user_settings_block``
+    # ignores underscore-prefixed keys so it never leaks into the prompt's
+    # USER SETTINGS summary.
+    if body.critic_feedback:
+        settings_dict["_critic_feedback"] = body.critic_feedback
     mode = body.user_settings.timeline_mode
 
     # Source-track index picked during analyze (track_picker auto-detect
